@@ -1,59 +1,50 @@
-# Session State — updated 2026-10-02 22:40
+# Session State — updated 2026-10-02 23:45
 
 Status: COMPLETE
-Task: Study PecoFence and build a better equivalent for this system (Arch /
-Hyprland / Wayland). Result: Palisade, a desktop-fences daemon for wlroots.
-Branch / worktree: master (initial commit)   Recovery point: initial commit
+Task: Fix Hyprland minimize/maximize and other failing config, then add a
+minimized-windows taskbar to Palisade (the PecoFence idea applied to windows
+instead of files).
+Branch / worktree: master   Recovery point: 7ec3283
 
 Done:
-- Studied PecoFence (cloned, read source layout + full feature table).
-  Established it is Windows-only and cannot run here.
-- Probed the live environment: Hyprland 0.56.2, Wayland, GTK 4.22, PyGObject
-  present, Rust absent, sudo unavailable, illogical-impulse/Quickshell rice.
-- Built gtk4-layer-shell 1.3.0 into ~/.local (no root needed).
-- Spiked layer-shell feasibility against the live compositor:
-  bottom-layer surface + pointer enter + real click all PASS.
-- Spiked drag-and-drop: FAIL, matching two known upstream Hyprland bugs.
-  Designed the product to not depend on it.
-- Built and verified Palisade end to end (see CHANGELOG.md).
+- Verified against the live compositor, before writing anything, that the tag +
+  special-workspace mechanism works and that `hyprctl eval` reports Lua errors
+  but discards return values.
+- Built `~/.config/hypr/custom/minimize.lua`: multi-window, origin-remembering,
+  reload-surviving minimize. Exercised live across plain / maximized /
+  fullscreen / pinned / multi-window / post-reload / double-minimize /
+  special-workspace-refusal / empty-drawer cases.
+- Audited the rest of the config and fixed what was failing: four wrong GPU env
+  vars, the whole wallpaper chain, `hypr-project`, two missing hyprlock
+  scripts, a non-executable autostart, and the plain-workspace minimize bug
+  that was the actual cause of "windows minimising at will".
+  Written up in `~/.config/hypr/CHANGELOG.md`.
+- Added the `windows` source kind to Palisade and committed it (7ec3283).
+  16 unit tests, plus a live pointer-driven pass over the real fence.
 
 In flight:
 - Nothing.
 
 Not started:
-- `palisade fence add` (append a [[fence]] block as text).
-- Manual reorder for `sort = "manual"`.
-- Multi-monitor verification (one output on this machine).
+- `palisade fence add`, manual reorder for `sort = "manual"`, multi-monitor
+  verification. Unchanged from the previous session.
 
 Blocked on:
 - Nothing.
 
 Danger:
-- Nothing half-applied. `~/.config/palisade/palisade.toml` was created by
-  `palisade init`; a test edit to it was reverted and verified. The transient
-  `state.json` written during testing was removed so the first real run starts
-  clean. Hyprland layer rules were applied at runtime only — no compositor
-  config file was modified.
+- Nothing half-applied. Working tree is clean at 7ec3283.
+- Two recovery points were taken before editing anything outside this repo:
+  `~/.config/hypr.backup-20261002-225820.tar.gz` and
+  `~/.local/bin.backup-20261002-230823.tar.gz`. Delete them once the config has
+  survived a few days.
+- `~/.config/palisade/palisade.toml` gained the `[[fence]] id = "minimized"`
+  block. `state.json` has `collapsed: false` persisted for it from testing, so
+  it will start expanded despite `collapsed = true` in the config — that is the
+  runtime overlay working as designed, not a bug.
+- The Palisade daemon was restarted during this session and is running the new
+  code.
 
 Resume by:
-- `~/palisade/bin/palisade run`, then drag-test manually (see SESSION_LOG.md
-  "Not yet verified").
-
-<!-- machine-record: written by session-state hook, do not edit -->
-## Machine record — 2026-10-02 23:19:29
-
-Session ended here. Facts at that moment, recorded by hook:
-
-- Branch: `master`  HEAD: `83a3d8a`
-- Uncommitted files: 7
-```
-  M data/default.toml
-   M palisade/app.py
-   M palisade/config.py
-   M palisade/hypr.py
-   M palisade/sources.py
-   M palisade/ui/fence.py
-  ?? palisade/windows.py
-```
-
-If the narrative above disagrees with this, trust this block and the tree.
+- Nothing required. If picking this up: `python3 -m unittest discover -s tests`,
+  then `palisade check`.
