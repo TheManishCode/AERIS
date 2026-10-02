@@ -1,0 +1,190 @@
+/* Palisade component stylesheet.
+ *
+ * Colour comes entirely from @m3_* tokens emitted by palisade/theme.py, so this
+ * sheet never hard-codes a hue and re-themes with the wallpaper.
+ *
+ * %RADIUS% / %RADIUS_SM% / %FONT_PT% / %FONT_SM_PT% are substituted at load
+ * time because GTK CSS cannot compute on @define-color values.
+ *
+ * The blur behind a fence is drawn by the compositor (Hyprland `layerrule =
+ * blur`), not here. This sheet only supplies the translucent tint that sits on
+ * top of it — which is why the glass refracts live windows rather than a
+ * wallpaper screenshot.
+ */
+
+/* The toplevel must be fully transparent so the compositor blur and our
+ * rounded corners are both visible; .fence-root paints the actual panel. */
+window.palisade {
+  background: transparent;
+}
+
+.fence-root {
+  border-radius: %RADIUS%px;
+  border: 1px solid alpha(@m3_outline_variant, 0.55);
+  box-shadow: 0 8px 28px alpha(@m3_shadow, 0.40);
+}
+
+/* Opacity is per-fence, so the surface tint is applied inline by fence.py.
+ * Everything else about the panel lives here. */
+
+.fence-header {
+  padding: 10px 14px 6px 14px;
+}
+
+.fence-title {
+  font-size: %FONT_PT%pt;
+  font-weight: 700;
+  color: @m3_on_surface;
+}
+
+.fence-count {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  padding-left: 8px;
+}
+
+.fence-collapse {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 12px;
+  background: transparent;
+  border: none;
+  color: @m3_on_surface_variant;
+}
+
+.fence-collapse:hover {
+  background: alpha(@m3_on_surface, 0.08);
+  color: @m3_on_surface;
+}
+
+.fence-collapse:active {
+  background: alpha(@m3_on_surface, 0.14);
+}
+
+.fence-body {
+  padding: 4px 8px 10px 8px;
+}
+
+/* The scroller and the view each paint their own surface by default, which
+ * stacks two extra opaque layers on top of the fence's glass and reads as a
+ * lighter inset box. The panel is the only thing that should paint. */
+scrolledwindow,
+viewport,
+gridview,
+listview,
+.fence-items {
+  background: transparent;
+}
+
+/* GridView/ListView wrap every cell in a child/row node that also paints and
+ * carries its own padding; the .item box inside it owns both. */
+gridview > child,
+listview > row {
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
+gridview > child:selected,
+listview > row:selected {
+  background: transparent;
+}
+
+/* --- items ---------------------------------------------------------------
+ * One rule set drives both the icon grid and the list view; only the internal
+ * orientation differs, which keeps hover/selection behaviour identical. */
+
+.item {
+  border-radius: %RADIUS_SM%px;
+  padding: 8px 6px;
+  transition: background 110ms ease-out;
+}
+
+.item:hover {
+  background: alpha(@m3_on_surface, 0.08);
+}
+
+/* Selection state lives on the view's own cell node (gridview > child /
+ * listview > row), so it is matched there and descended into .item rather
+ * than tracked with a class we would have to keep in sync by hand. */
+gridview > child:selected .item,
+listview > row:selected .item {
+  background: alpha(@m3_primary, 0.26);
+}
+
+gridview > child:selected .item:hover,
+listview > row:selected .item:hover {
+  background: alpha(@m3_primary, 0.32);
+}
+
+/* Keyboard focus must stay visible against both hover and selection. */
+gridview > child:focus .item,
+listview > row:focus .item {
+  outline: 2px solid @m3_primary;
+  outline-offset: -2px;
+}
+
+.item-label {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface;
+}
+
+gridview > child:selected .item-label,
+listview > row:selected .item-label {
+  color: @m3_on_primary_container;
+}
+
+.item-sub {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+}
+
+.fence-empty {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  padding: 24px 16px;
+}
+
+/* --- scrolling ----------------------------------------------------------- */
+
+scrollbar {
+  background: transparent;
+  border: none;
+}
+
+/* min-width/height must exceed the transparent border on both sides, or GTK
+ * computes a negative content size and warns. 14 - (4 * 2) = 6px of visible
+ * slider. */
+scrollbar slider {
+  background: alpha(@m3_on_surface, 0.28);
+  border-radius: 7px;
+  min-width: 14px;
+  min-height: 36px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+}
+
+scrollbar slider:hover {
+  background: alpha(@m3_on_surface, 0.45);
+  background-clip: padding-box;
+}
+
+/* --- rename entry -------------------------------------------------------- */
+
+.item-rename {
+  font-size: %FONT_SM_PT%pt;
+  min-height: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: @m3_surface_container_highest;
+  color: @m3_on_surface;
+  border: 1px solid @m3_primary;
+}
+
+/* --- drop feedback -------------------------------------------------------
+ * Used by the internal move picker, not by wl_data_device (see DECISIONS.md). */
+
+.fence-root.drop-active {
+  border: 2px solid @m3_primary;
+}

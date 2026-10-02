@@ -1,0 +1,94 @@
+# Palisade — desktop fences for Wayland.
+#
+# This file is yours. Palisade reads it and never rewrites it, so your comments
+# and layout survive. Runtime state (collapsed, moved geometry) is kept apart in
+# $XDG_STATE_HOME/palisade/state.json.
+#
+# Save the file and fences reload live — no restart.
+# Validate without touching the daemon:  palisade check
+
+[settings]
+# Which compositor layer fences sit on.
+#   bottom  = above the wallpaper, below your windows  (desktop furniture)
+#   top     = above windows, below fullscreen
+#   overlay = above everything
+layer = "bottom"
+
+# Ask the compositor to blur behind fences. On Hyprland this is real blur of
+# whatever is actually behind the fence, updated live — not a wallpaper snapshot.
+blur = true
+
+corner_radius = 20
+font_scale = 1.0
+show_item_count = true
+
+# Re-colour fences from the wallpaper's Material You palette whenever it changes.
+follow_material_you = true
+
+
+# ---------------------------------------------------------------------------
+# Fences. Each [[fence]] is one panel.
+#
+# source.type is the interesting part:
+#   directory — mirror one folder
+#   paths     — a fixed, pinned list
+#   query     — a saved search; a live filtered view of the filesystem
+# ---------------------------------------------------------------------------
+
+[[fence]]
+title = "Desktop"
+x = 48
+y = 64
+width = 380
+height = 460
+icon_size = 48
+sort = "name"
+source = { type = "directory", path = "~/Desktop", depth = 1 }
+
+
+[[fence]]
+title = "Downloads"
+x = 452
+y = 64
+width = 380
+height = 460
+icon_size = 48
+sort = "mtime"          # newest first
+source = { type = "directory", path = "~/Downloads", depth = 1 }
+
+
+# A query fence: documents touched in the last fortnight, wherever they live.
+# Nothing is moved or copied — this is a view, not a bucket.
+[[fence]]
+title = "Recent documents"
+x = 48
+y = 548
+width = 784
+height = 300
+icon_size = 32
+view = "list"
+sort = "mtime"
+source = { type = "query", roots = [
+    "~/Documents",
+    "~/Downloads",
+], categories = ["document"], newer_than_days = 14, depth = 3, limit = 60 }
+
+
+# Pinned shortcuts. Uncomment and point at the folders you actually live in.
+#
+# [[fence]]
+# title = "Pinned"
+# x = 856
+# y = 64
+# width = 240
+# height = 300
+# source = { type = "paths", paths = ["~/Projects", "~/Documents", "~/Wallpapers"] }
+
+
+# A fence bound to Hyprland workspaces 3 and 4 only. Omit `workspaces`
+# (or leave it empty) and the fence shows on every workspace.
+#
+# [[fence]]
+# title = "Scratch"
+# workspaces = [3, 4]
+# source = { type = "directory", path = "~/scratch" }
