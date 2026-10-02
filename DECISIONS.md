@@ -21,9 +21,23 @@ daemon that runs all day. Rejected for v1 on evidence, not preference:
   and model updates. For panels holding tens-to-hundreds of items this is not
   the bottleneck.
 
-**Cost of being wrong.** Roughly 80–120 MB RSS versus ~40 MB for an equivalent
-Rust daemon. If that matters, the port is contained: `config.py`, `sources.py`
-and `theme.py` are pure logic with no GTK import and translate directly;
+**Cost of being wrong.** Measured on this machine with three fences holding 12
+items, after ~1 minute of uptime:
+
+```
+VmRSS    154 MB      <- headline number
+RssAnon   42 MB      <- actually private to this process
+RssFile  112 MB      <- GTK/Pango/Cairo/Mesa, shared with every other GTK app
+threads   10         fds 68
+```
+
+The number that matters is **RssAnon, ~42 MB** — the file-backed 112 MB is
+shared library text already resident for any GTK application on the desktop. A
+Rust daemon would carry the same GTK mapping; the saving would come out of the
+42 MB, not the 154 MB. That is a smaller prize than the headline suggests.
+
+If it still matters, the port is contained: `config.py`, `sources.py` and
+`theme.py` are pure logic with no GTK import and translate directly;
 `ui/fence.py` is the only genuinely GTK-coupled module.
 
 **Rejected: Quickshell/QML module.** This desktop already runs Quickshell
