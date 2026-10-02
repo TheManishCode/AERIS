@@ -228,3 +228,49 @@ Verification:
 Result:
 Dragging is verified. Drag-to-*resize* is still only covered by unit tests —
 no observed real-world resize yet.
+
+## 2026-10-03 — Single-instance lock; dead monitor-pinning code
+
+Role: Backend Engineer + QA Engineer
+Status: Fixed
+
+Reason:
+Two findings, both surfaced by testing rather than by reading.
+
+1. Per-fence `monitor = "..."` never worked. When `_keyboard_mode()` was
+   extracted from `_init_layer_shell()`, the output-selection block was left
+   stranded *after* that method's `return` — unreachable, and referencing a
+   name (`f`) that does not exist in its new scope. Invisible on a
+   single-output machine, which is why it survived.
+2. Four daemons were found running at once, each mapping its own fences, so
+   every panel was drawn four times over. The existing guard keyed on the
+   control socket, and anything that removes that file (a cleanup script, or
+   an operator — in this case me) lets another daemon straight through.
+
+Changes:
+- `palisade/ui/fence.py` — monitor selection moved back inside
+  `_init_layer_shell`, and switched to indexed `GListModel` access to match
+  `monitor_geometry()`.
+- `palisade/singleton.py` (new) — advisory `flock` on a held file descriptor.
+  The kernel releases it only when the holder dies; unlinking the lock file or
+  the socket cannot hand it over. Records the holder's pid so a refused start
+  can name it.
+- `palisade/__main__.py` — acquire on start, release on shutdown. The socket
+  probe is kept, demoted to producing the friendlier message.
+
+Verification:
+- AST sweep for statements following `return`/`raise`: clean afterwards.
+- Bogus `monitor = "DP-99-nonexistent"`: fence still maps on the default
+  output, no error — fails safe rather than vanishing.
+- Second start refused by pid with the socket present, and again with the
+  socket deliberately deleted. Process count stayed at 1 in both cases.
+- Final state: one daemon, four fences, four surfaces, all one pid.
+
+Known Issues:
+- `Lock.release()` unlinks the lock path on the way out. If a replacement
+  daemon has already created and locked a new file at that path, the dying one
+  removes it; the replacement keeps its lock on the now-unlinked inode, but a
+  third starter would see no file and acquire a fresh one. Narrow, and only
+  reachable mid-handover. Not yet fixed.
+- `--config` must precede the subcommand (`palisade --config X check`), which
+  is argparse's convention but reads awkwardly.

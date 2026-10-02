@@ -114,6 +114,19 @@ class FenceWindow(Gtk.ApplicationWindow):
         # chosen in `on_summoned` is what the new surface comes up with.
         LayerShell.set_keyboard_mode(self, self._keyboard_mode())
 
+        # Pin the fence to a named output when the config asks for one.
+        # Must stay inside _init_layer_shell: when _keyboard_mode was split out
+        # of this method, this block was left stranded after that method's
+        # `return`, so it never ran and `monitor = "..."` silently did nothing.
+        if f.monitor:
+            display = Gdk.Display.get_default()
+            monitors = display.get_monitors() if display else None
+            for i in range(monitors.get_n_items() if monitors else 0):
+                mon = monitors.get_item(i)
+                if mon.get_connector() == f.monitor:
+                    LayerShell.set_monitor(self, mon)
+                    break
+
     def _keyboard_mode(self):
         """EXCLUSIVE for a summoned fence, ON_DEMAND for one that lives on screen.
 
@@ -125,13 +138,6 @@ class FenceWindow(Gtk.ApplicationWindow):
         if self.fence.hidden:
             return LayerShell.KeyboardMode.EXCLUSIVE
         return LayerShell.KeyboardMode.ON_DEMAND
-
-        if f.monitor:
-            display = Gdk.Display.get_default()
-            for mon in display.get_monitors():
-                if mon.get_connector() == f.monitor:
-                    LayerShell.set_monitor(self, mon)
-                    break
 
     # ------------------------------------------------------------------- ui
 
@@ -319,6 +325,20 @@ class FenceWindow(Gtk.ApplicationWindow):
         list_item.set_child(box)
         list_item._image, list_item._label, list_item._sub = image, label, sub
         list_item._key = key
+
+        # On a taskbar, one click restores. Double-click is a file-manager
+        # idiom and wrong here: every taskbar in every desktop restores on a
+        # single click, and the row tooltip promises exactly that. File fences
+        # keep double-click-to-open, where a single click should only select.
+        if self._is_windows:
+            pick = Gtk.GestureClick()
+            pick.set_button(Gdk.BUTTON_PRIMARY)
+            pick.connect(
+                "released",
+                lambda _g, n, _x, _y, li=list_item:
+                    self._restore_at(li.get_position()) if n == 1 else None,
+            )
+            box.add_controller(pick)
 
         # Per-item right-click is simpler and more accurate than hit-testing
         # the view, and it keeps the menu anchored to the row the user hit.
@@ -907,6 +927,11 @@ class FenceWindow(Gtk.ApplicationWindow):
         self.set_visible(True)
         if self.fence.hidden:
             self._focus_for_picking()
+
+    def _on_active_changed(self, *_args) -> None:
+        # Only ever closes; becoming active is how it got here.
+        if not self.get_property("is-active") and self.get_visible():
+            self.set_hidden(True)
 
     def _focus_for_picking(self) -> None:
         """Make a summoned fence usable without touching the mouse.

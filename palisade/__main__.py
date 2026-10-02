@@ -83,17 +83,23 @@ def cmd_run(args) -> int:
 
     from .app import APP_ID, Controller
     from .ipc import Server, request
+    from .singleton import AlreadyRunning, Lock
 
-    # Gtk.Application's own single-instance handling activates the running
-    # process and exits 0 *silently*, which looks exactly like a successful
-    # start against stale code. Probe the control socket first and say so.
-    probe = request({"cmd": "ping"}, timeout=1.0)
-    if probe.get("ok"):
-        count = probe.get("result", {}).get("fences", "?")
+    # Two daemons do not error — they both map their fences, so every panel
+    # quietly appears twice. The lock is the real guard: it is held on an open
+    # fd, so unlinking the socket or the lock file cannot defeat it. The socket
+    # probe below only exists to produce a friendlier message.
+    lock = Lock()
+    try:
+        lock.acquire()
+    except AlreadyRunning as exc:
+        probe = request({"cmd": "ping"}, timeout=1.0)
+        count = probe.get("result", {}).get("fences", "?") if probe.get("ok") else "?"
         print(
-            f"palisade: already running ({count} fences).\n"
+            f"palisade: {exc} — {count} fences.\n"
             f"  reload config:  palisade reload\n"
-            f"  stop it:        pkill -f 'python3 -m palisade'",
+            f"  stop it:        kill {exc.pid}" if exc.pid else
+            f"palisade: {exc}",
             file=sys.stderr,
         )
         return 1
@@ -125,6 +131,7 @@ def cmd_run(args) -> int:
             holder["server"].stop()
         if "controller" in holder:
             holder["controller"].shutdown()
+        lock.release()
 
     app.connect("activate", on_activate)
     app.connect("shutdown", on_shutdown)
