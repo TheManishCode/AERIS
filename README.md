@@ -14,13 +14,14 @@ This is that category, built for wlroots compositors.
 
 ## What a fence is here
 
-A fence is a panel on your desktop layer holding files. Three kinds:
+A fence is a panel on your desktop layer. Four kinds:
 
 | `source.type` | What it shows |
 | --- | --- |
 | `directory` | One folder, live. |
 | `paths` | A fixed, pinned list. |
 | `query` | **A saved search.** A live, filtered view of the filesystem. |
+| `windows` | **The windows you have minimized.** A taskbar — see below. |
 
 The third one is the point. PecoFence organises your desktop by *moving icons
 into buckets*. Palisade can instead show you a live query — "documents touched in
@@ -126,20 +127,58 @@ palisade reload
 > and collapse anything that's empty.
 ```
 
+## The minimized-windows fence
+
+Hyprland has no minimize. A client that asks to be minimized is ignored
+outright — verified on 0.56.2 by calling `Gtk.Window.minimize()` while tailing
+the event socket: the compositor emits nothing at all, so the titlebar minimize
+button in CSD apps cannot be made to work. Minimizing has to come from a
+keybind.
+
+The convention Palisade reads is implemented in
+`~/.config/hypr/custom/minimize.lua`: a minimized window is parked on the
+`special:minimized` workspace carrying two tags — `minimized`, and
+`minstate:SEQ:WS:FS:PIN` recording where it came from and what state it was in.
+Tags are compositor state, so they are visible in `hyprctl clients -j` and
+survive a config reload; nothing here keeps a state file that could go stale.
+
+```toml
+[[fence]]
+id = "minimized"
+title = "Minimized"
+layer = "overlay"       # a taskbar you can't see isn't a taskbar
+view = "list"
+sort = "mtime"          # most recently minimized first
+collapsed = true
+source = { type = "windows" }
+```
+
+The keybind restores in LIFO order. This fence is how you skip the order:
+double-click the window you actually want. Right click gives Restore, Restore
+all, and Close window. The list updates itself from compositor events, so it
+stays in step with the keybinds without polling.
+
+Filesystem verbs are not merely hidden on this fence — they are never
+registered on it, and every file action filters window rows out of the
+selection, so <kbd>Delete</kbd> can never reach a window.
+
 ## Keyboard
 
 Fences take `on-demand` keyboard focus — they are inert until you click one.
 
-| Key | Does |
-| --- | --- |
-| type | jump to the first item starting with what you typed |
-| <kbd>Enter</kbd> / double-click | open |
-| <kbd>F2</kbd> | rename |
-| <kbd>Delete</kbd> | move to trash |
-| <kbd>Ctrl</kbd>+<kbd>C</kbd> | copy paths |
-| <kbd>Ctrl</kbd>+<kbd>A</kbd> | select all |
-| <kbd>F5</kbd> | rescan |
-| <kbd>Esc</kbd> | clear selection |
+| Key | File fence | Windows fence |
+| --- | --- | --- |
+| type | jump to the first item starting with what you typed | same |
+| <kbd>Enter</kbd> / double-click | open | restore that window |
+| <kbd>F2</kbd> | rename | — |
+| <kbd>Delete</kbd> | move to trash | — |
+| <kbd>Ctrl</kbd>+<kbd>C</kbd> | copy paths | — |
+| <kbd>Ctrl</kbd>+<kbd>A</kbd> | select all | — |
+| <kbd>F5</kbd> | rescan | rescan |
+| <kbd>Esc</kbd> | clear selection | clear selection |
+
+Closing a window is menu-only: it discards unsaved work, so it is deliberately
+not on a key.
 
 ## Known limits
 
@@ -156,6 +195,12 @@ compositor bug closes.
 Other gaps, honestly: no multi-monitor testing (this machine has one output), no
 in-app fence creation yet (edit the TOML), `sort = "manual"` is accepted but not
 yet reorderable, and `tint` is parsed but only lightly exercised.
+
+The windows fence needs the Lua minimize module loaded; on a legacy
+`hyprland.conf` setup there is no Lua VM, nothing ever gets tagged, and the
+fence says so instead of sitting silently empty. Window icons are resolved from
+the app id via the desktop file and then the icon theme, which covers the common
+toolkits but will fall back to a generic glyph for apps that set neither.
 
 ## Licence
 

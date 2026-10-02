@@ -38,3 +38,22 @@ Danger:
 Resume by:
 - `~/palisade/bin/palisade run`, then drag-test manually (see SESSION_LOG.md
   "Not yet verified").
+
+<!-- machine-record: written by session-state hook, do not edit -->
+## Machine record — 2026-10-02 23:19:29
+
+Session ended here. Facts at that moment, recorded by hook:
+
+- Branch: `master`  HEAD: `83a3d8a`
+- Uncommitted files: 7
+```
+  M data/default.toml
+   M palisade/app.py
+   M palisade/config.py
+   M palisade/hypr.py
+   M palisade/sources.py
+   M palisade/ui/fence.py
+  ?? palisade/windows.py
+```
+
+If the narrative above disagrees with this, trust this block and the tree.

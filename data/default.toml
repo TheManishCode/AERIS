@@ -33,6 +33,7 @@ follow_material_you = true
 #   directory — mirror one folder
 #   paths     — a fixed, pinned list
 #   query     — a saved search; a live filtered view of the filesystem
+#   windows   — the windows you have minimized; a taskbar, not a folder
 # ---------------------------------------------------------------------------
 
 [[fence]]
@@ -83,6 +84,37 @@ source = { type = "query", roots = [
 # width = 240
 # height = 300
 # source = { type = "paths", paths = ["~/Projects", "~/Documents", "~/Wallpapers"] }
+
+
+# Minimized windows, as a taskbar you can click a specific window out of.
+#
+# Hyprland has no minimize, so this pairs with the keybinds in
+# ~/.config/hypr/custom/minimize.lua:
+#
+#   SUPER + ALT + N          minimize the focused window
+#   CTRL + SUPER + N         bring back the last one
+#   CTRL + SUPER + SHIFT + N bring back all of them
+#
+# The keybind restores in order. This fence is how you skip the order and go
+# straight to the window you want: click it, or select and press Enter. Right
+# click for Restore all / Close.
+#
+# "overlay" rather than the global `layer`, because a taskbar you cannot see
+# while a window is covering it is not a taskbar. `collapsed = true` keeps it
+# as a title strip until you expand it.
+[[fence]]
+id = "minimized"
+title = "Minimized"
+layer = "overlay"
+x = 48
+y = 752
+width = 420
+height = 280
+icon_size = 24
+view = "list"
+sort = "mtime"          # most recently minimized first
+collapsed = true
+source = { type = "windows" }
 
 
 # A fence bound to Hyprland workspaces 3 and 4 only. Omit `workspaces`

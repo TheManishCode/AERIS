@@ -19,6 +19,7 @@ gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
+from .. import windows as hwindows
 from ..config import Fence, Settings
 from ..sources import Item, resolve, sort_items
 
@@ -57,6 +58,11 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._typeahead = ""
         self._typeahead_at = 0.0
         self._collapsed = fence.collapsed
+        # A taskbar fence holds live windows, not files. Every filesystem
+        # action below is gated on this (and on `item.window`), because an
+        # Item for a window carries the window address in `path` and trashing
+        # or renaming that would be meaningless at best.
+        self._is_windows = fence.source.kind == "windows"
 
         self.add_css_class("palisade")
         self.set_default_size(fence.width, fence.height)
@@ -79,7 +85,7 @@ class FenceWindow(Gtk.ApplicationWindow):
             "bottom": LayerShell.Layer.BOTTOM,
             "top": LayerShell.Layer.TOP,
             "overlay": LayerShell.Layer.OVERLAY,
-        }[s.layer])
+        }[f.layer or s.layer])
         LayerShell.set_anchor(self, LayerShell.Edge.TOP, True)
         LayerShell.set_anchor(self, LayerShell.Edge.LEFT, True)
         LayerShell.set_margin(self, LayerShell.Edge.TOP, f.y)
@@ -179,7 +185,16 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._scroller.add_css_class("fence-body")
         root.append(self._scroller)
 
-        self._empty = Gtk.Label(label="Nothing here yet")
+        if not self._is_windows:
+            empty_text = "Nothing here yet"
+        elif hwindows.engine_available():
+            empty_text = "No minimized windows"
+        else:
+            # Without the Lua module nothing ever gets tagged, so this fence
+            # would sit permanently empty with no clue why.
+            empty_text = "Minimize engine not loaded\n(see custom/minimize.lua)"
+        self._empty = Gtk.Label(label=empty_text)
+        self._empty.set_justify(Gtk.Justification.CENTER)
         self._empty.add_css_class("fence-empty")
         self._empty.set_visible(False)
         root.append(self._empty)
@@ -243,12 +258,41 @@ class FenceWindow(Gtk.ApplicationWindow):
         obj: ItemObject = list_item.get_item()
         item = obj.item
         list_item._label.set_text(item.name)
-        list_item._label.set_tooltip_text(str(item.path))
-        if list_item._sub.get_visible():
-            list_item._sub.set_text(
-                "" if item.is_dir else _human_size(item.size)
+        if item.window is not None:
+            w = item.window
+            list_item._label.set_tooltip_text(
+                f"{w.wclass}\nfrom workspace {w.workspace}\nclick to restore"
             )
+            if list_item._sub.get_visible():
+                list_item._sub.set_text(w.wclass)
+        else:
+            list_item._label.set_tooltip_text(str(item.path))
+            if list_item._sub.get_visible():
+                list_item._sub.set_text(
+                    "" if item.is_dir else _human_size(item.size)
+                )
         self._apply_icon(list_item._image, item)
+
+    def _apply_window_icon(self, image: Gtk.Image, wclass: str) -> None:
+        """Best available app icon for a Wayland app id.
+
+        Three attempts, cheapest first. Most toolkits set the app id to the
+        desktop file's basename ("org.kde.dolphin"), so that lookup succeeds
+        outright; Chromium-family and Electron apps lowercase it, so the icon
+        theme is tried next; anything else gets a neutral window glyph rather
+        than a broken-image box.
+        """
+        if wclass:
+            info = Gio.DesktopAppInfo.new(f"{wclass}.desktop")
+            if info is not None and info.get_icon() is not None:
+                image.set_from_gicon(info.get_icon())
+                return
+            theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+            for candidate in (wclass, wclass.lower(), wclass.split(".")[-1].lower()):
+                if candidate and theme.has_icon(candidate):
+                    image.set_from_icon_name(candidate)
+                    return
+        image.set_from_icon_name("view-restore-symbolic")
 
     def _apply_icon(self, image: Gtk.Image, item: Item) -> None:
         """Thumbnail when one already exists, otherwise the themed icon.
@@ -256,6 +300,9 @@ class FenceWindow(Gtk.ApplicationWindow):
         Only reads thumbnails GIO has already generated — Palisade never blocks
         the UI thread generating one.
         """
+        if item.window is not None:
+            self._apply_window_icon(image, item.window.wclass)
+            return
         gfile = Gio.File.new_for_path(str(item.path))
         try:
             info = gfile.query_info(
@@ -305,10 +352,10 @@ class FenceWindow(Gtk.ApplicationWindow):
                 )
             except GLib.Error:
                 continue
-            mon.connect("changed", lambda *_: self._schedule_refresh())
+            mon.connect("changed", lambda *_: self.schedule_refresh())
             self._monitors.append(mon)
 
-    def _schedule_refresh(self) -> None:
+    def schedule_refresh(self) -> None:
         # Bursty writes (an archive extracting, a download finishing) would
         # otherwise cause one full rescan per inotify event.
         if self._refresh_source is not None:
@@ -324,14 +371,26 @@ class FenceWindow(Gtk.ApplicationWindow):
     # --------------------------------------------------------------- actions
 
     def _install_actions(self) -> None:
-        for name, handler in (
-            ("open", lambda *_: self._open_selected()),
-            ("open-folder", lambda *_: self._reveal_selected()),
-            ("copy-path", lambda *_: self._copy_paths()),
-            ("rename", lambda *_: self._rename_selected()),
-            ("trash", lambda *_: self._trash_selected()),
-            ("refresh", lambda *_: self.refresh()),
-        ):
+        # A taskbar fence gets its own verbs. The filesystem ones are not
+        # merely hidden from its menu, they are never registered, so a stray
+        # `win.trash` activation cannot reach a window row.
+        if self._is_windows:
+            actions = (
+                ("restore", lambda *_: self._restore_selected()),
+                ("restore-all", lambda *_: self._restore_all()),
+                ("close-window", lambda *_: self._close_selected()),
+                ("refresh", lambda *_: self.refresh()),
+            )
+        else:
+            actions = (
+                ("open", lambda *_: self._open_selected()),
+                ("open-folder", lambda *_: self._reveal_selected()),
+                ("copy-path", lambda *_: self._copy_paths()),
+                ("rename", lambda *_: self._rename_selected()),
+                ("trash", lambda *_: self._trash_selected()),
+                ("refresh", lambda *_: self.refresh()),
+            )
+        for name, handler in actions:
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
             self.add_action(action)
@@ -343,24 +402,56 @@ class FenceWindow(Gtk.ApplicationWindow):
                 out.append(self._store.get_item(i).item)
         return out
 
+    def _selected_files(self) -> list[Item]:
+        """Selection with window rows removed — the input to any file action."""
+        return [i for i in self._selected_items() if i.window is None]
+
     def _on_activate(self, _view, position: int) -> None:
         obj = self._store.get_item(position)
         if obj is not None:
             self._launch(obj.item)
 
     def _launch(self, item: Item) -> None:
+        if item.window is not None:
+            self._restore(item.window)
+            return
         uri = Gio.File.new_for_path(str(item.path)).get_uri()
         try:
             Gio.AppInfo.launch_default_for_uri(uri, None)
         except GLib.Error as exc:
             self.controller.notify(f"Could not open {item.name}: {exc.message}")
 
+    # ---------------------------------------------------------------- windows
+
+    def _restore(self, window) -> None:
+        if not hwindows.restore(window):
+            self.controller.notify(f"Could not restore {window.label}")
+        self.schedule_refresh()
+
+    def _restore_selected(self) -> None:
+        for item in self._selected_items():
+            if item.window is not None:
+                self._restore(item.window)
+
+    def _restore_all(self) -> None:
+        if not hwindows.restore_all():
+            self.controller.notify("Could not restore windows")
+        self.schedule_refresh()
+
+    def _close_selected(self) -> None:
+        # Closing a window discards unsaved work, so it is menu-only: never on
+        # Delete, and never the double-click action.
+        for item in self._selected_items():
+            if item.window is not None and not hwindows.close(item.window):
+                self.controller.notify(f"Could not close {item.window.label}")
+        self.schedule_refresh()
+
     def _open_selected(self) -> None:
         for item in self._selected_items():
             self._launch(item)
 
     def _reveal_selected(self) -> None:
-        for item in self._selected_items()[:1]:
+        for item in self._selected_files()[:1]:
             target = item.path if item.is_dir else item.path.parent
             try:
                 Gio.AppInfo.launch_default_for_uri(
@@ -370,7 +461,7 @@ class FenceWindow(Gtk.ApplicationWindow):
                 self.controller.notify(f"Could not reveal: {exc.message}")
 
     def _copy_paths(self) -> None:
-        items = self._selected_items()
+        items = self._selected_files()
         if not items:
             return
         text = "\n".join(str(i.path) for i in items)
@@ -378,7 +469,7 @@ class FenceWindow(Gtk.ApplicationWindow):
         self.controller.notify(f"Copied {len(items)} path(s)")
 
     def _trash_selected(self) -> None:
-        items = self._selected_items()
+        items = self._selected_files()
         failed = []
         for item in items:
             try:
@@ -389,10 +480,10 @@ class FenceWindow(Gtk.ApplicationWindow):
             self.controller.notify(f"Could not trash: {', '.join(failed[:3])}")
         elif items:
             self.controller.notify(f"Moved {len(items)} item(s) to trash")
-        self._schedule_refresh()
+        self.schedule_refresh()
 
     def _rename_selected(self) -> None:
-        items = self._selected_items()
+        items = self._selected_files()
         if len(items) != 1:
             self.controller.notify("Select exactly one item to rename")
             return
@@ -409,7 +500,7 @@ class FenceWindow(Gtk.ApplicationWindow):
             Gio.File.new_for_path(str(item.path)).set_display_name(new_name, None)
         except GLib.Error as exc:
             self.controller.notify(f"Rename failed: {exc.message}")
-        self._schedule_refresh()
+        self.schedule_refresh()
 
     def _open_context_menu(self, list_item, x: float, y: float) -> None:
         pos = list_item.get_position()
@@ -417,19 +508,29 @@ class FenceWindow(Gtk.ApplicationWindow):
             self._selection.select_item(pos, True)
 
         menu = Gio.Menu()
-        primary = Gio.Menu()
-        primary.append("Open", "win.open")
-        primary.append("Open containing folder", "win.open-folder")
-        menu.append_section(None, primary)
+        if self._is_windows:
+            primary = Gio.Menu()
+            primary.append("Restore", "win.restore")
+            primary.append("Restore all", "win.restore-all")
+            menu.append_section(None, primary)
 
-        edit = Gio.Menu()
-        edit.append("Copy path", "win.copy-path")
-        edit.append("Rename…", "win.rename")
-        menu.append_section(None, edit)
+            danger = Gio.Menu()
+            danger.append("Close window", "win.close-window")
+            menu.append_section(None, danger)
+        else:
+            primary = Gio.Menu()
+            primary.append("Open", "win.open")
+            primary.append("Open containing folder", "win.open-folder")
+            menu.append_section(None, primary)
 
-        danger = Gio.Menu()
-        danger.append("Move to trash", "win.trash")
-        menu.append_section(None, danger)
+            edit = Gio.Menu()
+            edit.append("Copy path", "win.copy-path")
+            edit.append("Rename…", "win.rename")
+            menu.append_section(None, edit)
+
+            danger = Gio.Menu()
+            danger.append("Move to trash", "win.trash")
+            menu.append_section(None, danger)
 
         popover = Gtk.PopoverMenu.new_from_model(menu)
         popover.set_parent(list_item.get_child())
@@ -441,6 +542,21 @@ class FenceWindow(Gtk.ApplicationWindow):
 
     def _on_key(self, _ctrl, keyval: int, _code: int, state: Gdk.ModifierType) -> bool:
         ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        if self._is_windows:
+            # Only the non-destructive keys are live on a taskbar fence.
+            # Delete in particular must not reach _trash_selected, and closing
+            # a window is deliberately menu-only.
+            if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_space):
+                self._restore_selected()
+                return True
+            if keyval == Gdk.KEY_F5:
+                self.refresh()
+                return True
+            if keyval == Gdk.KEY_Escape:
+                self._selection.unselect_all()
+                self._typeahead = ""
+                return True
+            return self._typeahead_key(keyval, ctrl)
         if keyval == Gdk.KEY_F2:
             self._rename_selected()
             return True
@@ -461,19 +577,23 @@ class FenceWindow(Gtk.ApplicationWindow):
             self._typeahead = ""
             return True
 
-        # Type-ahead: jump to the first item starting with what you type.
+        return self._typeahead_key(keyval, ctrl)
+
+    def _typeahead_key(self, keyval: int, ctrl: bool) -> bool:
+        """Jump to the first item starting with what you type."""
         ch = Gdk.keyval_to_unicode(keyval)
-        if ch and chr(ch).isprintable() and not ctrl:
-            now = time.monotonic()
-            if now - self._typeahead_at > TYPEAHEAD_RESET_S:
-                self._typeahead = ""
-            self._typeahead += chr(ch).lower()
-            self._typeahead_at = now
-            for i in range(self._store.get_n_items()):
-                if self._store.get_item(i).item.name.lower().startswith(self._typeahead):
-                    self._selection.select_item(i, True)
-                    self._view.scroll_to(i, Gtk.ListScrollFlags.FOCUS, None)
-                    return True
+        if not ch or ctrl or not chr(ch).isprintable():
+            return False
+        now = time.monotonic()
+        if now - self._typeahead_at > TYPEAHEAD_RESET_S:
+            self._typeahead = ""
+        self._typeahead += chr(ch).lower()
+        self._typeahead_at = now
+        for i in range(self._store.get_n_items()):
+            if self._store.get_item(i).item.name.lower().startswith(self._typeahead):
+                self._selection.select_item(i, True)
+                self._view.scroll_to(i, Gtk.ListScrollFlags.FOCUS, None)
+                return True
         return False
 
     # ------------------------------------------------------------- collapse

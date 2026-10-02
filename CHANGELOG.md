@@ -1,5 +1,74 @@
 # Changelog
 
+## 2026-10-02 — Minimized-windows fence (taskbar)
+
+Role: Full-Stack Engineer + Product Designer
+Status: Added
+
+Reason:
+Hyprland has no minimize, and the minimize keybind can only restore in LIFO
+order. PecoFence's tabbed fences suggested the missing piece: somewhere to see
+what is hidden and click the one you want. This is that, built on the tag
+convention in `~/.config/hypr/custom/minimize.lua`.
+
+Changes:
+- `palisade/windows.py` — new. Reads minimized windows out of
+  `hyprctl clients -j` by tag; drives restore/minimize/close through the Lua
+  module so the rules for pinned and fullscreen windows exist in one place.
+- `palisade/config.py` — `source.type = "windows"`; `SOURCE_KINDS` constant;
+  per-fence `layer` override (a taskbar needs `overlay` while file fences stay
+  on `bottom`); `watch_roots()` returns empty for windows sources.
+- `palisade/sources.py` — `Item.window`; windows resolution. `mtime` carries
+  the minimize sequence so `sort = "mtime"` means newest-first with no new
+  sort key.
+- `palisade/hypr.py` — `EventListener` now also reports window events
+  (`WINDOW_EVENTS`), so the fence follows the compositor instead of polling.
+  Excludes `activewindow` deliberately: rescanning on every focus change is
+  pure waste.
+- `palisade/app.py` — opens the event socket when any fence is a windows
+  source; routes those events through each fence's existing debounce.
+- `palisade/ui/fence.py` — window rows (app icon from desktop file then icon
+  theme, title, app id); restore on activate; Restore / Restore all / Close
+  context menu; `_schedule_refresh` made public as `schedule_refresh`;
+  type-ahead extracted to `_typeahead_key` so both key paths share it.
+- `data/default.toml`, `README.md` — the new source kind, documented.
+- `tests/test_windows.py` — new, 16 tests.
+
+Security/safety:
+- An `Item` for a window carries the window address in `path`. Filesystem
+  verbs are therefore guarded twice: they are never registered as actions on a
+  windows fence, and every one of them reads `_selected_files()`, which filters
+  window rows out. Two tests assert both halves structurally.
+- Close is menu-only, never on `Delete` and never the double-click action.
+
+Removed/Reverted:
+- Dropped a legacy-`hyprland.conf` dispatch fallback written for this module
+  before it shipped: it could not be tested on this machine, and an untested
+  fallback that silently does the wrong thing is worse than an honest refusal.
+  `engine_available()` reports the missing engine in the fence's empty state
+  instead.
+
+Verification:
+- `python3 -m unittest discover -s tests` — 16 passed.
+- Live on Hyprland 0.56.2, driving the real pointer via
+  `hl.dsp.cursor.move` + ydotool:
+  - fence renders two minimized windows with correct per-app icons
+    (`chromium` via icon theme, `org.kde.dolphin` via desktop file);
+  - double-click restored the *older* entry out of LIFO order, to its own
+    origin workspace;
+  - context menu shows Restore / Restore all / Close window and no filesystem
+    verbs; "Restore all" returned code-oss to ws4 and dolphin to ws3;
+  - collapse chevron toggles the surface 420x280 <-> 420x42;
+  - the list updated itself when a window was restored from the keybind,
+    confirming the event path.
+- `palisade check` resolves all four fences.
+
+Known Issues:
+- Fence geometry is absolute, so the default y was moved 880 -> 752 to fit a
+  1080p panel when expanded. A fence anchored to the bottom edge would be the
+  real fix.
+- Not verified on multiple monitors (one output on this machine).
+
 ## 2026-10-02 — Collapse/expand restored the wrong size
 
 Role: Frontend Engineer

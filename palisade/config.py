@@ -20,6 +20,7 @@ CONFIG_DIR = Path(
 CONFIG_PATH = CONFIG_DIR / "palisade.toml"
 
 LAYERS = ("background", "bottom", "top", "overlay")
+SOURCE_KINDS = ("directory", "paths", "query", "windows")
 VIEWS = ("icons", "list")
 SORTS = ("name", "mtime", "size", "kind", "manual")
 
@@ -40,9 +41,15 @@ class Source:
     ``query`` is a saved search — a live filtered walk. The query form is the
     reason a fence can be a view onto the filesystem rather than a bucket you
     have to fill by hand.
+
+    ``windows`` is not a filesystem source at all: it lists the windows
+    currently minimized into Hyprland's ``special:minimized`` drawer, which
+    makes the fence a taskbar you can click a specific window out of instead of
+    popping them back in the order they went in. None of the filter fields
+    apply to it.
     """
 
-    kind: str = "directory"           # directory | paths | query
+    kind: str = "directory"           # directory | paths | query | windows
     path: Path | None = None          # directory
     paths: tuple[Path, ...] = ()      # paths
     roots: tuple[Path, ...] = ()      # query
@@ -63,9 +70,10 @@ class Source:
             raise ConfigError(f"{where}: `source` must be a table")
 
         kind = raw.get("type", "directory")
-        if kind not in ("directory", "paths", "query"):
+        if kind not in SOURCE_KINDS:
             raise ConfigError(
-                f"{where}: source.type must be directory, paths or query (got {kind!r})"
+                f"{where}: source.type must be one of {', '.join(SOURCE_KINDS)} "
+                f"(got {kind!r})"
             )
 
         def strs(key: str) -> tuple[str, ...]:
@@ -88,7 +96,10 @@ class Source:
             limit=int(raw.get("limit", 500)),
         )
 
-        if kind == "directory":
+        if kind == "windows":
+            # Nothing to resolve from config: the compositor is the source.
+            pass
+        elif kind == "directory":
             if "path" not in raw:
                 raise ConfigError(f"{where}: source.type=directory needs `path`")
             src = replace(src, path=_expand(raw["path"]))
@@ -108,6 +119,9 @@ class Source:
 
     def watch_roots(self) -> tuple[Path, ...]:
         """Directories to place file monitors on for this source."""
+        if self.kind == "windows":
+            # Driven by compositor events, not inotify.
+            return ()
         if self.kind == "directory" and self.path:
             return (self.path,)
         if self.kind == "query":
@@ -122,6 +136,7 @@ class Fence:
     title: str
     source: Source
     monitor: str = ""                 # "" = first/primary output
+    layer: str = ""                   # "" = inherit [settings].layer
     x: int = 48
     y: int = 48
     width: int = 420
@@ -154,6 +169,12 @@ class Fence:
         if sort not in SORTS:
             raise ConfigError(f"{where}: sort must be one of {SORTS}")
 
+        # A windows/taskbar fence usually wants "overlay" while the file
+        # fences stay on "bottom", so layer is overridable per fence.
+        layer = str(raw.get("layer", ""))
+        if layer and layer not in LAYERS:
+            raise ConfigError(f"{where}: layer must be one of {LAYERS}")
+
         opacity = float(raw.get("opacity", 0.55))
         if not 0.0 <= opacity <= 1.0:
             raise ConfigError(f"{where}: opacity must be between 0 and 1")
@@ -169,6 +190,7 @@ class Fence:
             title=title,
             source=Source.parse(raw.get("source"), where),
             monitor=str(raw.get("monitor", "")),
+            layer=layer,
             x=int(raw.get("x", 48)),
             y=int(raw.get("y", 48)),
             width=max(160, int(raw.get("width", 420))),

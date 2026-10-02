@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import Source
+from .windows import Window, list_minimized
 
 CATEGORY_EXT = {
     "image": {"png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "bmp", "tiff", "heic"},
@@ -39,6 +40,10 @@ class Item:
     is_dir: bool
     size: int
     mtime: float
+    #: Set only for `windows` sources. Its presence is what tells the UI this
+    #: row is a live window and not a file, so no filesystem action (open,
+    #: rename, trash, reveal) may run without checking it first.
+    window: Window | None = None
 
     @property
     def ext(self) -> str:
@@ -137,6 +142,24 @@ def resolve(src: Source) -> list[Item]:
         time.time() - src.newer_than_days * 86400 if src.newer_than_days else 0.0
     )
     items: list[Item] = []
+
+    if src.kind == "windows":
+        # `mtime` carries the minimize sequence so the existing sort machinery
+        # works unchanged: sort = "mtime" then means most-recently-minimized
+        # first, which is the order the restore keybind pops them in.
+        # `path` is the window address — never a real file, which is why every
+        # filesystem action checks `item.window` first.
+        return [
+            Item(
+                path=Path(w.address),
+                name=w.label,
+                is_dir=False,
+                size=0,
+                mtime=float(w.seq),
+                window=w,
+            )
+            for w in list_minimized()[: src.limit]
+        ]
 
     if src.kind == "paths":
         for p in src.paths:

@@ -131,15 +131,32 @@ def active_workspace() -> int | None:
         return None
 
 
+# Events that can change which windows are minimized, or what they are called.
+# `movewindow` covers the minimize/restore itself (a move to or from the
+# special workspace); the rest cover a window appearing, going away, or being
+# renamed while it sits in the drawer. Deliberately excludes the high-frequency
+# ones (activewindow, mouse, workspace) so a windows fence is not rescanned on
+# every focus change.
+WINDOW_EVENTS = frozenset({
+    "openwindow", "closewindow", "movewindowv2", "windowtitlev2",
+})
+
+
 class EventListener:
     """Subscribes to the Hyprland event socket on a daemon thread.
 
-    Used for workspace-bound fences. Callbacks are invoked off the GTK main
-    thread, so the caller must marshal back with GLib.idle_add.
+    Used for workspace-bound fences and for the minimized-windows source.
+    Callbacks are invoked off the GTK main thread, so the caller must marshal
+    back with GLib.idle_add.
     """
 
-    def __init__(self, on_workspace: Callable[[int], None]):
+    def __init__(
+        self,
+        on_workspace: Callable[[int], None],
+        on_windows_changed: Callable[[], None] | None = None,
+    ):
         self._on_workspace = on_workspace
+        self._on_windows_changed = on_windows_changed
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -195,6 +212,8 @@ class EventListener:
                 self._on_workspace(int(payload))
             except ValueError:
                 pass
+        elif name in WINDOW_EVENTS and self._on_windows_changed is not None:
+            self._on_windows_changed()
 
     def stop(self) -> None:
         self._stop.set()

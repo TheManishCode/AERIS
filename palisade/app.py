@@ -193,8 +193,10 @@ class Controller:
     # ------------------------------------------------------------ workspaces
 
     def _start_workspace_listener(self) -> None:
-        if not any(f.workspaces for f in self.config.fences):
-            return                 # nothing is workspace-bound; don't open a socket
+        wants_workspace = any(f.workspaces for f in self.config.fences)
+        wants_windows = any(f.source.kind == "windows" for f in self.config.fences)
+        if not (wants_workspace or wants_windows):
+            return                 # nothing needs events; don't open a socket
         if not hypr.available():
             return
         self._active_ws = hypr.active_workspace()
@@ -203,8 +205,28 @@ class Controller:
             # Called off the GTK thread.
             GLib.idle_add(self._set_workspace, ws_id)
 
-        self._listener = hypr.EventListener(on_ws)
+        def on_windows() -> None:
+            GLib.idle_add(self._refresh_window_fences)
+
+        self._listener = hypr.EventListener(
+            on_ws, on_windows if wants_windows else None
+        )
         self._listener.start()
+
+    def _refresh_window_fences(self) -> bool:
+        """Re-read the drawer after a compositor event changed it.
+
+        Goes through each fence's own debounce rather than refreshing inline:
+        a single minimize emits several events (movewindow, then a title
+        update), and one rescan per event would flicker the list.
+        """
+        for fence in self.config.fences:
+            if fence.source.kind != "windows":
+                continue
+            win = self.windows.get(fence.id)
+            if win is not None:
+                win.schedule_refresh()
+        return False
 
     def _set_workspace(self, ws_id: int) -> bool:
         self._active_ws = ws_id
