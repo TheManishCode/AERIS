@@ -190,8 +190,9 @@ class FenceWindow(Gtk.ApplicationWindow):
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
 
-        if self.fence.collapsed:
-            self._apply_collapsed(True)
+        # Also establishes the size request, so a fence that is empty or holds
+        # one item still renders at its configured size rather than shrink-wrapping.
+        self._apply_collapsed(self.fence.collapsed)
 
     def _on_setup(self, _factory, list_item) -> None:
         vertical = self.fence.view == "icons"
@@ -291,6 +292,8 @@ class FenceWindow(Gtk.ApplicationWindow):
         has_items = bool(items)
         self._scroller.set_visible(has_items and not self._collapsed)
         self._empty.set_visible(not has_items and not self._collapsed)
+        # A refresh that empties the fence would otherwise shrink the surface.
+        self._apply_size()
 
     def _watch(self) -> None:
         """Monitor every root this fence reads from, debounced into one refresh."""
@@ -483,15 +486,38 @@ class FenceWindow(Gtk.ApplicationWindow):
         # Collapse is live UI state, not config: `Fence` stays frozen and the
         # config file is only updated through the controller.
         self._collapsed = collapsed
-        self._scroller.set_visible(not collapsed and self._store.get_n_items() > 0)
-        self._empty.set_visible(not collapsed and self._store.get_n_items() == 0)
+        has_items = self._store.get_n_items() > 0
+        self._scroller.set_visible(not collapsed and has_items)
+        self._empty.set_visible(not collapsed and not has_items)
         self._collapse_btn.set_child(
             Gtk.Image.new_from_icon_name(
                 "pan-down-symbolic" if collapsed else "pan-up-symbolic"
             )
         )
-        if collapsed:
-            self.set_default_size(self.fence.width, -1)
+        self._apply_size()
+
+    def _apply_size(self) -> None:
+        """Pin the surface to its configured size unless collapsed.
+
+        A layer surface anchored to two edges takes its size from what the
+        widget tree asks for, and a ScrolledWindow asks for almost nothing. So
+        without an explicit request the fence shrink-wraps its contents: a
+        collapsed-then-expanded fence (or one that just emptied) would come
+        back as a small box instead of the panel that was configured.
+
+        set_default_size is what drives a layer surface's size: gtk4-layer-shell
+        reads it when asking the compositor for a size. The original bug was
+        that collapse set it to (width, -1) and expand never set it back, so the
+        surface kept shrink-wrapping its contents — an expanded fence came back
+        at 102px instead of its configured 460.
+
+        Measured on Hyprland 0.56 / gtk4-layer-shell 1.3 across repeated
+        collapse/expand cycles, for icon and list views and for a fence holding
+        a single item.
+        """
+        self.set_default_size(
+            self.fence.width, -1 if self._collapsed else self.fence.height
+        )
 
     def shutdown(self) -> None:
         if self._refresh_source is not None:

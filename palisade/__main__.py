@@ -82,10 +82,26 @@ def cmd_run(args) -> int:
     from gi.repository import Gio, Gtk
 
     from .app import APP_ID, Controller
-    from .ipc import Server
+    from .ipc import Server, request
 
+    # Gtk.Application's own single-instance handling activates the running
+    # process and exits 0 *silently*, which looks exactly like a successful
+    # start against stale code. Probe the control socket first and say so.
+    probe = request({"cmd": "ping"}, timeout=1.0)
+    if probe.get("ok"):
+        count = probe.get("result", {}).get("fences", "?")
+        print(
+            f"palisade: already running ({count} fences).\n"
+            f"  reload config:  palisade reload\n"
+            f"  stop it:        pkill -f 'python3 -m palisade'",
+            file=sys.stderr,
+        )
+        return 1
+
+    # NON_UNIQUE because the probe above is the real gate; without it GTK would
+    # swallow a second invocation before we could report anything.
     app = Gtk.Application(
-        application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS
+        application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE
     )
     holder: dict = {}
 

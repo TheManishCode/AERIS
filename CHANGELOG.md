@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-10-02 — Collapse/expand restored the wrong size
+
+Role: Frontend Engineer
+Status: Fixed
+
+Reason:
+Reported by Boss: collapsing a fence to its title line and expanding it again
+left a small rectangle instead of the full panel.
+
+Changes:
+- `ui/fence.py`: collapse set `set_default_size(width, -1)` but expand never
+  set it back, so the surface shrink-wrapped its contents (460px -> 102px).
+  Size is now applied in both directions via a single `_apply_size()`, also
+  called on initial build and after every refresh so a fence that is empty or
+  holds one item still renders at its configured size.
+- `__main__.py`: `palisade run` while already running now reports it and exits
+  1. Gtk.Application's single-instance handling previously activated the
+  existing process and exited 0 silently.
+
+Removed/Reverted:
+- Reverted an attempted fix using `set_size_request` on the window. It was
+  measured against a stale daemon and the measurement was invalid;
+  `set_default_size` alone is correct.
+
+Verification:
+- Surface geometry read from `hyprctl layers` across repeated collapse/expand
+  cycles: 460 -> 42 -> 460, stable over two cycles.
+- Checked for a sparse fence (1 item) and a list-view fence (784x300): both
+  restore exactly.
+- Double-start now prints the running fence count and exits 1.
+- GTK warning log clean.
+
+Known Issues:
+- None for this change.
+
 ## 2026-10-02 — Initial build
 
 Role: Full-Stack Engineer + Product Designer + Application Security Engineer
