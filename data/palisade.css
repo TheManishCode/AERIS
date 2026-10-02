@@ -140,6 +140,22 @@ listview > row:selected .item-label {
   color: @m3_on_surface_variant;
 }
 
+/* Leading shortcut badge on taskbar rows: the key that restores this window.
+   Quiet by default — it is a reminder, not the content of the row. */
+.item-key {
+  font-size: %FONT_SM_PT%pt;
+  font-weight: 700;
+  color: @m3_on_surface_variant;
+  opacity: 0.55;
+  min-width: 16px;
+}
+
+row:selected .item-key,
+.item:hover .item-key {
+  color: @m3_primary;
+  opacity: 1;
+}
+
 .fence-empty {
   font-size: %FONT_SM_PT%pt;
   color: @m3_on_surface_variant;
@@ -187,4 +203,40 @@ scrollbar slider:hover {
 
 .fence-root.drop-active {
   border: 2px solid @m3_primary;
+}
+
+/* --- manipulation ---------------------------------------------------------
+ * The resize grip stays nearly invisible until the pointer is near it: a
+ * fence is furniture, and a permanent handle on every panel is visual noise. */
+
+.fence-grip {
+  margin: 0 6px 6px 0;
+  color: alpha(@m3_on_surface_variant, 0.35);
+  min-width: 16px;
+  min-height: 16px;
+  /* The icon is pan-end-symbolic rotated into a corner wedge. */
+  -gtk-icon-transform: rotate(45deg);
+  transition: color 120ms ease-out;
+}
+
+/* The grip is a sibling of .fence-root inside the overlay, not a descendant,
+ * so it has to be reached from the window node. */
+window.palisade:hover .fence-grip {
+  color: alpha(@m3_on_surface_variant, 0.75);
+}
+
+.fence-grip:hover {
+  color: @m3_primary;
+}
+
+/* A locked fence says so quietly on its header rather than in a dialog. */
+.fence-locked-hint {
+  font-size: %FONT_SM_PT%pt;
+  color: alpha(@m3_on_surface_variant, 0.7);
+  padding-right: 6px;
+}
+
+/* While being dragged, lift the panel so it reads as picked up. */
+.fence-root.dragging {
+  box-shadow: 0 16px 44px alpha(@m3_shadow, 0.55);
 }

@@ -22,6 +22,7 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 from .. import windows as hwindows
 from ..config import Fence, Settings
 from ..sources import Item, resolve, sort_items
+from .manipulate import Manipulator, make_resize_grip
 
 REFRESH_DEBOUNCE_MS = 180
 TYPEAHEAD_RESET_S = 1.2
@@ -63,6 +64,18 @@ class FenceWindow(Gtk.ApplicationWindow):
         # Item for a window carries the window address in `path` and trashing
         # or renaming that would be meaningless at best.
         self._is_windows = fence.source.kind == "windows"
+        # Live geometry. `fence` is the frozen config/state snapshot this
+        # window started from; these track what the surface is actually doing
+        # as it is dragged, and are what gets persisted on gesture end.
+        self.x = fence.x
+        self.y = fence.y
+        self.width = fence.width
+        self.height = fence.height
+        self.locked = fence.locked
+        self._layer = fence.layer or settings.layer
+        # Two independent reasons a fence may be off screen; see _sync_visible.
+        self._hidden = fence.hidden
+        self._on_workspace = True
 
         self.add_css_class("palisade")
         self.set_default_size(fence.width, fence.height)
@@ -93,7 +106,25 @@ class FenceWindow(Gtk.ApplicationWindow):
         # -1: never reserve space. A fence is desktop furniture; it must not
         # push tiled windows around the way a bar does.
         LayerShell.set_exclusive_zone(self, -1)
-        LayerShell.set_keyboard_mode(self, LayerShell.KeyboardMode.ON_DEMAND)
+        # A fence that lives on screen must not hold the keyboard — it is
+        # furniture, inert until clicked. A *summoned* one is the opposite: it
+        # exists for the two seconds you are picking something, so it takes the
+        # keyboard outright and gives it back on dismiss. Set before the
+        # surface maps; `set_visible` destroys and recreates it, so the mode
+        # chosen in `on_summoned` is what the new surface comes up with.
+        LayerShell.set_keyboard_mode(self, self._keyboard_mode())
+
+    def _keyboard_mode(self):
+        """EXCLUSIVE for a summoned fence, ON_DEMAND for one that lives on screen.
+
+        A fence configured `hidden` only exists while you are picking something
+        out of it, so it takes the keyboard outright and the keybind that opened
+        it can drive it end to end. A permanently-visible fence must never do
+        that — it would swallow every keystroke on the desktop.
+        """
+        if self.fence.hidden:
+            return LayerShell.KeyboardMode.EXCLUSIVE
+        return LayerShell.KeyboardMode.ON_DEMAND
 
         if f.monitor:
             display = Gdk.Display.get_default()
@@ -161,6 +192,13 @@ class FenceWindow(Gtk.ApplicationWindow):
         )
         header.add_controller(head_click)
 
+        # Right-click the header for the fence's own menu (as opposed to the
+        # per-item menu bound in the list factory).
+        head_menu = Gtk.GestureClick()
+        head_menu.set_button(Gdk.BUTTON_SECONDARY)
+        head_menu.connect("pressed", self._open_fence_menu)
+        header.add_controller(head_menu)
+
         # --- body
         self._store = Gio.ListStore(item_type=ItemObject)
         self._selection = Gtk.MultiSelection(model=self._store)
@@ -199,7 +237,26 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._empty.set_visible(False)
         root.append(self._empty)
 
-        self.set_child(root)
+        # The grip rides in an overlay so it sits over the bottom-right
+        # corner without stealing a row from the layout.
+        self._grip = make_resize_grip()
+        self._grip.set_visible(not self.locked)
+        overlay = Gtk.Overlay()
+        overlay.set_child(root)
+        overlay.add_overlay(self._grip)
+        self.set_child(overlay)
+
+        # Drag the header to move; drag the grip to resize. Both refuse while
+        # the fence is locked.
+        self._manip = Manipulator(self, self._on_geometry_committed)
+        self._manip.attach_move(header)
+        self._manip.attach_resize(self._grip)
+        # The header alone is a ~28px target, which is a thin thing to have to
+        # hit before a fence will move. Dragging the body works too: it is
+        # attached in the bubble phase, so a drag that starts on a row is
+        # handled by the row (select, context menu) and never reaches here,
+        # and only empty space actually moves the fence.
+        self._manip.attach_move(root)
 
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self._on_key)
@@ -216,6 +273,17 @@ class FenceWindow(Gtk.ApplicationWindow):
             spacing=6 if vertical else 10,
         )
         box.add_css_class("item")
+
+        # Leading shortcut badge. Fixed-width so the icons below it line up in
+        # a column instead of stepping left and right as row numbers change
+        # width; only a taskbar fence ever fills it in.
+        key = Gtk.Label()
+        key.add_css_class("item-key")
+        key.set_xalign(0.5)
+        key.set_width_chars(1)
+        key.set_visible(False)
+        if not vertical:
+            box.append(key)
 
         image = Gtk.Image()
         image.set_pixel_size(self.fence.icon_size)
@@ -243,6 +311,7 @@ class FenceWindow(Gtk.ApplicationWindow):
 
         list_item.set_child(box)
         list_item._image, list_item._label, list_item._sub = image, label, sub
+        list_item._key = key
 
         # Per-item right-click is simpler and more accurate than hit-testing
         # the view, and it keeps the menu anchored to the row the user hit.
@@ -260,12 +329,25 @@ class FenceWindow(Gtk.ApplicationWindow):
         list_item._label.set_text(item.name)
         if item.window is not None:
             w = item.window
+            # Show the shortcut that restores this row, for the first nine.
+            # Without it the 1-9 keys are undiscoverable, and past nine there
+            # is no shortcut to advertise.
+            pos = list_item.get_position()
+            list_item._key.set_text(str(pos + 1) if pos < 9 else "")
+            list_item._key.set_visible(pos < 9)
             list_item._label.set_tooltip_text(
+                f"{w.wclass}\nfrom workspace {w.workspace}\n"
+                f"click or press {pos + 1} to restore"
+                if pos < 9 else
                 f"{w.wclass}\nfrom workspace {w.workspace}\nclick to restore"
             )
             if list_item._sub.get_visible():
                 list_item._sub.set_text(w.wclass)
         else:
+            # Rows are recycled between a windows fence and a file fence only
+            # across a reload, but a stale badge would outlive the item it
+            # described, so clear it explicitly rather than by omission.
+            list_item._key.set_visible(False)
             list_item._label.set_tooltip_text(str(item.path))
             if list_item._sub.get_visible():
                 list_item._sub.set_text(
@@ -380,6 +462,11 @@ class FenceWindow(Gtk.ApplicationWindow):
                 ("restore-all", lambda *_: self._restore_all()),
                 ("close-window", lambda *_: self._close_selected()),
                 ("refresh", lambda *_: self.refresh()),
+            ("layer-bottom", lambda *_: self._set_layer_persisted("bottom")),
+            ("layer-overlay", lambda *_: self._set_layer_persisted("overlay")),
+            ("toggle-lock", lambda *_: self._toggle_lock()),
+            ("toggle-collapse", lambda *_: self.toggle_collapsed()),
+            ("hide-fence", lambda *_: self._hide_persisted()),
             )
         else:
             actions = (
@@ -432,6 +519,25 @@ class FenceWindow(Gtk.ApplicationWindow):
         for item in self._selected_items():
             if item.window is not None:
                 self._restore(item.window)
+        self._dismiss_if_summoned()
+
+    def _restore_at(self, index: int) -> None:
+        """Restore the row at `index` — the 1-9 shortcuts land here."""
+        obj = self._store.get_item(index)
+        if obj is None or obj.item.window is None:
+            return
+        self._restore(obj.item.window)
+        self._dismiss_if_summoned()
+
+    def _dismiss_if_summoned(self) -> None:
+        """A summoned taskbar closes once you have picked out of it.
+
+        Leaving it up would keep the exclusive keyboard grab over the window
+        that was just restored — you would get the window back and not be able
+        to type into it.
+        """
+        if self.fence.hidden:
+            self.set_hidden(True)
 
     def _restore_all(self) -> None:
         if not hwindows.restore_all():
@@ -553,8 +659,15 @@ class FenceWindow(Gtk.ApplicationWindow):
                 self.refresh()
                 return True
             if keyval == Gdk.KEY_Escape:
-                self._selection.unselect_all()
-                self._typeahead = ""
+                return self._escape()
+            # 1-9 restores that row outright. Checked before typeahead, which
+            # would otherwise swallow the digits looking for a window whose
+            # title starts with one. Rows are labelled with the same numbers so
+            # the mapping is visible rather than folklore.
+            index = self._digit_index(keyval)
+            if index is not None:
+                if index < self._store.get_n_items():
+                    self._restore_at(index)
                 return True
             return self._typeahead_key(keyval, ctrl)
         if keyval == Gdk.KEY_F2:
@@ -573,11 +686,32 @@ class FenceWindow(Gtk.ApplicationWindow):
             self._selection.select_all()
             return True
         if keyval == Gdk.KEY_Escape:
-            self._selection.unselect_all()
-            self._typeahead = ""
-            return True
+            return self._escape()
 
         return self._typeahead_key(keyval, ctrl)
+
+    #: Keyval -> zero-based row, for both the number row and the keypad.
+    _DIGITS = {
+        **{getattr(Gdk, f"KEY_{n}"): n - 1 for n in range(1, 10)},
+        **{getattr(Gdk, f"KEY_KP_{n}"): n - 1 for n in range(1, 10)},
+    }
+
+    def _digit_index(self, keyval: int) -> int | None:
+        return self._DIGITS.get(keyval)
+
+    def _escape(self) -> bool:
+        """Dismiss a summoned fence; just clear the selection on a placed one.
+
+        A summoned fence holds the keyboard exclusively, so leaving it on screen
+        with nothing selected would strand every keystroke on the desktop — Esc
+        has to be the way out, not merely a deselect.
+        """
+        self._typeahead = ""
+        if self.fence.hidden:
+            self.set_hidden(True)
+            return True
+        self._selection.unselect_all()
+        return True
 
     def _typeahead_key(self, keyval: int, ctrl: bool) -> bool:
         """Jump to the first item starting with what you type."""
@@ -636,8 +770,177 @@ class FenceWindow(Gtk.ApplicationWindow):
         a single item.
         """
         self.set_default_size(
-            self.fence.width, -1 if self._collapsed else self.fence.height
+            self.width, -1 if self._collapsed else self.height
         )
+
+    def _open_fence_menu(self, _gesture, _n, x: float, y: float) -> None:
+        """Fence-level menu: layer, lock, collapse, hide."""
+        menu = Gio.Menu()
+
+        place = Gio.Menu()
+        place.append("On the desktop", "win.layer-bottom")
+        place.append("Above windows", "win.layer-overlay")
+        menu.append_section("Place", place)
+
+        state = Gio.Menu()
+        state.append(
+            "Unlock position" if self.locked else "Lock position", "win.toggle-lock"
+        )
+        state.append(
+            "Expand" if self._collapsed else "Collapse", "win.toggle-collapse"
+        )
+        state.append("Hide this fence", "win.hide-fence")
+        menu.append_section(None, state)
+
+        popover = Gtk.PopoverMenu.new_from_model(menu)
+        popover.set_parent(self._title.get_parent())
+        popover.set_has_arrow(False)
+        popover.set_pointing_to(Gdk.Rectangle(x=int(x), y=int(y), width=1, height=1))
+        popover.popup()
+
+    def _set_layer_persisted(self, layer: str) -> None:
+        self.set_layer_name(layer)
+        self.controller.persist_fence(self.fence.id, layer=layer)
+
+    def _toggle_lock(self) -> None:
+        self.set_locked(not self.locked)
+        self.controller.persist_fence(self.fence.id, locked=self.locked)
+        self.controller.notify(
+            f"{self.fence.title}: position {'locked' if self.locked else 'unlocked'}"
+        )
+
+    def _hide_persisted(self) -> None:
+        self.set_hidden(True)
+        self.controller.persist_fence(self.fence.id, hidden=True)
+        self.controller.notify(
+            f"{self.fence.title} hidden — bring it back with: "
+            f"palisade hide {self.fence.id} off"
+        )
+
+    def _on_geometry_committed(self, x: int, y: int, w: int, h: int) -> None:
+        """Gesture finished — write the new geometry to state.json."""
+        self.controller.persist_fence(
+            self.fence.id, x=x, y=y, width=w, height=h
+        )
+
+    # ------------------------------------------------- move / resize / layer
+
+    LAYER_ENUM = {
+        "background": LayerShell.Layer.BACKGROUND,
+        "bottom": LayerShell.Layer.BOTTOM,
+        "top": LayerShell.Layer.TOP,
+        "overlay": LayerShell.Layer.OVERLAY,
+    }
+
+    def move_to(self, x: int, y: int) -> None:
+        """Reposition the surface. Safe to call every frame during a drag."""
+        if (x, y) == (self.x, self.y):
+            return
+        self.x, self.y = int(x), int(y)
+        LayerShell.set_margin(self, LayerShell.Edge.LEFT, self.x)
+        LayerShell.set_margin(self, LayerShell.Edge.TOP, self.y)
+
+    def resize_to(self, width: int, height: int) -> None:
+        if (width, height) == (self.width, self.height):
+            return
+        self.width, self.height = int(width), int(height)
+        self._apply_size()
+
+    def set_layer_name(self, layer: str) -> None:
+        """Move the fence between compositor layers while it is mapped.
+
+        This is what lets one fence be desktop furniture and another float over
+        whatever is open, and lets either change its mind at runtime.
+        """
+        if layer not in self.LAYER_ENUM or layer == self._layer:
+            return
+        self._layer = layer
+        LayerShell.set_layer(self, self.LAYER_ENUM[layer])
+
+    @property
+    def layer_name(self) -> str:
+        return self._layer
+
+    @property
+    def hidden(self) -> bool:
+        return self._hidden
+
+    def set_hidden(self, hidden: bool) -> None:
+        """Hide the surface entirely, as opposed to collapsing to a strip.
+
+        set_visible(False) destroys the layer surface, so the fence stops
+        occupying the screen and stops taking input; showing it again maps a
+        fresh surface with the margins we already hold.
+        """
+        self._hidden = bool(hidden)
+        self._sync_visible()
+
+    def set_on_workspace(self, on_workspace: bool) -> None:
+        """The other visibility axis: the fence's `workspaces` filter."""
+        if on_workspace == self._on_workspace:
+            return
+        self._on_workspace = bool(on_workspace)
+        self._sync_visible()
+
+    def _sync_visible(self) -> None:
+        """Map the surface only when both axes agree it should be on screen."""
+        want = not self._hidden and self._on_workspace
+        if want == self.get_visible():
+            return
+        if not want:
+            self.set_visible(False)
+            return
+        # Margins are re-asserted because the surface about to be created is a
+        # new one; it does not inherit the margins of the destroyed surface.
+        LayerShell.set_margin(self, LayerShell.Edge.LEFT, self.x)
+        LayerShell.set_margin(self, LayerShell.Edge.TOP, self.y)
+        # While hidden a windows fence receives no event refreshes, so its list
+        # can be stale by the time it is summoned.
+        self.refresh()
+        self.set_visible(True)
+        if self.fence.hidden:
+            self._focus_for_picking()
+
+    def _focus_for_picking(self) -> None:
+        """Make a summoned fence usable without touching the mouse.
+
+        The surface has just been created, so the focus call is deferred to the
+        next idle turn — focusing a widget whose surface is not yet mapped is a
+        no-op, which is what made the first keystroke after a summon get lost.
+        """
+        def grab() -> bool:
+            if not self.get_visible():
+                return False
+            if self._collapsed:
+                self._apply_collapsed(False)
+            self._view.grab_focus()
+            if self._store.get_n_items():
+                self._selection.select_item(0, True)
+            return False
+
+        GLib.idle_add(grab)
+
+    def set_locked(self, locked: bool) -> None:
+        self.locked = bool(locked)
+        self._grip.set_visible(not self.locked)
+
+    def monitor_geometry(self) -> tuple[int, int] | None:
+        """Width/height of the output this fence sits on, for clamping."""
+        display = Gdk.Display.get_default()
+        if display is None:
+            return None
+        monitors = display.get_monitors()
+        want = self.fence.monitor
+        chosen = None
+        for i in range(monitors.get_n_items()):
+            mon = monitors.get_item(i)
+            if not want or mon.get_connector() == want:
+                chosen = mon
+                break
+        if chosen is None:
+            return None
+        rect = chosen.get_geometry()
+        return rect.width, rect.height
 
     def shutdown(self) -> None:
         if self._refresh_source is not None:

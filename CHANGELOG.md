@@ -153,3 +153,58 @@ Known Issues:
 - External drop from a real file manager untested (synthetic harness too flaky).
 - Single monitor only on this hardware; multi-output untested.
 - `sort = "manual"` parses but has no reorder UI.
+
+## 2026-10-03 — Movable fences, per-fence layer, peek
+
+Role: Frontend Engineer + Interaction Designer
+Status: Added
+
+Reason:
+Fences were pinned wherever the TOML said, always on one global layer. Boss
+wanted them draggable, wanted to choose per fence whether it sits on the
+desktop or over the running app, and wanted to get them out of the way.
+
+Changes:
+- `palisade/ui/manipulate.py` (new) — drag-to-move and drag-to-resize. Position
+  is driven from the compositor's absolute cursor over socket1, not from GTK's
+  surface-relative drag offsets, which oscillate because the surface follows
+  the pointer. Clamped so a grabbable strip always stays on screen.
+- `palisade/hypr.py` — `request()`/`cursor_pos()` over socket1. Measured
+  0.041 ms per call versus 4.45 ms to fork hyprctl, which is what makes a
+  120 Hz drag poll affordable.
+- `palisade/ui/fence.py` — live geometry, `move_to`/`resize_to`,
+  runtime layer switching, hide, lock, resize grip, fence context menu.
+- `palisade/app.py` — `peek()`: raise every visible fence to overlay for N
+  seconds, then restore each one's *previous* layer.
+- `palisade/ipc.py`, `__main__.py` — move, resize, layer, hide, lock, peek.
+- `tests/test_manipulate.py` (new) — 11 tests for the drag arithmetic.
+- `~/.config/hypr/custom/` — autostart, permanent blur rules, peek keybinds.
+  Backed up to `~/.config/hypr/.backups/` first.
+
+Removed/Reverted:
+- Removed the `_save_state()` call from `Controller.shutdown()`. Every runtime
+  change is already persisted at the moment it happens, and the shutdown write
+  could flush a dying daemon's stale snapshot over what its replacement had
+  written — observed exactly that while restarting during testing.
+- Removed an unused `LayerShell` import from manipulate.py.
+- Dropped a `uses_lua_config()` probe idea that would have set an unrelated
+  keyword as a side effect.
+
+Verification:
+- Layer-surface movability spiked first: 4/4 discrete moves on a *mapped*
+  surface landed exactly where asked.
+- move / resize / layer / hide / lock / peek all exercised over the CLI against
+  the live daemon; geometry confirmed against `hyprctl layers` each time.
+- `peek --off` observed taking fences from overlay back down.
+- 11/11 drag-geometry tests pass.
+- `hyprctl reload` run: blur rules survive, daemon unaffected, keybind command
+  works verbatim.
+- GTK warning log clean.
+
+Known Issues:
+- A full human-scale drag was never driven synthetically: ydotool's absolute
+  mousemove is mis-scaled ~1.9x on this machine (asked 900,600 → got
+  1719,1018) and Hyprland's `hl.dsp.cursor.move` behaves relatively. The drag
+  path was instrumented and confirmed to execute correctly end to end, and the
+  arithmetic is covered by unit tests, but "does it feel right" is untested.
+- Resize only from the bottom-right corner; no edge resizing.

@@ -149,6 +149,16 @@ class Fence:
     opacity: float = 0.55
     workspaces: tuple[int, ...] = ()   # empty = visible on all workspaces
     collapsed: bool = False
+    #: Start hidden and only appear when summoned (`palisade toggle <id>`).
+    #: Distinct from `collapsed`, which still leaves a title strip on screen:
+    #: a hidden fence has no surface at all. This is what makes a taskbar
+    #: fence sensible — it is useful for the two seconds you are picking a
+    #: window and in the way the rest of the time.
+    hidden: bool = False
+    #: Refuse drag-to-move and drag-to-resize. A fence you have placed
+    #: deliberately should not wander because you grabbed its header
+    #: while reaching for something inside it.
+    locked: bool = False
 
     @staticmethod
     def parse(raw: dict, index: int, seen: set[str]) -> "Fence":
@@ -203,6 +213,8 @@ class Fence:
             opacity=opacity,
             workspaces=tuple(ws),
             collapsed=bool(raw.get("collapsed", False)),
+            hidden=bool(raw.get("hidden", False)),
+            locked=bool(raw.get("locked", False)),
         )
 
 

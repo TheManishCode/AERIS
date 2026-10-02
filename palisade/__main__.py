@@ -174,6 +174,26 @@ def main(argv: list[str] | None = None) -> int:
         "value", nargs="?", choices=["on", "off"], help="omit to toggle"
     )
 
+    mv = sub.add_parser("move", help="move a fence to an absolute position")
+    mv.add_argument("id"); mv.add_argument("x", type=int); mv.add_argument("y", type=int)
+
+    rs = sub.add_parser("resize", help="resize a fence")
+    rs.add_argument("id"); rs.add_argument("width", type=int); rs.add_argument("height", type=int)
+
+    ly = sub.add_parser("layer", help="move a fence between compositor layers")
+    ly.add_argument("id")
+    ly.add_argument("value", choices=["background", "bottom", "top", "overlay"])
+
+    hd = sub.add_parser("hide", help="hide a fence entirely (omit value to toggle)")
+    hd.add_argument("id"); hd.add_argument("value", nargs="?", choices=["on", "off"])
+
+    lk = sub.add_parser("lock", help="stop a fence being dragged (omit value to toggle)")
+    lk.add_argument("id"); lk.add_argument("value", nargs="?", choices=["on", "off"])
+
+    pk = sub.add_parser("peek", help="raise every fence above windows, briefly")
+    pk.add_argument("seconds", nargs="?", type=float, default=4.0)
+    pk.add_argument("--off", action="store_true", help="end a peek early")
+
     args = parser.parse_args(argv)
     cmd = args.cmd or "run"
 
@@ -189,6 +209,22 @@ def main(argv: list[str] | None = None) -> int:
         return _client({"cmd": "show", "id": args.id}, args.json)
     if cmd == "collapse":
         payload = {"cmd": "collapse", "id": args.id}
+        if args.value:
+            payload["value"] = args.value == "on"
+        return _client(payload, args.json)
+    if cmd == "move":
+        return _client({"cmd": "move", "id": args.id, "x": args.x, "y": args.y}, args.json)
+    if cmd == "resize":
+        return _client(
+            {"cmd": "resize", "id": args.id,
+             "width": args.width, "height": args.height}, args.json)
+    if cmd == "layer":
+        return _client({"cmd": "layer", "id": args.id, "value": args.value}, args.json)
+    if cmd == "peek":
+        return _client(
+            {"cmd": "peek", "seconds": args.seconds, "off": args.off}, args.json)
+    if cmd in ("hide", "lock"):
+        payload = {"cmd": cmd, "id": args.id}
         if args.value:
             payload["value"] = args.value == "on"
         return _client(payload, args.json)

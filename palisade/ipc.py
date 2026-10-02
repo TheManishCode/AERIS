@@ -43,6 +43,12 @@ COMMANDS = {
     "refresh":        {"args": {}, "returns": "re-scan sources without rebuilding", "mutates": True},
     "collapse":       {"args": {"id": "fence id", "value": "bool"}, "returns": "new collapsed state", "mutates": True},
     "config-path":    {"args": {}, "returns": "path of the active config file", "mutates": False},
+    "move":           {"args": {"id": "fence id", "x": "int", "y": "int"}, "returns": "new position", "mutates": True},
+    "resize":         {"args": {"id": "fence id", "width": "int", "height": "int"}, "returns": "new size", "mutates": True},
+    "layer":          {"args": {"id": "fence id", "value": "background|bottom|top|overlay"}, "returns": "new layer", "mutates": True},
+    "hide":           {"args": {"id": "fence id", "value": "bool, omit to toggle"}, "returns": "new hidden state", "mutates": True},
+    "lock":           {"args": {"id": "fence id", "value": "bool, omit to toggle"}, "returns": "new locked state", "mutates": True},
+    "peek":           {"args": {"seconds": "float, default 4", "off": "bool"}, "returns": "raises every fence above windows, briefly", "mutates": True},
 }
 
 
@@ -120,12 +126,22 @@ class Server:
             return {"ok": True, "result": self._dispatch(cmd, req)}
         except NotFound as exc:
             return {"ok": False, "error": str(exc)}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
         except KeyError as exc:
             # Only a genuinely absent request field reaches here; a missing
             # *fence* raises NotFound so the two are not conflated.
             return {"ok": False, "error": f"missing argument: {exc.args[0]}"}
         except Exception as exc:  # a handler bug must not kill the daemon
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    def _fence(self, req: dict):
+        """Resolve a fence by id, or raise the not-found the caller expects."""
+        fid = req["id"]
+        win = self.controller.windows.get(fid)
+        if win is None:
+            raise NotFound(f"no fence with id {fid!r}")
+        return fid, win
 
     def _dispatch(self, cmd: str, req: dict):
         c = self.controller
@@ -140,17 +156,27 @@ class Server:
             return {"source": str(c.theme.source) if c.theme.source else None,
                     "tokens": c.theme.tokens}
         if cmd == "list":
-            return {"fences": [
-                {
+            def row(f):
+                # Geometry comes from the live window, not the config snapshot:
+                # after a drag the two differ, and the live one is the truth.
+                win = c.windows.get(f.id)
+                geo = (
+                    {"x": win.x, "y": win.y, "w": win.width, "h": win.height}
+                    if win else
+                    {"x": f.x, "y": f.y, "w": f.width, "h": f.height}
+                )
+                return {
                     "id": f.id, "title": f.title, "source": f.source.kind,
                     "view": f.view, "sort": f.sort,
-                    "geometry": {"x": f.x, "y": f.y, "w": f.width, "h": f.height},
+                    "geometry": geo,
+                    "layer": win.layer_name if win else (f.layer or c.config.settings.layer),
+                    "collapsed": win._collapsed if win else f.collapsed,
+                    "hidden": win.hidden if win else f.hidden,
+                    "locked": win.locked if win else f.locked,
                     "workspaces": list(f.workspaces),
-                    "items": (c.windows[f.id]._store.get_n_items()
-                              if f.id in c.windows else 0),
+                    "items": win._store.get_n_items() if win else 0,
                 }
-                for f in c.config.fences
-            ]}
+            return {"fences": [row(f) for f in c.config.fences]}
         if cmd == "show":
             fid = req["id"]
             win = c.windows.get(fid)
@@ -183,6 +209,45 @@ class Server:
             if target != win._collapsed:
                 win.toggle_collapsed()
             return {"id": fid, "collapsed": win._collapsed}
+        if cmd == "move":
+            fid, win = self._fence(req)
+            win.move_to(int(req["x"]), int(req["y"]))
+            c.persist_fence(fid, x=win.x, y=win.y)
+            return {"id": fid, "x": win.x, "y": win.y}
+        if cmd == "resize":
+            fid, win = self._fence(req)
+            win.resize_to(int(req["width"]), int(req["height"]))
+            c.persist_fence(fid, width=win.width, height=win.height)
+            return {"id": fid, "width": win.width, "height": win.height}
+        if cmd == "layer":
+            fid, win = self._fence(req)
+            value = str(req["value"])
+            if value not in win.LAYER_ENUM:
+                raise ValueError(
+                    f"layer must be one of {', '.join(win.LAYER_ENUM)}"
+                )
+            win.set_layer_name(value)
+            c.persist_fence(fid, layer=value)
+            return {"id": fid, "layer": win.layer_name}
+        if cmd == "hide":
+            fid, win = self._fence(req)
+            want = req.get("value")
+            target = (not win.hidden) if want is None else bool(want)
+            win.set_hidden(target)
+            c.persist_fence(fid, hidden=target)
+            return {"id": fid, "hidden": win.hidden}
+        if cmd == "lock":
+            fid, win = self._fence(req)
+            want = req.get("value")
+            target = (not win.locked) if want is None else bool(want)
+            win.set_locked(target)
+            c.persist_fence(fid, locked=target)
+            return {"id": fid, "locked": win.locked}
+        if cmd == "peek":
+            return c.peek(
+                seconds=float(req.get("seconds", 4.0)),
+                off=bool(req.get("off", False)),
+            )
         raise KeyError(cmd)
 
     def stop(self) -> None:

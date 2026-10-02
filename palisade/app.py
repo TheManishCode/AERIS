@@ -49,6 +49,8 @@ class Controller:
         self._reload_source: int | None = None
         self._listener: hypr.EventListener | None = None
         self._active_ws: int | None = None
+        self._peek_timer: int | None = None
+        self._peek_saved: dict[str, str] = {}
 
     # ----------------------------------------------------------------- state
 
@@ -80,7 +82,11 @@ class Controller:
             if over:
                 fences.append(replace(fence, **{
                     k: v for k, v in over.items()
-                    if k in {"x", "y", "width", "height", "collapsed"}
+                    # `hidden` is deliberately absent. A summoned fence is
+                    # transient — it comes back hidden next login regardless of
+                    # whether it happened to be open at shutdown.
+                    if k in {"x", "y", "width", "height", "collapsed",
+                             "locked", "layer"}
                 }))
             else:
                 fences.append(fence)
@@ -137,8 +143,11 @@ class Controller:
         for fence in self.config.fences:
             win = FenceWindow(self.app, fence, self.config.settings, self)
             self.windows[fence.id] = win
-            win.present()
-        self._apply_workspace_visibility()
+            # A fence declared `hidden` is summoned, not placed: it must not
+            # flash onto the screen during startup before being hidden again.
+            if not fence.hidden:
+                win.present()
+        self._apply_visibility()
 
     def refresh_all(self) -> None:
         for win in self.windows.values():
@@ -190,6 +199,54 @@ class Controller:
         hypr.apply_layer_rules(self.config.settings.blur)
         return True
 
+    # ----------------------------------------------------------------- peek
+
+    def peek(self, seconds: float = 4.0, off: bool = False) -> dict:
+        """Raise every visible fence above windows, briefly.
+
+        A fence on the `bottom` layer is desktop furniture: correct almost
+        always, useless at the moment you actually want it while something is
+        maximised. Peek is the escape hatch — bound to a key, it brings every
+        fence forward without permanently changing where any of them live.
+
+        The pre-peek layer of each fence is remembered so a fence the user
+        deliberately put on `overlay` is not demoted when peek ends.
+        """
+        if off or self._peek_timer is not None:
+            self._end_peek()
+            if off:
+                return {"peeking": False}
+
+        self._peek_saved = {
+            fid: win.layer_name
+            for fid, win in self.windows.items()
+            if not win.hidden
+        }
+        for fid in self._peek_saved:
+            self.windows[fid].set_layer_name("overlay")
+
+        seconds = max(0.5, min(60.0, float(seconds)))
+        self._peek_timer = GLib.timeout_add(
+            int(seconds * 1000), self._on_peek_expired
+        )
+        return {"peeking": True, "seconds": seconds,
+                "fences": sorted(self._peek_saved)}
+
+    def _on_peek_expired(self) -> bool:
+        self._peek_timer = None
+        self._end_peek()
+        return False
+
+    def _end_peek(self) -> None:
+        if self._peek_timer is not None:
+            GLib.source_remove(self._peek_timer)
+            self._peek_timer = None
+        for fid, layer in self._peek_saved.items():
+            win = self.windows.get(fid)
+            if win is not None:
+                win.set_layer_name(layer)
+        self._peek_saved = {}
+
     # ------------------------------------------------------------ workspaces
 
     def _start_workspace_listener(self) -> None:
@@ -230,18 +287,25 @@ class Controller:
 
     def _set_workspace(self, ws_id: int) -> bool:
         self._active_ws = ws_id
-        self._apply_workspace_visibility()
+        self._apply_visibility()
         return False
 
-    def _apply_workspace_visibility(self) -> None:
+    def _apply_visibility(self) -> None:
+        """Push the workspace axis down; the window combines it with `hidden`.
+
+        Visibility has two independent inputs — the fence's workspace filter
+        and whether it is hidden — and only the window can see both, so it owns
+        the decision. Setting `visible` from here would fight `set_hidden`.
+        """
         for fence in self.config.fences:
             win = self.windows.get(fence.id)
             if win is None:
                 continue
-            visible = not fence.workspaces or (
-                self._active_ws is not None and self._active_ws in fence.workspaces
+            win.set_on_workspace(
+                not fence.workspaces
+                or (self._active_ws is not None
+                    and self._active_ws in fence.workspaces)
             )
-            win.set_visible(visible)
 
     # ------------------------------------------------------------------ misc
 
@@ -287,10 +351,16 @@ class Controller:
         dialog.present()
 
     def shutdown(self) -> None:
+        self._end_peek()
         if self._listener:
             self._listener.stop()
         if self._reload_source is not None:
             GLib.source_remove(self._reload_source)
         for win in self.windows.values():
             win.shutdown()
-        self._save_state()
+        # Deliberately no _save_state() here. Every piece of runtime state is
+        # already written by persist_fence() at the moment it changes, so a
+        # write on the way out adds nothing — but it *can* do harm: a daemon
+        # being replaced would flush its stale in-memory snapshot over whatever
+        # its successor had already written. Observed exactly that while
+        # restarting during testing.

@@ -162,6 +162,52 @@ Filesystem verbs are not merely hidden on this fence — they are never
 registered on it, and every file action filters window rows out of the
 selection, so <kbd>Delete</kbd> can never reach a window.
 
+## Moving fences around
+
+Grab a fence by its header (or any empty part of its panel) and drag. Drag the
+corner grip to resize. Both write straight to `state.json`, so a fence stays
+where you put it across restarts without you editing any TOML.
+
+A layer surface has no compositor-side move — there is no titlebar for Hyprland
+to grab — so Palisade drives its own margins while the button is down. The
+position comes from the compositor's **absolute** cursor rather than from GTK's
+drag offsets: a fence follows the pointer, so its own surface-relative
+coordinates snap back to the press point every frame and feeding those back
+oscillates in place. Absolute coordinates do not have that problem.
+
+Right-click a fence header for the rest:
+
+| | |
+| --- | --- |
+| **On the desktop** | put it on the `bottom` layer — below your windows |
+| **Above windows** | put it on `overlay` — always visible |
+| **Lock position** | stop it being dragged by accident |
+| **Collapse** | fold it down to its title strip |
+| **Hide this fence** | remove it from the screen entirely |
+
+All of it is scriptable, so it binds to keys too:
+
+```bash
+palisade move downloads 900 420
+palisade resize downloads 520 600
+palisade layer downloads overlay     # or bottom / top / background
+palisade lock downloads on
+palisade hide downloads              # omit the value to toggle
+```
+
+### Peek
+
+Fences on `bottom` are desktop furniture: right almost always, useless at the
+moment you want one while something is maximised. Peek lifts **every** fence
+above the windows for a few seconds, then returns each to the layer it came
+from — so a fence you deliberately left on `overlay` is not demoted when the
+peek ends.
+
+```bash
+palisade peek 5        # bound to Ctrl+Alt+Space
+palisade peek --off    # drop back early
+```
+
 ## Keyboard
 
 Fences take `on-demand` keyboard focus — they are inert until you click one.
