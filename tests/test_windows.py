@@ -166,7 +166,11 @@ class DestructiveActionsAreNotRegistered(unittest.TestCase):
     def test_windows_branch_registers_no_file_actions(self):
         text = (Path(__file__).resolve().parent.parent
                 / "palisade/ui/fence.py").read_text()
-        start = text.index("if self._is_windows:", text.index("_install_actions"))
+        # Anchor on the *definition*, not the first mention: `_install_actions`
+        # is called from __init__ long before it is defined, so anchoring on the
+        # name picked up whichever `if self._is_windows:` came next anywhere in
+        # the class and silently checked the wrong block.
+        start = text.index("if self._is_windows:", text.index("def _install_actions"))
         branch = text[start:text.index("else:", start)]
         for forbidden in ('"trash"', '"rename"', '"open"', '"copy-path"'):
             self.assertNotIn(forbidden, branch)

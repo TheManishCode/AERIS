@@ -1,5 +1,58 @@
 # Changelog
 
+## 2026-10-03 — Taskbar becomes a summoned picker
+
+Role: Frontend Engineer + UX
+Status: Changed | Fixed
+
+Reason:
+The minimized-windows fence sat on the desktop permanently showing "0", which
+is clutter for something useful only while picking a window. It also could not
+be driven from the keyboard, so the only way to restore a specific window was
+to reach for the mouse.
+
+Changes:
+- `Fence.hidden` config flag: the fence has no surface until summoned. Distinct
+  from `collapsed`, which still leaves a title strip on screen.
+- Visibility is now two independent axes (`hidden` and the workspace filter)
+  combined in `FenceWindow._sync_visible`. The controller pushes the workspace
+  axis down via `set_on_workspace` instead of calling `set_visible` itself,
+  which previously fought `set_hidden`.
+- A summoned fence takes the keyboard (`KeyboardMode.EXCLUSIVE`), selects its
+  first row, and is driveable entirely from the key that opened it. A fence
+  that lives on screen keeps `ON_DEMAND` and never holds the keyboard.
+- Keys 1-9 restore that row outright; rows carry a matching leading badge so
+  the shortcut is visible rather than folklore. Esc dismisses. Picking a window
+  or clicking away dismisses too, so the keyboard grab cannot be left stranded.
+- Single click on a taskbar row restores. It previously required a double
+  click while the tooltip promised a single one; every other desktop's taskbar
+  restores on one click, and file fences keep double-click-to-open.
+- Fence can be dragged by its body, not only the ~28px header.
+- `hide` no longer persists `hidden` for a config-declared transient fence —
+  load deliberately ignores that key, so writing it only misled.
+
+Removed/Reverted:
+- `Controller.set_fence_hidden`, written then removed the same session: it
+  duplicated the existing `hide` IPC handler.
+
+Verification:
+- 27 unit tests pass.
+- End-to-end on Hyprland 0.56.2: minimized a window, summoned the fence,
+  pressed `1`, window returned to its origin workspace with tags cleared and
+  the fence dismissed itself. Repeated with a single mouse click.
+- Confirmed the fence starts hidden after a daemon restart, and that a second
+  daemon is refused by the flock guard (two were found running during this
+  session, each drawing a full set of fences).
+- `hyprctl configerrors` clean; `SUPER+S` resolves to exactly one bind.
+
+Result:
+The taskbar is a picker: invisible until summoned, keyboard-driveable, gone
+again the moment it has done its job.
+
+Known Issues:
+- The summon round-trip is ~190 ms, spent almost entirely on Python start-up
+  in the CLI client rather than in the daemon.
+
 ## 2026-10-02 — Minimized-windows fence (taskbar)
 
 Role: Full-Stack Engineer + Product Designer

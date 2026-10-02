@@ -234,7 +234,13 @@ class Server:
             want = req.get("value")
             target = (not win.hidden) if want is None else bool(want)
             win.set_hidden(target)
-            c.persist_fence(fid, hidden=target)
+            # A fence declared `hidden` in the config is transient — it is
+            # summoned and dismissed many times a session and always starts
+            # hidden. Recording each toggle would write state that load
+            # deliberately ignores, which reads as a bug the next time anyone
+            # opens state.json.
+            if not win.fence.hidden:
+                c.persist_fence(fid, hidden=target)
             return {"id": fid, "hidden": win.hidden}
         if cmd == "lock":
             fid, win = self._fence(req)
