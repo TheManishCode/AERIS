@@ -202,9 +202,29 @@ Verification:
 - GTK warning log clean.
 
 Known Issues:
-- A full human-scale drag was never driven synthetically: ydotool's absolute
-  mousemove is mis-scaled ~1.9x on this machine (asked 900,600 → got
-  1719,1018) and Hyprland's `hl.dsp.cursor.move` behaves relatively. The drag
-  path was instrumented and confirmed to execute correctly end to end, and the
-  arithmetic is covered by unit tests, but "does it feel right" is untested.
 - Resize only from the bottom-right corner; no edge resizing.
+
+
+## 2026-10-03 — Drag confirmed in real use
+
+Role: QA Engineer
+Status: Verified
+
+Reason:
+The previous entry listed human-scale dragging as unverified, because
+synthetic pointer input could not be trusted on this machine (ydotool's
+absolute mousemove is mis-scaled ~1.9x; Hyprland's hl.dsp.cursor.move is
+relative). That caveat is now obsolete and should not sit in the record
+implying a gap that no longer exists.
+
+Verification:
+- The `minimized` fence was found at (25, 564) against a configured
+  (48, 752), with width/height unchanged at 420x280 — a move, not a resize.
+- state.json was written at 05:07, roughly 4.6 hours into a daemon started at
+  00:30, i.e. during ordinary use rather than any test run.
+- Drag-to-move and its persistence therefore work end to end under a real
+  hand, which is exactly what the unit tests could not establish.
+
+Result:
+Dragging is verified. Drag-to-*resize* is still only covered by unit tests —
+no observed real-world resize yet.

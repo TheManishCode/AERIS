@@ -262,6 +262,13 @@ class FenceWindow(Gtk.ApplicationWindow):
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
 
+        # A summoned fence holds the keyboard exclusively, so it must not be
+        # able to stay up unattended: clicking away dismisses it, the same as
+        # any other picker. Without this, clicking another window would leave
+        # the grab in place and typing would go nowhere.
+        if self.fence.hidden:
+            self.connect("notify::is-active", self._on_active_changed)
+
         # Also establishes the size request, so a fence that is empty or holds
         # one item still renders at its configured size rather than shrink-wrapping.
         self._apply_collapsed(self.fence.collapsed)
