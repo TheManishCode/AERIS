@@ -273,3 +273,46 @@ window.palisade:hover .fence-grip {
 window.palisade-picker .fence-root {
   background: alpha(@m3_surface_container_high, 0.92);
 }
+
+/* --- taskbar mode switch --------------------------------------------------
+ * Two segments: minimized windows, or panels you have hidden. A labelled pair
+ * rather than an icon in the header corner — the first attempt was a 24px
+ * glyph between two other 24px glyphs, which you had to already know about to
+ * find, and the whole point of this control is that hiding a panel stops
+ * being a one-way door. */
+
+.mode-switch {
+  margin: 0 14px 8px 14px;
+  padding: 2px;
+  border-radius: 10px;
+  background: alpha(@m3_on_surface, 0.07);
+}
+
+.mode-tab {
+  min-height: 26px;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  transition: background 110ms ease-out, color 110ms ease-out;
+}
+
+.mode-tab:hover {
+  background: alpha(@m3_on_surface, 0.07);
+  color: @m3_on_surface;
+}
+
+/* The selected segment carries the surface colour, so it reads as raised out
+ * of the track rather than merely tinted. */
+.mode-tab.active {
+  background: @m3_surface_container_highest;
+  color: @m3_on_surface;
+  font-weight: 700;
+}
+
+.mode-tab.active:hover {
+  background: @m3_surface_container_highest;
+}

@@ -90,12 +90,20 @@ class FenceWindow(Gtk.ApplicationWindow):
         self.refresh()
         self._watch()
 
-        # Click-away closes a picker, and *only* a picker. A taskbar is a
-        # transient chooser: clicking somewhere else means "not that, then".
-        # A grouping tab is furniture you arranged on purpose, and having one
-        # vanish because you clicked a window would make the desktop feel like
-        # it was deleting your work.
-        if fence.picker:
+        # Click-away closes a floating picker, and nothing else.
+        #
+        # Not a *docked* one. A docked panel reserves a column and pushes your
+        # windows aside; it is furniture, not a popup, and it sits next to the
+        # windows you are working in — so focus leaves it constantly. Closing
+        # on that made the taskbar feel broken rather than tidy: it vanished
+        # every time you clicked anything, including on the way to its own
+        # controls. A dock closes when you pick from it, press Esc, or toggle
+        # it, all of which are deliberate.
+        #
+        # A grouping tab never closes on click-away either: it is something you
+        # arranged on purpose, and having one disappear because you clicked a
+        # window would feel like the desktop deleting your work.
+        if fence.picker and not fence.dock:
             self._had_focus = False
             self.connect("notify::is-active", self._on_active_changed)
 
@@ -226,21 +234,6 @@ class FenceWindow(Gtk.ApplicationWindow):
         spacer.set_hexpand(True)
         header.append(spacer)
 
-        # Only the taskbar gets the mode switch. Hiding a panel used to be a
-        # one-way door — the way back was to remember its id and type
-        # `palisade hide <id> off`, which nobody is going to do. The taskbar is
-        # already the place you go to get something back, so hidden panels
-        # belong in the same list, behind a switch.
-        if self._is_windows:
-            self._mode_btn = Gtk.Button()
-            self._mode_btn.add_css_class("fence-collapse")
-            self._mode_btn.add_css_class("fence-mode")
-            self._mode_btn.set_child(
-                Gtk.Image.new_from_icon_name("view-reveal-symbolic")
-            )
-            self._mode_btn.connect("clicked", lambda *_: self._toggle_mode())
-            header.append(self._mode_btn)
-            self._sync_mode_button()
 
         self._collapse_btn = Gtk.Button()
         self._collapse_btn.add_css_class("fence-collapse")
@@ -251,6 +244,31 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._collapse_btn.connect("clicked", lambda *_: self.toggle_collapsed())
         header.append(self._collapse_btn)
         root.append(header)
+
+        # Only the taskbar gets the mode switch. Hiding a panel used to be a
+        # one-way door — the way back was to remember its id and type
+        # `palisade hide <id> off`, which nobody is going to do. The taskbar is
+        # already where you go to get something back, so hidden panels belong
+        # in the same list.
+        #
+        # A labelled pair, not an icon in the header corner: the first attempt
+        # was a 24px glyph among two other 24px glyphs, which is a thing you
+        # have to already know about to find.
+        if self._is_windows:
+            self._mode_switch = Gtk.Box(
+                orientation=Gtk.Orientation.HORIZONTAL, spacing=0
+            )
+            self._mode_switch.add_css_class("mode-switch")
+            self._mode_tabs = {}
+            for mode, label in (("windows", "Minimized"), ("hidden", "Hidden")):
+                btn = Gtk.Button(label=label)
+                btn.add_css_class("mode-tab")
+                btn.set_hexpand(True)
+                btn.connect("clicked", lambda _b, m=mode: self._set_mode(m))
+                self._mode_switch.append(btn)
+                self._mode_tabs[mode] = btn
+            root.append(self._mode_switch)
+            self._sync_mode_switch()
 
         # Double-clicking the header collapses, matching every fence app.
         head_click = Gtk.GestureClick()
@@ -527,6 +545,8 @@ class FenceWindow(Gtk.ApplicationWindow):
         for item in items:
             self._store.append(ItemObject(item))
         self._count.set_text(str(len(items)))
+        if self._is_windows:
+            self._sync_mode_switch()
         has_items = bool(items)
         if self._mode == "hidden":
             self._empty.set_label("Nothing is hidden")
@@ -547,26 +567,31 @@ class FenceWindow(Gtk.ApplicationWindow):
             for fid, title in self.controller.hidden_fences()
         ]
 
-    def _toggle_mode(self) -> None:
-        self._mode = "hidden" if self._mode == "windows" else "windows"
-        self._sync_mode_button()
+    def _set_mode(self, mode: str) -> None:
+        if mode == self._mode:
+            return
+        self._mode = mode
+        self._sync_mode_switch()
         self.refresh()
 
-    def _sync_mode_button(self) -> None:
-        """Say what the button switches *to*, not what is showing.
+    def _toggle_mode(self) -> None:
+        """Flip between the two lists — the keyboard route (Tab)."""
+        self._set_mode("hidden" if self._mode == "windows" else "windows")
 
-        A toggle labelled with the current state reads as a status light and
-        gets pressed by mistake; labelled with the destination it reads as a
-        verb.
+    def _sync_mode_switch(self) -> None:
+        """Mark the segment that is showing, and count what is behind each.
+
+        The count is the point: "Hidden 2" is what tells you there is anything
+        over there at all, which a bare label never would.
         """
-        hidden_now = self._mode == "hidden"
-        self._title.set_text("Hidden panels" if hidden_now else self.fence.title)
-        self._mode_btn.set_child(Gtk.Image.new_from_icon_name(
-            "view-restore-symbolic" if hidden_now else "view-reveal-symbolic"
-        ))
-        self._mode_btn.set_tooltip_text(
-            "Show minimized windows" if hidden_now else "Show hidden panels"
+        hidden = len(self.controller.hidden_fences())
+        self._mode_tabs["hidden"].set_label(
+            f"Hidden {hidden}" if hidden else "Hidden"
         )
+        for mode, btn in self._mode_tabs.items():
+            btn.set_css_classes(
+                ["mode-tab", "active"] if mode == self._mode else ["mode-tab"]
+            )
 
     def _watch(self) -> None:
         """Monitor every root this fence reads from, debounced into one refresh."""
@@ -815,6 +840,11 @@ class FenceWindow(Gtk.ApplicationWindow):
 
     def _on_key(self, _ctrl, keyval: int, _code: int, state: Gdk.ModifierType) -> bool:
         ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        # Tab flips the taskbar between minimized windows and hidden panels,
+        # so the switch is reachable from the keybind that opened it.
+        if self._is_windows and keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+            self._toggle_mode()
+            return True
         if self._is_windows:
             # Only the non-destructive keys are live on a taskbar fence.
             # Delete in particular must not reach _trash_selected, and closing

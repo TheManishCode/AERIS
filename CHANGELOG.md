@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-10-03 — The docked taskbar stops vanishing
+
+Role: Frontend Engineer + UX + QA Engineer
+Status: Fixed
+
+Reason:
+Reported: the side taskbar "is closing on its own", and hidden panels never
+appeared in the section built for them. One cause, one consequence.
+
+Fixed:
+- Click-away dismissal no longer applies to a **docked** panel. Docking was
+  added in the previous entry and click-away in the one before it, and the two
+  together are wrong: a dock reserves a column and sits beside the windows you
+  are working in, so focus leaves it constantly and it closed on every click.
+  That also explains the missing hidden list — the panel was gone before the
+  switch could be reached. A dock now closes only on a deliberate act: picking
+  from it, Esc, or the toggle. A floating picker is unchanged.
+- The mode control was a 24px icon between two other 24px glyphs in the header
+  corner — findable only if you already knew it was there. Replaced with a
+  labelled two-segment switch, **Minimized / Hidden**, carrying a count on the
+  Hidden side so an empty list is distinguishable from no list. Tab flips it
+  from the keyboard.
+
+Verification:
+- Confirmed the panel is stable when left alone (25s idle, no transitions) and
+  under use: four clicks at different desktop positions, taskbar still mapped,
+  reserved column still `[0,45,420,0]` after each.
+- Switch driven by real clicks: Hidden -> rows `['Downloads']`, Minimized ->
+  rows `[]`, panel open throughout. Clicking a hidden row unhid it, the dock
+  closed itself, and the reservation was released back to `[0,45,0,0]`.
+- Tab verified as an independent route to the same toggle.
+- 80 tests pass. Daemon log clean.
+
+Removed/Reverted:
+- The icon-only header mode button, replaced as above.
+
+Result:
+The taskbar stays put while you use it, and the hidden list is somewhere you
+can actually find.
+
+Known Issues:
+- Nothing new. The switch is taskbar-only; a floating fence has no mode.
+
+Note on method:
+Four attempts to click the switch failed and I was close to calling the
+control broken. It was not — Tab toggled the same mode correctly, which
+isolated the fault to click targeting. Asking GTK for the widget's allocation
+(`y=40` within the window, so y 85-115 on screen) showed every click had
+landed 20-60px below it. Guessing at coordinates was the error; the widget
+knew the answer.
+
 ## 2026-10-03 — Taskbar takes its own column; hidden panels are reachable
 
 Role: Senior Product Designer + Frontend Engineer + QA Engineer

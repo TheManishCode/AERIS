@@ -298,9 +298,16 @@ for it behind a maximised window defeats the keybind. Send it to the desktop
 from the same menu when you want it to stay there.
 
 Hiding a panel used to be a one-way door — the only way back was to remember
-its id. The taskbar now has a switch in its header: flip it and the list shows
-your hidden panels instead of minimized windows, and clicking one brings it
-back. From a script: `palisade hidden` and `palisade unhide <id>`.
+its id. The taskbar now carries a two-segment switch, **Minimized / Hidden**,
+with a count on the second so you can see there is something over there.
+Clicking a hidden row brings that panel back. <kbd>Tab</kbd> flips the switch
+from the keyboard. From a script: `palisade hidden` and `palisade unhide <id>`.
+
+A **docked** panel does not close when you click elsewhere. It reserves a
+column and sits beside the windows you are working in, so focus leaves it
+constantly; closing on that made it feel broken rather than tidy. It closes
+when you pick from it, press <kbd>Esc</kbd>, or toggle it. A *floating* picker
+still dismisses on click-away, where that is the obvious gesture.
 
 All of it is scriptable, so it binds to keys too:
 
