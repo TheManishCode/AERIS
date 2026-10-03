@@ -1,5 +1,62 @@
 # Session Log
 
+## 2026-10-03 — Session Summary
+
+What we did:
+- Diagnosed "SUPER+S is broken". It was not: upstream bound it to the
+  `special:special` scratchpad, which is normally empty, so pressing it showed
+  nothing but the word "special" in the bar. Rebound it to minimize, after
+  `hl.unbind` — binding a key twice in Hyprland stacks both actions instead of
+  replacing, so without the unbind it would have done both.
+- Made the minimized taskbar a summoned picker: hidden until called, takes the
+  keyboard, 1-9 restores a window, Esc or click-away dismisses it.
+- Changed taskbar rows to restore on a single click. They required a double
+  click while the tooltip promised a single one.
+- Added a "Minimized" button with a live count to the quickshell bar.
+- Found and fixed two Palisade daemons running at once, each drawing a full set
+  of fences on top of the other's. That was the likely cause of the reported
+  "tab alignment" problem.
+- Fixed `tests/test_windows.py` anchoring on the first *mention* of
+  `_install_actions` rather than its definition, so it was scraping the wrong
+  block and would have passed while destructive file actions leaked into the
+  taskbar.
+- Checked the "drag windows between workspaces" request before building: the
+  overview already does it, so nothing was built. Verified the overview opens
+  and that the exact dispatch its drop handler runs works.
+- After the groups/tabs refactor landed mid-session and killed the taskbar,
+  restored it: added `toggle <group>`, and split a new `picker` property out of
+  `hidden`.
+
+What worked:
+- 43 tests pass (36 before the new `test_toggle.py`).
+- End-to-end on Hyprland 0.56.2, several times: minimize a window, summon the
+  taskbar, press `1` or click the row, window returns to its origin workspace
+  with tags cleared, taskbar closes itself.
+- Single-daemon guard verified by trying to start a second one.
+- Picker tabs confirmed not restored at startup while ordinary tabs are.
+- Dragging a fence by its body tracks the cursor exactly (+350, -60 on a test
+  drag, no drift).
+- `hyprctl configerrors` clean; `SUPER+S` resolves to exactly one bind.
+
+What's still broken / unfinished:
+- Nothing known. The taskbar, the keybind, and the bar button all work as of
+  the last check.
+
+Not yet verified:
+- A real pointer click on the bar's taskbar button. The close path is covered
+  by unit tests and by reasoning about focus order, but synthetic pointer
+  events into layer surfaces are not reliable on this machine, so the actual
+  click was never driven.
+- A real mouse drag of a window between workspaces in the overview. Same
+  reason. The wiring and the dispatch are both confirmed; only the hand
+  gesture is untested.
+- Multi-monitor behaviour anywhere in this work — this machine has one output.
+
+Next recommended action:
+- Click the bar's Minimized button twice and drag a window between workspaces
+  in the overview (SUPER+Tab). Those are the two things I could not drive
+  synthetically; both are a few seconds to check by hand.
+
 ## 2026-10-02 — Session Summary
 
 What we did:
