@@ -1,5 +1,119 @@
 # Changelog
 
+## 2026-10-03 — Folders open in place, files are editable, applications launch
+
+Role: Frontend Engineer + Product Designer + QA Engineer
+Status: Added, Fixed
+
+Reason:
+Reported: "when i try to open any folder or anything inside the group it
+launches another tab and it is a totally bad behavior i need it to be its own
+sandbox and open edit everything inside just the diff with sandbox is that
+sandbox even isolates the hardware and stuff which i don't want to happen in
+my case the changes in the groups will be updated in desktop also also the
+layout padding and other changes like able to open applications and
+software's is not don't properly yet".
+
+Read as four things: navigate inside the panel rather than spawning anything;
+edit in there too; changes go straight to the real filesystem, no isolation;
+and applications do not work yet.
+
+Changes:
+- **Folders open in place.** `FenceWindow` keeps a navigation stack:
+  `navigate_to`, `navigate_up`, `navigate_home`, `current_source`. Walking
+  into a folder re-roots the panel, moves the file monitors with it, and
+  scrolls to the new folder's top. A back chevron appears in the header and
+  the title names the folder you are in. Backspace, Alt+Left and Escape come
+  back out; Alt+Home returns to the group. The stack is live only — reopening
+  a tab puts you at the group, not three folders down where you stopped.
+- `palisade_files.activate` claims directory rows and calls `navigate_to`. The
+  mechanism is core's; the opinion that a directory is a thing you go *into*
+  is the module's. Previously a subfolder was handed to the desktop file
+  manager, which answered "show me what is in here" with another window.
+- A walked-into source is re-rooted as `directory` and depth 1: walking into a
+  subfolder of a saved search means "show me this folder", not "re-run the
+  search inside it". Filters and sort are carried through; the fence's own
+  source is never mutated.
+- **In-place editing.** New `palisade_files/edit.py` — `readable_text`,
+  `can_edit`, `save`. The viewer gains Edit / Save / Done, Ctrl+S, a dirty dot
+  on the title, and a two-press Escape before discarding (a layer-shell panel
+  cannot host a "save changes?" dialog). Markdown editing opens the source,
+  because the rendered tree is a view of the file and there is nothing
+  coherent to write back from it.
+- Saving is atomic (sibling temp file, fsync, `os.replace`), preserves the
+  original's permissions, refuses when the file changed on disk since it was
+  read, and refuses outright for a truncated read — editing the head of a
+  200 MB log and writing it back over the whole file is the worst thing this
+  could do, so it is not reachable rather than guarded.
+- **Applications launch.** `palisade_apps.activate` was missing entirely, so
+  clicking an application fell through to core's file handling, which asked a
+  renderer to show a desktop entry id. It now starts the program detached,
+  dismisses a summoned picker, and reports a failed launch rather than
+  falling through to a viewer.
+- **Application icons.** `Item.icon_name` was set by the apps module and
+  ignored by core, so every application wore the generic document glyph.
+  `_apply_icon` now believes a row that knows its own icon, resolving through
+  the icon theme or from an absolute path in the desktop entry (a desktop
+  entry may give either, and `set_from_icon_name` silently shows nothing for
+  a path).
+- **The layer model is now relative, not absolute.** The card was an opaque
+  `surface_container_low` on a shell that is `alpha(background, 0.55)` over
+  the wallpaper — so the shell's effective luminance moves with the wallpaper
+  and the card could end up *darker* than the surface it is supposed to sit
+  on. Measured on this machine: card 27, shell 29, i.e. recessed by 2.
+  Raised surfaces are now `alpha(@m3_on_surface, n)`, which composites to
+  "one step lighter than whatever is behind me" whatever that is. Alphas
+  tuned to land on the rice's own values over an opaque dark shell, so a
+  panel on a dark wallpaper looks as it did.
+- `folder_root()` matched `kind == "folder"` only, but config emits
+  `directory` — so New file and New folder were never offered on any
+  config-created fence. Now matches both, and reads `current_source`, so new
+  files land in the folder you are looking at.
+- CSS: `.fence-up`, `.viewer-save`, `.code-view.editing`.
+
+Removed/Reverted:
+- `palisade_apps.launch(app)` — `activate` does the same thing from the row,
+  and two spellings of "start this program" is one too many.
+- `edit.Truncated`, declared and never raised; `can_edit` returns False
+  instead, which is the better place for it.
+- `test_it_claims_no_rows_of_its_own` in palisade-files, which asserted the
+  old design (no `activate`). Replaced with six tests for what it claims now.
+
+Verification:
+- 366 tests across four suites: core 155, files 140, dock 36, apps 35.
+- The navigation tests were proven against their own bugs: `_rewatch` and
+  `_scroll_to_top` removed from `navigate_to`, four tests failed, source
+  restored byte-identical.
+- `test_a_save_over_a_symlink_follows_it_rather_than_replacing_it` found a
+  real defect on first run — `os.replace` onto a link path replaces the link
+  with a regular file, silently detaching a symlinked dotfile. Fixed.
+- Driven live on the compositor: double-clicked `packages` and then
+  `palisade-core` — navigated in place both times, `palisade tabs` still
+  reported one tab. Opened a scratch Markdown file, clicked Edit, typed, saw
+  the dirty dot appear on the title and Save take the accent, pressed Ctrl+S;
+  the file on disk had the new content, mode still 644, no temp file left
+  behind. Clicked Alacritty in an applications panel and it started (0 -> 1
+  processes, window class confirmed via `hyprctl clients`).
+- Layer separation measured at identical pixels before and after: card minus
+  shell went from -2 to +10.
+
+Result:
+A panel you can navigate, read, edit, save and launch from without leaving
+it. No sandbox and no isolation: every change is on the real filesystem the
+moment it happens, which is what was asked for.
+
+Known Issues:
+- No syntax highlighting while editing. GtkSourceView would bring it; making
+  it a hard dependency would mean no preview at all without it.
+- Editing is text and Markdown only. There is nothing coherent to write back
+  from a decoded image or a rendered PDF.
+- No undo beyond GTK's own TextView history, which is lost when you leave
+  edit mode.
+- The breadcrumb is one level — the header names the current folder, not the
+  path. Deep in a tree you can see where you are but not how you got there.
+- Application search (`match` on the source) has no UI; it is config-only.
+- Window pinning in palisade-apps is still designed and not built.
+
 ## 2026-10-03 — Split into four packages: core plus three installable modules
 
 Role: Software Architect + Release Engineer + QA Engineer

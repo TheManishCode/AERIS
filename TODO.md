@@ -46,14 +46,28 @@ in the restructuring commit. If that matters, redo the split with
 
 Found 2026-10-03 when the four packages were created.
 
-## In-fence folder navigation
+## The breadcrumb is one level deep
 
-Opening a subfolder from a fence hands it to the file manager, because the
-viewer explicitly declines directories (`palisade_files.open_file` returns
-None for one, which is what makes core fall back). A fence shows one folder
-and cannot yet walk into another. The pieces exist — `resolve_files` takes any
-root and `refresh()` rebuilds the store — so this is a breadcrumb in the
-header plus a path stack on the window, not new plumbing.
+`FenceWindow._nav` holds the whole path stack, but the header shows only
+`self._nav[-1].name`. Three folders down you can see where you are and not how
+you got there, and the only way back to an intermediate level is Escape at a
+time. The data is already there; this is a header widget, not new plumbing.
+
+Found 2026-10-03 while building navigation.
+
+## Editing has no undo across modes
+
+The TextView carries GTK's own undo history while editing, and it goes when
+edit mode does — `_render()` builds a fresh view. Leaving edit mode and going
+back in is therefore a one-way door for anything you had not saved. Either
+keep the buffer across the toggle, or say so in the Done tooltip.
+
+## Application search is config-only
+
+`resolve_apps` honours `src.match`, so a group can be scoped to "browser" in
+`palisade.toml`, but nothing in the panel exposes it — on a machine with 400
+applications you scroll. The typeahead already filters the visible rows; what
+is missing is a search field for a list long enough to need one.
 
 ## palisade-apps has rows but no pinning
 

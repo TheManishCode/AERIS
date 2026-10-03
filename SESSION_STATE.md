@@ -1,9 +1,10 @@
-# Session State — updated 2026-10-03 17:10
+# Session State — updated 2026-10-03 18:40
 
 Status: COMPLETE
 Task: Split Palisade into four packages — a shared core plus three separately
-installable modules (minimized apps, folders & files, installed apps) — each
-publishable as its own GitHub repository, with a one-command installer.
+installable modules — each publishable as its own GitHub repository with a
+one-command installer. Then: folders that open in the panel instead of
+spawning tabs, in-place editing, and applications that actually launch.
 Branch / worktree: master   Recovery point: d139641 (pre-split), then this commit
 
 Done:
@@ -41,6 +42,21 @@ Verified:
 - `install-engine` run twice over a temp XDG_CONFIG_HOME, second time over an
   edited file — backup made, keybind hint printed.
 
+Then, in the same session:
+- Folders open in place (`navigate_to`/`navigate_up`/`navigate_home`/
+  `current_source` in core, `palisade_files.activate` claiming folder rows).
+- In-place editing: `palisade_files/edit.py` plus Edit/Save/Done in the
+  viewer. Atomic save, permissions preserved, symlinks followed, changed-on-
+  disk refused, truncated reads not editable.
+- Applications launch (`palisade_apps.activate`, which did not exist) and
+  wear their own icons (`Item.icon_name`, which core was ignoring).
+- The layer model made relative: raised surfaces are `alpha(@m3_on_surface,
+  n)` rather than an absolute colour that only out-lightens a translucent
+  shell on a dark wallpaper. Card-minus-shell went from -2 to +10, measured.
+- 366 tests. Verified live: navigation two levels deep with one tab open
+  throughout; a scratch file edited and saved with permissions intact;
+  Alacritty launched from an applications panel.
+
 In flight:
 - Nothing.
 
@@ -57,11 +73,14 @@ Danger:
   were written earlier the same session, never committed, and have been
   rewritten against the final contract. Nothing else was lost.
 - The daemon runs from `/home/Fool/palisade/packages/palisade-core/bin/palisade`
-  on the current tree. Anything pointing at the old `~/palisade/bin/palisade`
-  path — the Hyprland keybind in `~/.config/hypr/custom/keybinds.lua` does —
-  is now stale and will not start it.
+  on the current tree. The five Hyprland keybinds and the autostart line in
+  `~/.config/hypr/custom/{keybinds,execs}.lua` were repointed at the new path
+  and `hyprctl reload` run; they had all been broken by the move.
 - Test tabs from live verification may still be open; `palisade close all`
   clears them.
+- `~/.config/palisade/palisade.toml` had two temporary groups appended during
+  verification and they have been removed; the file now diffs identical to
+  the backup taken before.
 
 Resume by:
 - Decide the GitHub owner, sed the placeholders, run `tools/split-repos.sh`,

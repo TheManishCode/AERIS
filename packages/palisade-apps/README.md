@@ -36,8 +36,15 @@ category, because people look for "browser" as often as they look for
 **not** honoured: it scopes an entry to GNOME or KDE, and respecting it on a
 window manager would hide half your applications for no reason.
 
-Launching detaches the process with `start_new_session`, so restarting the
-Palisade daemon does not take your editor with it.
+Clicking a row starts the application, detached with `start_new_session` so
+restarting the Palisade daemon does not take your editor with it. A summoned
+panel dismisses itself on launch — leaving it up would keep the keyboard grab
+over the window that just opened.
+
+Rows wear the application's own icon, resolved through the icon theme or from
+an absolute path in the desktop entry, with a neutral executable glyph as the
+fallback. A failed launch says so in the panel rather than falling through to
+something else.
 
 ---
 

@@ -136,6 +136,66 @@ class OpenFileTests(Tree):
         self.assertIsNotNone(files.open_file(self.root / "gone", lambda: None))
 
 
+class NavFence:
+    """A fence that records where it was asked to navigate."""
+
+    def __init__(self):
+        self.went: list = []
+
+    def navigate_to(self, path):
+        self.went.append(path)
+
+
+class OldCoreFence:
+    """A core from before navigation existed: no `navigate_to` at all."""
+
+
+class ActivateTests(Tree):
+    def row(self, name, *, is_dir=False, **kw):
+        from palisade.sources import Item
+
+        base = dict(path=self.root / name, name=name, is_dir=is_dir,
+                    size=0, mtime=0.0)
+        base.update(kw)
+        return Item(**base)
+
+    def test_a_folder_is_walked_into_in_place(self):
+        """Not a new tab. Spawning a panel per folder turns a three-level walk
+        into three windows to find, move and close."""
+        (self.root / "sub").mkdir()
+        fence = NavFence()
+        self.assertTrue(files.activate(fence, self.row("sub", is_dir=True)))
+        self.assertEqual(fence.went, [self.root / "sub"])
+
+    def test_a_file_is_declined_so_it_can_be_rendered(self):
+        fence = NavFence()
+        self.assertFalse(files.activate(fence, self.row("a.md")))
+        self.assertEqual(fence.went, [])
+
+    def test_a_window_row_is_declined_even_though_it_is_not_a_directory(self):
+        """`path` on a window row is an address. Navigating to one would be
+        meaningless at best."""
+        fence = NavFence()
+        row = self.row("Firefox", window=object())
+        self.assertFalse(files.activate(fence, row))
+
+    def test_an_application_row_is_declined(self):
+        fence = NavFence()
+        self.assertFalse(files.activate(fence, self.row("gimp", launch=("gimp",))))
+
+    def test_a_hidden_panel_row_is_declined(self):
+        fence = NavFence()
+        self.assertFalse(files.activate(fence, self.row("tab-1", fence="tab-1")))
+
+    def test_a_core_without_navigation_falls_through_rather_than_crashing(self):
+        """These are separate distributions on separate release cycles; an
+        older core must degrade, not raise AttributeError at click time."""
+        (self.root / "sub").mkdir()
+        self.assertFalse(
+            files.activate(OldCoreFence(), self.row("sub", is_dir=True))
+        )
+
+
 class FenceStub:
     """The public fence surface a module verb may touch."""
 
@@ -212,10 +272,10 @@ class ModuleTests(unittest.TestCase):
     def test_it_declares_the_creation_verbs(self):
         self.assertEqual(sorted(files.MODULE.actions), ["new-file", "new-folder"])
 
-    def test_it_claims_no_rows_of_its_own(self):
-        """Every row it produces is a real file, which core already knows how
-        to activate. Declaring `activate` would only get in the dock's way."""
-        self.assertIsNone(files.MODULE.activate)
+    def test_it_claims_folder_rows(self):
+        """A directory is a thing you go into — this module's opinion, not
+        core's."""
+        self.assertIs(files.MODULE.activate, files.activate)
 
     def test_it_has_no_empty_state_of_its_own_to_explain(self):
         """An empty folder is self-explanatory; core's "Nothing here yet" is

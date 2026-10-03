@@ -10,6 +10,7 @@ CLI, or by the in-app "Move to fence" picker instead. See DECISIONS.md.
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import gi
@@ -20,7 +21,7 @@ gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
-from ..config import Fence, Settings
+from ..config import Fence, Settings, Source
 from ..sources import Item, UnknownSource, resolve, sort_items
 from ..theme import CSS_PRIORITY
 from .manipulate import Manipulator, make_resize_grip
@@ -60,6 +61,11 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._typeahead = ""
         self._typeahead_at = 0.0
         self._collapsed = fence.collapsed
+        #: Folders walked into from this panel, deepest last. Empty means the
+        #: panel is showing its own source. Live only and never persisted: a
+        #: tab is a view of a group, and reopening one should put you at the
+        #: group, not three folders down where you happened to stop.
+        self._nav: list[Path] = []
         # A taskbar fence holds live windows, not files. Every filesystem
         # action below is gated on this (and on `item.window`), because an
         # Item for a window carries the window address in `path` and trashing
@@ -229,6 +235,17 @@ class FenceWindow(Gtk.ApplicationWindow):
         # --- header
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         header.add_css_class("fence-header")
+
+        # Walking into a folder is navigation, not a new panel. The button
+        # appears only below the root, so a panel showing its own source has
+        # no dead control on it.
+        self._up_btn = Gtk.Button()
+        self._up_btn.add_css_class("fence-up")
+        self._up_btn.set_child(Gtk.Image.new_from_icon_name("go-previous-symbolic"))
+        self._up_btn.set_tooltip_text("Back  ·  Backspace or Alt+Left")
+        self._up_btn.connect("clicked", lambda *_: self.navigate_up())
+        self._up_btn.set_visible(False)
+        header.append(self._up_btn)
 
         self._title = Gtk.Label(label=self.fence.title, xalign=0.0)
         self._title.add_css_class("fence-title")
@@ -543,6 +560,28 @@ class FenceWindow(Gtk.ApplicationWindow):
                     return
         image.set_from_icon_name("view-restore-symbolic")
 
+    @staticmethod
+    def _set_themed_icon(image: Gtk.Image, name: str) -> bool:
+        """Show `name` as a theme icon or as a file. False if neither worked.
+
+        Returning a bool rather than falling back here keeps the choice of
+        fallback with the caller — a missing application icon and a missing
+        file icon want different glyphs.
+        """
+        if name.startswith("/"):
+            icon_file = Gio.File.new_for_path(name)
+            if icon_file.query_exists(None):
+                image.set_from_gicon(Gio.FileIcon.new(icon_file))
+                return True
+            return False
+        display = Gdk.Display.get_default()
+        if display is not None:
+            theme = Gtk.IconTheme.get_for_display(display)
+            if theme.has_icon(name):
+                image.set_from_icon_name(name)
+                return True
+        return False
+
     def _apply_icon(self, image: Gtk.Image, item: Item) -> None:
         """Thumbnail when one already exists, otherwise the themed icon.
 
@@ -554,6 +593,19 @@ class FenceWindow(Gtk.ApplicationWindow):
             return
         if item.fence:
             image.set_from_icon_name("window-new-symbolic")
+            return
+        # A row that knows its own icon says so, and is believed. Applications
+        # are the case: `path` holds a desktop entry id, so the filesystem
+        # lookup below would find nothing and every application would wear the
+        # generic document glyph.
+        #
+        # The name goes through the icon theme first because a desktop entry
+        # may name either a theme icon ("firefox") or an absolute path to a
+        # PNG, and `set_from_icon_name` silently shows nothing for the latter.
+        if item.icon_name:
+            if self._set_themed_icon(image, item.icon_name):
+                return
+            image.set_from_icon_name("application-x-executable")
             return
         gfile = Gio.File.new_for_path(str(item.path))
         try:
@@ -586,7 +638,9 @@ class FenceWindow(Gtk.ApplicationWindow):
         else:
             try:
                 items = sort_items(
-                    resolve(self.fence.source), self.fence.sort, self.fence.reverse
+                    resolve(self.current_source()),
+                    self.fence.sort,
+                    self.fence.reverse,
                 )
             except UnknownSource as exc:
                 # Nobody installed the package this fence's kind comes from.
@@ -613,6 +667,18 @@ class FenceWindow(Gtk.ApplicationWindow):
             self._empty.set_label(
                 "Nothing is hidden" if hidden_mode else self._empty_base
             )
+        else:
+            # Below the root the header names the folder you are in, because
+            # "Documents" over the contents of Documents/invoices is a lie
+            # about where a new file would land.
+            self._title.set_label(
+                self._nav[-1].name or str(self._nav[-1]) if self._nav
+                else self.fence.title
+            )
+            self._title.set_tooltip_text(
+                str(self._nav[-1]) if self._nav else ""
+            )
+            self._up_btn.set_visible(bool(self._nav) and not self._collapsed)
         has_items = bool(items)
         self._scroller.set_visible(has_items and not self._collapsed)
         self._empty.set_visible(not has_items and not self._collapsed)
@@ -667,7 +733,7 @@ class FenceWindow(Gtk.ApplicationWindow):
 
     def _watch(self) -> None:
         """Monitor every root this fence reads from, debounced into one refresh."""
-        for root in self.fence.source.watch_roots():
+        for root in self.current_source().watch_roots():
             gfile = Gio.File.new_for_path(str(root))
             try:
                 mon = gfile.monitor_directory(
@@ -821,6 +887,95 @@ class FenceWindow(Gtk.ApplicationWindow):
     def viewing(self) -> bool:
         return self._stack.get_visible_child_name() == "viewer"
 
+    # ------------------------------------------------------------ navigating
+
+    def current_source(self) -> Source:
+        """What this panel is showing right now.
+
+        The fence's own source until you walk into a folder, then that folder.
+        Re-rooted as `directory` rather than keeping the original kind,
+        because walking into a subfolder of a saved search means "show me this
+        folder", not "re-run the search inside it" — the filters that selected
+        the folder have nothing to say about what is in it.
+        """
+        if not self._nav:
+            return self.fence.source
+        return replace(
+            self.fence.source,
+            kind="directory",
+            path=self._nav[-1],
+            roots=(),
+            paths=(),
+            # A query may carry depth > 1; a folder view is one level, the
+            # same as every other folder this panel shows.
+            depth=1,
+        )
+
+    def navigate_to(self, path: Path) -> None:
+        """Walk into a folder, in place.
+
+        Deliberately not a new tab. Following a subfolder is navigation, and
+        spawning a panel per folder turns a three-level walk into three
+        windows to find, move and close.
+
+        Nothing is sandboxed or copied: this is the real directory, and a
+        rename or a delete here is a rename or a delete on disk. The panel is
+        a view of the filesystem, not a staging area.
+        """
+        if not path.is_dir():
+            return
+        self._nav.append(path)
+        self._rewatch()
+        self.refresh()
+        self._scroll_to_top()
+
+    def navigate_up(self) -> bool:
+        """Back one level. False at the root, so a caller can fall through."""
+        if not self._nav:
+            return False
+        self._nav.pop()
+        self._rewatch()
+        self.refresh()
+        self._scroll_to_top()
+        return True
+
+    def navigate_home(self) -> bool:
+        """All the way back to the panel's own source."""
+        if not self._nav:
+            return False
+        self._nav.clear()
+        self._rewatch()
+        self.refresh()
+        self._scroll_to_top()
+        return True
+
+    @property
+    def navigated(self) -> bool:
+        """True while showing a folder walked into rather than the source."""
+        return bool(self._nav)
+
+    def _scroll_to_top(self) -> None:
+        """A new folder starts at its own top, not at the last one's offset.
+
+        Without this, walking into a folder from halfway down a long list
+        leaves you halfway down the new one — which reads as items missing.
+        """
+        adj = self._scroller.get_vadjustment()
+        if adj is not None:
+            adj.set_value(adj.get_lower())
+
+    def _rewatch(self) -> None:
+        """Point the file monitors at wherever the panel is now looking.
+
+        Without this, walking into a folder leaves inotify on the folder you
+        came from: a file created in the folder you are *looking at* would not
+        appear until something else forced a refresh.
+        """
+        for mon in self._monitors:
+            mon.cancel()
+        self._monitors.clear()
+        self._watch()
+
     # ------------------------------------------------- what a module may use
     #
     # The public surface a module's verbs are allowed to touch. Everything
@@ -834,9 +989,14 @@ class FenceWindow(Gtk.ApplicationWindow):
         folder behind it, so there is nowhere for "New file" to mean anything.
         Saying so is better than picking one of the paths and surprising
         somebody.
+
+        Reads `current_source`, so once you have walked into a folder new
+        files land *there*. Reading `fence.source` instead would create them
+        back at the group root — two levels up from the list you are looking
+        at — which is the kind of thing you only notice later.
         """
-        source = self.fence.source
-        if source.kind == "folder" and source.path is not None:
+        source = self.current_source()
+        if source.kind in ("folder", "directory") and source.path is not None:
             return Path(source.path).expanduser()
         return None
 
@@ -1052,6 +1212,14 @@ class FenceWindow(Gtk.ApplicationWindow):
                     self.restore_at(index)
                 return True
             return self._typeahead_key(keyval, ctrl)
+        # Back out of a folder before anything else claims the key. Alt+Left
+        # is the browser idiom and Backspace the file-manager one; both are
+        # muscle memory, and neither does anything else here.
+        alt = bool(state & Gdk.ModifierType.ALT_MASK)
+        if keyval == Gdk.KEY_BackSpace or (alt and keyval == Gdk.KEY_Left):
+            return self.navigate_up()
+        if alt and keyval == Gdk.KEY_Home:
+            return self.navigate_home()
         if keyval == Gdk.KEY_F2:
             self._rename_selected()
             return True
@@ -1068,6 +1236,11 @@ class FenceWindow(Gtk.ApplicationWindow):
             self._selection.select_all()
             return True
         if keyval == Gdk.KEY_Escape:
+            # Escape unwinds one step at a time. Dismissing a summoned panel
+            # from three folders deep would throw away the walk as well as
+            # the panel, and you cannot get either back.
+            if self.navigate_up():
+                return True
             return self._escape()
 
         return self._typeahead_key(keyval, ctrl)

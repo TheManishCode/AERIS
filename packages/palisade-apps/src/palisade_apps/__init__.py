@@ -53,20 +53,28 @@ def resolve_apps(src) -> list[Item]:
     return out
 
 
-def launch(app: catalogue.App) -> bool:
-    """Start an application, detached from the daemon.
+def activate(fence, item) -> bool:
+    """Start the application a row stands for.
 
-    `start_new_session` matters: without it every launched program is a child
-    of the Palisade daemon, and restarting the daemon would take your editor
-    with it.
+    Without this, clicking an application did nothing useful: core fell
+    through to its file handling, and `item.path` is a desktop entry id, not
+    a path — so the renderer was asked to show a file that does not exist.
+
+    `launch` being non-empty is the whole test. It is set only by
+    `resolve_apps`, and `Item.is_file_row` is false while it is set, so no
+    filesystem action can reach these rows either.
     """
-    argv = app.argv
-    if not argv:
+    if not item.launch:
         return False
     try:
-        subprocess.Popen(argv, start_new_session=True)
-    except OSError:
-        return False
+        subprocess.Popen(item.launch, start_new_session=True)
+    except OSError as exc:
+        fence.notify(f"Could not start {item.name}: {exc.strerror or exc}")
+        return True   # claimed and failed; falling through would open a viewer
+    # A picker exists for the two seconds you are choosing out of it. Leaving
+    # it up would keep the keyboard grab over the application that just
+    # started — you would get the window and not be able to type into it.
+    fence.dismiss_if_summoned()
     return True
 
 
@@ -74,4 +82,5 @@ MODULE = Module(
     id="apps",
     title="Installed applications",
     sources={"apps": resolve_apps},
+    activate=activate,
 )

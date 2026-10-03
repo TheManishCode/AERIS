@@ -64,6 +64,27 @@ def resolve_files(src) -> list[Item]:
     return unique
 
 
+def activate(fence, item) -> bool:
+    """Walk into a folder, in the panel you are already looking at.
+
+    This is the files module's opinion, not core's: a directory is a thing
+    you go *into*. Core owns the mechanism (`fence.navigate_to` re-roots the
+    panel and moves the file monitors); what a folder means is ours.
+
+    Previously a subfolder was handed to the desktop file manager, which
+    answered "show me what is in here" with a separate application window.
+
+    Returns False for everything else so the dock, the apps module, and
+    core's own file handling all still get their turn.
+    """
+    if not item.is_file_row or not item.is_dir:
+        return False
+    if not hasattr(fence, "navigate_to"):
+        return False  # older core; fall through to whatever it does today
+    fence.navigate_to(Path(item.path))
+    return True
+
+
 def open_file(path, on_close, notify=None):
     """A widget showing `path`, or None if this module will not show it.
 
@@ -73,10 +94,10 @@ def open_file(path, on_close, notify=None):
     `from .viewer import Viewer` would make a headless doctor fail on a
     machine with no Wayland socket.
 
-    A directory returns None on purpose. The fence shows one folder, and
-    following a subfolder is navigation, not preview; core hands it to the
-    file manager until the fence can navigate (see TODO.md). Every other kind
-    is shown here, including ones with no renderer — the viewer's description
+    A directory returns None on purpose: `activate` above has already walked
+    into it, and this path is only reached for a folder when something asks
+    to *view* one, which is not a thing. Every other kind is shown here,
+    including ones with no renderer — the viewer's description
     card (what it is, how big, and a button to open it properly) is a better
     answer than silently launching whatever claims `.bin`.
     """
@@ -121,6 +142,7 @@ MODULE = Module(
     title="Folders and files",
     sources={kind: resolve_files for kind in ("folder", "directory", "query", "paths")},
     open_file=open_file,
+    activate=activate,
     actions={
         "new-file": lambda fence: _new_entry(fence, "file"),
         "new-folder": lambda fence: _new_entry(fence, "folder"),

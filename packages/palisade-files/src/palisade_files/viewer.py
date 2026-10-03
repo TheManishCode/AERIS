@@ -25,6 +25,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
+from . import edit
 from . import markdown as md
 from . import preview, toolchains
 
@@ -72,6 +73,20 @@ class Viewer(Gtk.Box):
         self.kind: str = ""
         self._mode = "preview"     #: markdown only: "preview" or "source"
         self._proc: Gio.Subprocess | None = None
+        #: Editing state. `_buffer` is the live TextBuffer while editing, so
+        #: the text can be read back on save without walking the widget tree.
+        self._editing = False
+        self._buffer: Gtk.TextBuffer | None = None
+        #: mtime the open buffer was read at, for the changed-on-disk check.
+        self._read_mtime: float | None = None
+        #: Whether the whole file is in the buffer. A truncated read is never
+        #: editable — writing 256 KB over a 200 MB log is the single most
+        #: destructive thing this viewer could do.
+        self._complete = False
+        #: Escape while dirty asks once before discarding; this is the "asked"
+        #: flag. A layer-shell panel cannot host a modal dialog, so the
+        #: confirmation is a second keypress rather than a button.
+        self._discard_armed = False
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         header.add_css_class("viewer-header")
@@ -112,12 +127,21 @@ class Viewer(Gtk.Box):
         self.path = path
         self.kind = preview.classify(path)
         self._mode = "preview"
+        self._editing = False
+        self._buffer = None
+        self._read_mtime = None
+        self._discard_armed = False
         self._title.set_text(path.name)
         self._title.set_tooltip_text(str(path))
         self._render()
         return True
 
     def close(self) -> None:
+        # Unsaved work outranks the close. `stop_editing` asks once and
+        # allows it on the second attempt, so Escape-Escape still gets you
+        # out — it just cannot throw the edit away on the first press.
+        if self._editing and not self.stop_editing():
+            return
         self._stop_process()
         self._on_close()
 
@@ -144,6 +168,7 @@ class Viewer(Gtk.Box):
         except Exception as exc:  # noqa: BLE001 - a bad file must not kill the daemon
             child = self._describe(path, f"Could not show this file: {exc}")
         self._body.set_child(child)
+        self._add_edit_actions(path)
         self._add_common_actions(path)
 
     # --- renderers
@@ -169,18 +194,26 @@ class Viewer(Gtk.Box):
         return video
 
     def _build_markdown(self, path: Path) -> Gtk.Widget:
-        text = self._read_text(path)
+        text = self._load_text(path)
         if text is None:
             return self._describe(path, "This file is too large to preview")
 
-        toggle = Gtk.Button(label="Source" if self._mode == "preview" else "Preview")
-        toggle.add_css_class("viewer-action")
-        toggle.set_tooltip_text("Switch between the rendered document and its source  ·  Ctrl+E")
-        toggle.connect("clicked", lambda *_: self._toggle_markdown_mode())
-        self._actions.append(toggle)
+        # Editing a Markdown file means editing its source: the rendered tree
+        # is a view of the file, not the file, and there is nothing coherent
+        # to write back from it.
+        if not self._editing:
+            toggle = Gtk.Button(
+                label="Source" if self._mode == "preview" else "Preview"
+            )
+            toggle.add_css_class("viewer-action")
+            toggle.set_tooltip_text(
+                "Switch between the rendered document and its source  ·  Ctrl+E"
+            )
+            toggle.connect("clicked", lambda *_: self._toggle_markdown_mode())
+            self._actions.append(toggle)
 
-        if self._mode == "source":
-            return self._code_view(text)
+        if self._editing or self._mode == "source":
+            return self._code_view(text, editable=self._editing)
         return self._markdown_view(text)
 
     def _markdown_view(self, text: str) -> Gtk.Widget:
@@ -253,17 +286,31 @@ class Viewer(Gtk.Box):
             label.set_text(_strip_markup(markup))
         return label
 
-    def _code_view(self, text: str, *, compact: bool = False) -> Gtk.Widget:
-        """Monospaced, selectable, read-only.
+    def _code_view(
+        self, text: str, *, compact: bool = False, editable: bool = False
+    ) -> Gtk.Widget:
+        """Monospaced and selectable; editable only when asked.
 
         GtkSourceView would bring syntax highlighting, but it is not installed
         here and making it a hard dependency would mean no preview at all on a
         machine without it. The text is shown either way; see README.
         """
         view = Gtk.TextView()
-        view.set_editable(False)
-        view.set_cursor_visible(False)
+        view.set_editable(editable)
+        view.set_cursor_visible(editable)
         view.set_monospace(True)
+        if editable:
+            view.add_css_class("editing")
+            buf = view.get_buffer()
+            buf.set_text(text)
+            # Cleared here rather than before set_text: setting the initial
+            # text marks the buffer modified, and a file would open already
+            # claiming unsaved changes.
+            buf.set_modified(False)
+            buf.connect("modified-changed", lambda *_: self._sync_dirty())
+            self._buffer = buf
+            view.set_vexpand(True)
+            return view
         view.set_wrap_mode(Gtk.WrapMode.NONE if compact else Gtk.WrapMode.NONE)
         view.get_buffer().set_text(text)
         view.add_css_class("code-view")
@@ -273,7 +320,7 @@ class Viewer(Gtk.Box):
         return view
 
     def _build_text(self, path: Path) -> Gtk.Widget:
-        text = self._read_text(path)
+        text = self._load_text(path)
         if text is None:
             return self._describe(path, "This file is too large to preview")
         runner = toolchains.runner_for(path)
@@ -354,6 +401,113 @@ class Viewer(Gtk.Box):
 
     # --- shared actions
 
+    def _add_edit_actions(self, path: Path) -> None:
+        """Edit, or Save and Discard once editing.
+
+        Offered only for kinds whose on-screen text *is* the file, and only
+        when the whole file was read. A truncated read offers nothing, and
+        says why in the banner at the top of the text.
+        """
+        if not edit.can_edit(self.kind, self._complete):
+            return
+        if not self._editing:
+            btn = Gtk.Button(label="Edit")
+            btn.add_css_class("viewer-action")
+            btn.set_tooltip_text("Edit this file here  ·  Ctrl+E")
+            btn.connect("clicked", lambda *_: self.start_editing())
+            self._actions.append(btn)
+            return
+
+        self._save_btn = Gtk.Button(label="Save")
+        self._save_btn.add_css_class("viewer-action")
+        self._save_btn.add_css_class("viewer-save")
+        self._save_btn.set_tooltip_text("Write it back to disk  ·  Ctrl+S")
+        self._save_btn.connect("clicked", lambda *_: self.save_file())
+        self._actions.append(self._save_btn)
+
+        done = Gtk.Button(label="Done")
+        done.add_css_class("viewer-action")
+        done.set_tooltip_text("Stop editing  ·  Escape")
+        done.connect("clicked", lambda *_: self.stop_editing())
+        self._actions.append(done)
+        self._sync_dirty()
+
+    def _sync_dirty(self) -> None:
+        """Mark the Save button and the title while there are unsaved edits.
+
+        The title marker matters more than the button: a panel is small and
+        the header is where you are already looking.
+        """
+        dirty = self.dirty
+        btn = getattr(self, "_save_btn", None)
+        if btn is not None:
+            btn.set_label("Save •" if dirty else "Saved")
+            btn.set_sensitive(dirty)
+        if self.path is not None:
+            self._title.set_text(
+                f"{self.path.name} •" if dirty else self.path.name
+            )
+        if not dirty:
+            self._discard_armed = False
+
+    @property
+    def dirty(self) -> bool:
+        return (
+            self._editing
+            and self._buffer is not None
+            and self._buffer.get_modified()
+        )
+
+    def start_editing(self) -> None:
+        if not edit.can_edit(self.kind, self._complete) or self._editing:
+            return
+        self._editing = True
+        self._render()
+
+    def stop_editing(self) -> bool:
+        """Leave edit mode. False when it refused because of unsaved changes.
+
+        Refusing once and then allowing it is the whole mechanism: a
+        layer-shell panel cannot host a "save changes?" dialog, so the
+        confirmation is pressing the same key again.
+        """
+        if not self._editing:
+            return True
+        if self.dirty and not self._discard_armed:
+            self._discard_armed = True
+            self._notify(
+                f"{self.path.name if self.path else 'This file'} has unsaved "
+                f"changes. Ctrl+S to save, or press Escape again to discard."
+            )
+            return False
+        self._editing = False
+        self._buffer = None
+        self._discard_armed = False
+        self._render()
+        return True
+
+    def save_file(self) -> bool:
+        """Write the buffer back. False if it could not be written.
+
+        Everything that makes this safe — atomic replace, preserved
+        permissions, the changed-on-disk check — is in `edit.save`, where it
+        is tested without a display.
+        """
+        if self.path is None or self._buffer is None:
+            return False
+        start, end = self._buffer.get_bounds()
+        text = self._buffer.get_text(start, end, False)
+        try:
+            self._read_mtime = edit.save(
+                self.path, text, expect_mtime=self._read_mtime
+            )
+        except edit.EditError as exc:
+            self._notify(str(exc))
+            return False
+        self._buffer.set_modified(False)
+        self._sync_dirty()
+        return True
+
     def _add_common_actions(self, path: Path) -> None:
         out = Gtk.Button()
         out.add_css_class("viewer-action")
@@ -362,6 +516,28 @@ class Viewer(Gtk.Box):
         out.set_tooltip_text("Open in the default application  ·  Ctrl+O")
         out.connect("clicked", lambda *_: self.open_externally())
         self._actions.append(out)
+
+    def _load_text(self, path: Path) -> str | None:
+        """Read for display *and* record whether the whole file is here.
+
+        `_read_text` below is the display-only read and stays lossy. This one
+        also sets `_complete` and `_read_mtime`, which together decide whether
+        the Edit button appears and whether a later save is allowed to land.
+        """
+        try:
+            text, complete = edit.readable_text(path, max_bytes=MAX_TEXT_BYTES)
+            self._read_mtime = path.stat().st_mtime
+        except OSError:
+            self._complete = False
+            return None
+        self._complete = complete
+        if not complete:
+            size = path.stat().st_size
+            return (
+                f"# showing the first {_human(len(text.encode()))} of "
+                f"{_human(size)} — read-only\n\n{text}"
+            )
+        return text
 
     def _read_text(self, path: Path) -> str | None:
         """Decode a text file, or None when it is too big to lay out.
@@ -461,11 +637,30 @@ class Viewer(Gtk.Box):
     def handle_key(self, keyval: int, state: Gdk.ModifierType) -> bool:
         """Viewer shortcuts. True when the key was consumed."""
         ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        if ctrl and keyval in (Gdk.KEY_s, Gdk.KEY_S):
+            if self._editing:
+                self.save_file()
+                return True
+            return False
         if keyval == Gdk.KEY_Escape:
+            # Escape unwinds: out of editing first, then out of the file.
+            # Going straight to the list from a dirty buffer would discard
+            # work on a key people press reflexively.
+            if self._editing:
+                self.stop_editing()
+                return True
             self.close()
             return True
         if ctrl and keyval in (Gdk.KEY_e, Gdk.KEY_E):
-            self._toggle_markdown_mode()
+            # One key, read in context: start editing what can be edited,
+            # otherwise flip the Markdown preview. They never both apply —
+            # editing a Markdown file *is* its source view.
+            if self._editing:
+                self.stop_editing()
+            elif edit.can_edit(self.kind, self._complete):
+                self.start_editing()
+            else:
+                self._toggle_markdown_mode()
             return True
         if ctrl and keyval in (Gdk.KEY_r, Gdk.KEY_R):
             self.run_file()

@@ -21,6 +21,20 @@
  *   spacing    panel padding 10 · card inset 5
  *              list row 12 vertical · grid cell 6 (separate tokens)
  *   layers     0 background · 1 surface_container_low · 2 surface_container
+ *
+ * The desktop's layers are absolute colours because its panels are opaque.
+ * Ours are not: the shell is alpha(@m3_background, opacity) over the
+ * wallpaper, so its *effective* luminance moves with whatever is behind it.
+ * An opaque #1b1c1a card therefore reads as raised on a dark wallpaper and
+ * as recessed on a light one — measured, with the card at 27 and the shell
+ * at 27-33 on this machine.
+ *
+ * So raised surfaces here are relative, not absolute: alpha(@m3_on_surface,
+ * n) composites to "one step lighter than whatever is behind me", which is
+ * what a layer *means*. The alphas are tuned to land on the rice's own
+ * values over an opaque dark shell — 0.055 ≈ surface_container_low,
+ * 0.085 ≈ surface_container — so a docked panel on a dark wallpaper looks
+ * exactly as it did, and a panel on a bright one now looks right too.
  *              each step up is a raised surface, not a border
  *   states     hover = mix(layer, on_layer, 0.10)
  *              active = mix(layer, on_layer, 0.20)
@@ -133,6 +147,30 @@ window.palisade {
   padding-left: 8px;
 }
 
+/* The back button that appears once you have walked into a folder. Same
+ * shape as the collapse control so the header keeps one vocabulary, and
+ * mirrored to the leading edge because that is where "back" lives. */
+.fence-up {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  margin-right: 2px;
+  border-radius: 13px;
+  background: transparent;
+  border: none;
+  color: @m3_on_surface_variant;
+  transition: background 110ms ease-out, color 110ms ease-out;
+}
+
+.fence-up:hover {
+  background: alpha(@m3_on_surface, 0.105);
+  color: @m3_on_surface;
+}
+
+.fence-up:active {
+  background: alpha(@m3_on_surface, 0.165);
+}
+
 .fence-collapse {
   min-width: 26px;
   min-height: 26px;
@@ -145,12 +183,12 @@ window.palisade {
 }
 
 .fence-collapse:hover {
-  background: mix(@m3_surface_container_low, @m3_on_surface, 0.10);
+  background: alpha(@m3_on_surface, 0.105);
   color: @m3_on_surface;
 }
 
 .fence-collapse:active {
-  background: mix(@m3_surface_container_low, @m3_on_surface, 0.20);
+  background: alpha(@m3_on_surface, 0.165);
 }
 
 /* --- layer 1: the card ----------------------------------------------------
@@ -161,7 +199,7 @@ window.palisade {
 
 .fence-body,
 .fence-empty {
-  background: @m3_surface_container_low;
+  background: alpha(@m3_on_surface, 0.055);
   border-radius: 17px;
 }
 
@@ -219,7 +257,7 @@ listview > row .item {
 }
 
 .item:hover {
-  background: mix(@m3_surface_container_low, @m3_on_surface, 0.10);
+  background: alpha(@m3_on_surface, 0.105);
 }
 
 /* Selection state lives on the view's own cell node (gridview > child /
@@ -379,7 +417,7 @@ window.palisade:hover .fence-grip {
   min-height: 36px;
   padding: 0 12px;
   border-radius: 12px;
-  background: mix(@m3_surface_container_low, @m3_on_surface, 0.07);
+  background: alpha(@m3_on_surface, 0.085);
   color: @m3_on_surface;
   border: 1px solid transparent;
   transition: background 110ms ease-out, border-color 110ms ease-out;
@@ -387,7 +425,7 @@ window.palisade:hover .fence-grip {
 
 .picker-search:focus-within {
   border-color: @m3_primary;
-  background: mix(@m3_surface_container_low, @m3_on_surface, 0.10);
+  background: alpha(@m3_on_surface, 0.105);
 }
 
 /* The picker is read, not lived in, so it carries a solid surface rather than
@@ -412,7 +450,7 @@ window.palisade-picker .fence-root {
   margin: 0 0 8px 0;
   padding: 3px;
   border-radius: 999px;
-  background: @m3_surface_container_low;
+  background: alpha(@m3_on_surface, 0.055);
 }
 
 .mode-tab {
@@ -428,7 +466,7 @@ window.palisade-picker .fence-root {
 }
 
 .mode-tab:hover {
-  background: mix(@m3_surface_container_low, @m3_on_surface, 0.10);
+  background: alpha(@m3_on_surface, 0.105);
   color: @m3_on_surface;
 }
 
@@ -473,7 +511,7 @@ window.palisade-picker .fence-root {
 }
 
 .viewer-back:hover {
-  background: mix(@m3_surface_container_low, @m3_on_surface, 0.10);
+  background: alpha(@m3_on_surface, 0.105);
   color: @m3_on_surface;
 }
 
@@ -484,7 +522,7 @@ window.palisade-picker .fence-root {
   padding: 2px 12px;
   border: none;
   border-radius: 999px;
-  background: @m3_surface_container_low;
+  background: alpha(@m3_on_surface, 0.055);
   box-shadow: none;
   font-size: %FONT_SM_PT%pt;
   color: @m3_on_surface_variant;
@@ -492,8 +530,43 @@ window.palisade-picker .fence-root {
 }
 
 .viewer-action:hover {
-  background: mix(@m3_surface_container_low, @m3_on_surface, 0.10);
+  background: alpha(@m3_on_surface, 0.105);
   color: @m3_on_surface;
+}
+
+/* Save is the only control here that writes to disk, so it is the only one
+ * that takes the accent. Greyed once saved rather than hidden: a control that
+ * disappears when you are done with it makes you wonder whether it worked. */
+.viewer-save {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+  font-weight: 550;
+}
+
+.viewer-save:hover {
+  background: mix(@m3_secondary_container, @m3_on_secondary_container, 0.10);
+}
+
+.viewer-save:disabled {
+  background: alpha(@m3_on_surface, 0.055);
+  color: @m3_on_surface_variant;
+  font-weight: 450;
+}
+
+/* An editable buffer must not look like a read-only one. The caret and the
+ * surface are the whole signal; a border would fight the card it sits on. */
+.code-view.editing {
+  background: alpha(@m3_on_surface, 0.085);
+  caret-color: @m3_primary;
+}
+
+.code-view.editing text {
+  background: alpha(@m3_on_surface, 0.085);
+}
+
+.code-view.editing text selection {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
 }
 
 .viewer-icon-action {
@@ -521,7 +594,7 @@ window.palisade-picker .fence-root {
 }
 
 .viewer-body {
-  background: @m3_surface_container_low;
+  background: alpha(@m3_on_surface, 0.055);
   border-radius: 17px;
   padding: 5px;
 }
@@ -601,7 +674,7 @@ window.palisade-picker .fence-root {
 }
 
 .md-code {
-  background: @m3_surface_container;
+  background: alpha(@m3_on_surface, 0.085);
   border-radius: 12px;
   padding: 8px 10px;
   margin: 8px 0;
