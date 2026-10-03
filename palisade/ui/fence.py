@@ -76,6 +76,7 @@ class FenceWindow(Gtk.ApplicationWindow):
         # Two independent reasons a fence may be off screen; see _sync_visible.
         self._hidden = fence.hidden
         self._on_workspace = True
+        self._auto_dismissed_at = 0.0
 
         self.add_css_class("palisade")
         self.set_default_size(fence.width, fence.height)
@@ -931,7 +932,24 @@ class FenceWindow(Gtk.ApplicationWindow):
     def _on_active_changed(self, *_args) -> None:
         # Only ever closes; becoming active is how it got here.
         if not self.get_property("is-active") and self.get_visible():
+            self._auto_dismissed_at = time.monotonic()
             self.set_hidden(True)
+
+    #: A toggle arriving within this window of an automatic dismissal is read
+    #: as "close", not "open" — see `was_just_auto_dismissed`.
+    REOPEN_GUARD_S = 0.5
+
+    def was_just_auto_dismissed(self) -> bool:
+        """Did clicking away dismiss this fence a moment ago?
+
+        Clicking the bar's taskbar button moves focus off the fence, which
+        auto-dismisses it, and only then does the button's `hide` toggle run —
+        so a blind toggle sees a hidden fence and re-opens it. The button then
+        appears to only ever open the taskbar, never close it. Treating a
+        toggle this soon after an auto-dismiss as "stay closed" makes the
+        button a real toggle without the caller needing to know any of this.
+        """
+        return time.monotonic() - self._auto_dismissed_at < self.REOPEN_GUARD_S
 
     def _focus_for_picking(self) -> None:
         """Make a summoned fence usable without touching the mouse.

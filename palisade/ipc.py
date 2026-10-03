@@ -49,6 +49,10 @@ COMMANDS = {
     "hide":           {"args": {"id": "fence id", "value": "bool, omit to toggle"}, "returns": "new hidden state", "mutates": True},
     "lock":           {"args": {"id": "fence id", "value": "bool, omit to toggle"}, "returns": "new locked state", "mutates": True},
     "peek":           {"args": {"seconds": "float, default 4", "off": "bool"}, "returns": "raises every fence above windows, briefly", "mutates": True},
+    "groups":         {"args": {}, "returns": "the catalogue of groups a tab can show", "mutates": False},
+    "new":            {"args": {"group": "group id; omit to open the picker"}, "returns": "the new tab", "mutates": True},
+    "close":          {"args": {"id": "tab id, or \"all\""}, "returns": "what was closed", "mutates": True},
+    "tabs":           {"args": {}, "returns": "the tabs currently open", "mutates": False},
 }
 
 
@@ -232,7 +236,16 @@ class Server:
         if cmd == "hide":
             fid, win = self._fence(req)
             want = req.get("value")
-            target = (not win.hidden) if want is None else bool(want)
+            if want is not None:
+                target = bool(want)
+            elif win.hidden and win.was_just_auto_dismissed():
+                # Clicking the bar's taskbar button takes focus off the fence,
+                # which dismisses it before this toggle even arrives. Without
+                # this the toggle would re-open what the click just closed, and
+                # the button could only ever open the taskbar.
+                target = True
+            else:
+                target = not win.hidden
             win.set_hidden(target)
             # A fence declared `hidden` in the config is transient — it is
             # summoned and dismissed many times a session and always starts
@@ -254,6 +267,38 @@ class Server:
                 seconds=float(req.get("seconds", 4.0)),
                 off=bool(req.get("off", False)),
             )
+        if cmd == "groups":
+            return {"groups": [
+                {"id": g.id, "title": g.title, "source": g.source.kind,
+                 "icon": g.icon, "view": g.view, "sort": g.sort}
+                for g in c.config.groups
+            ]}
+        if cmd == "tabs":
+            open_tabs = {t["id"]: t.get("group") for t in c._tabs_state()}
+            return {"tabs": [
+                {"id": tid, "group": open_tabs.get(tid),
+                 "title": win.fence.title,
+                 "x": win.x, "y": win.y,
+                 "width": win.width, "height": win.height,
+                 "layer": win.layer_name}
+                for tid, win in c.windows.items()
+            ]}
+        if cmd == "new":
+            group = req.get("group")
+            if not group:
+                return c.open_picker()
+            try:
+                return c.spawn_tab(str(group))
+            except KeyError:
+                raise NotFound(f"no group with id {group!r}") from None
+        if cmd == "close":
+            tab_id = str(req["id"])
+            if tab_id == "all":
+                return c.close_all_tabs()
+            try:
+                return c.close_tab(tab_id)
+            except KeyError:
+                raise NotFound(f"no tab with id {tab_id!r}") from None
         raise KeyError(cmd)
 
     def stop(self) -> None:
