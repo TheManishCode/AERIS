@@ -87,9 +87,35 @@ class ReservedStripTests(unittest.TestCase):
         flow = Flow(bar=FakeWindow(w=420, dock="right", hidden=True))
         self.assertEqual(flow.work_area(), (0, 0, 1920, 1080))
 
-    def test_two_docks_on_one_edge_reserve_once_not_twice(self):
+    def test_two_docks_on_one_edge_stack(self):
+        """Exclusive zones stack: the compositor lays each layer surface out
+        in the area the previous one left, so the second dock sits beside the
+        first rather than on top of it. 1920 - 420 - 300.
+
+        This test previously asserted 1500 — the max, not the sum — which is
+        what `reserved_strips` did and what made panels reflow into the column
+        the second dock was already occupying."""
         flow = Flow(
             a=FakeWindow(w=420, dock="right"), b=FakeWindow(w=300, dock="right")
+        )
+        self.assertEqual(flow.work_area(), (0, 0, 1200, 1080))
+
+    def test_docks_on_different_edges_do_not_add_to_each_other(self):
+        """Stacking is per edge. A left dock and a right dock each take their
+        own side; summing them into one number would shrink the work area by
+        both on both axes."""
+        flow = Flow(
+            left=FakeWindow(w=420, dock="left"),
+            right=FakeWindow(w=300, dock="right"),
+            top=FakeWindow(h=48, dock="top"),
+        )
+        self.assertEqual(flow.work_area(), (420, 48, 1200, 1032))
+
+    def test_a_hidden_dock_does_not_contribute_to_the_stack(self):
+        """The sum must still skip what is not on screen."""
+        flow = Flow(
+            a=FakeWindow(w=420, dock="right"),
+            b=FakeWindow(w=300, dock="right", hidden=True),
         )
         self.assertEqual(flow.work_area(), (0, 0, 1500, 1080))
 

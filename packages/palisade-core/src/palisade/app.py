@@ -304,7 +304,13 @@ class Controller:
             if not edge or win.hidden:
                 continue
             thickness = win.width if edge in ("left", "right") else win.height
-            strips[edge] = max(strips[edge], thickness)
+            # Exclusive zones *stack*. The compositor lays each layer surface
+            # out in the area the previous one left, so two 420px docks on the
+            # right edge sit beside each other and occupy 840px between them.
+            # Taking the max here under-reported that by exactly the width of
+            # the narrower one, and the reflow then pushed panels into the
+            # column the second dock was already in.
+            strips[edge] += thickness
         return strips
 
     def work_area(self) -> tuple[int, int, int, int]:
