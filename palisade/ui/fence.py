@@ -10,6 +10,7 @@ CLI, or by the in-app "Move to fence" picker instead. See DECISIONS.md.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import gi
 
@@ -64,6 +65,9 @@ class FenceWindow(Gtk.ApplicationWindow):
         # Item for a window carries the window address in `path` and trashing
         # or renaming that would be meaningless at best.
         self._is_windows = fence.source.kind == "windows"
+        #: Taskbar only: "windows" lists minimized apps, "hidden" lists panels
+        #: you have hidden. One list, two things you might want back.
+        self._mode = "windows"
         # Live geometry. `fence` is the frozen config/state snapshot this
         # window started from; these track what the surface is actually doing
         # as it is dragged, and are what gets persisted on gesture end.
@@ -108,13 +112,16 @@ class FenceWindow(Gtk.ApplicationWindow):
             "top": LayerShell.Layer.TOP,
             "overlay": LayerShell.Layer.OVERLAY,
         }[f.layer or s.layer])
-        LayerShell.set_anchor(self, LayerShell.Edge.TOP, True)
-        LayerShell.set_anchor(self, LayerShell.Edge.LEFT, True)
-        LayerShell.set_margin(self, LayerShell.Edge.TOP, f.y)
-        LayerShell.set_margin(self, LayerShell.Edge.LEFT, f.x)
-        # -1: never reserve space. A fence is desktop furniture; it must not
-        # push tiled windows around the way a bar does.
-        LayerShell.set_exclusive_zone(self, -1)
+        if f.dock:
+            self._apply_dock()
+        else:
+            LayerShell.set_anchor(self, LayerShell.Edge.TOP, True)
+            LayerShell.set_anchor(self, LayerShell.Edge.LEFT, True)
+            LayerShell.set_margin(self, LayerShell.Edge.TOP, f.y)
+            LayerShell.set_margin(self, LayerShell.Edge.LEFT, f.x)
+            # -1: never reserve space. A floating fence is desktop furniture;
+            # it must not push tiled windows around the way a bar does.
+            LayerShell.set_exclusive_zone(self, -1)
         # A fence that lives on screen must not hold the keyboard — it is
         # furniture, inert until clicked. A *summoned* one is the opposite: it
         # exists for the two seconds you are picking something, so it takes the
@@ -135,6 +142,31 @@ class FenceWindow(Gtk.ApplicationWindow):
                 if mon.get_connector() == f.monitor:
                     LayerShell.set_monitor(self, mon)
                     break
+
+    def _apply_dock(self) -> None:
+        """Span a screen edge and reserve the space, so windows are pushed.
+
+        A positive exclusive zone is what makes the compositor shrink the
+        tiling area — the same mechanism a bar uses. Without it the panel would
+        simply cover whatever is underneath, which is the one thing a taskbar
+        must not do: you would be picking a window out of a list that is
+        hiding the windows.
+
+        The panel spans the two edges perpendicular to the one it is docked
+        against, so it stays a full-height column (or full-width strip)
+        however the rest of the screen is split up.
+        """
+        edge = self.fence.dock
+        E = LayerShell.Edge
+        span = (E.TOP, E.BOTTOM) if edge in ("left", "right") else (E.LEFT, E.RIGHT)
+        side = {"left": E.LEFT, "right": E.RIGHT, "top": E.TOP, "bottom": E.BOTTOM}[edge]
+
+        for anchor in (E.TOP, E.BOTTOM, E.LEFT, E.RIGHT):
+            LayerShell.set_anchor(self, anchor, anchor in span or anchor is side)
+            LayerShell.set_margin(self, anchor, 0)
+
+        thickness = self.width if edge in ("left", "right") else self.height
+        LayerShell.set_exclusive_zone(self, thickness)
 
     def _keyboard_mode(self):
         """Always ON_DEMAND — never EXCLUSIVE, even for a picker.
@@ -193,6 +225,22 @@ class FenceWindow(Gtk.ApplicationWindow):
         spacer = Gtk.Box()
         spacer.set_hexpand(True)
         header.append(spacer)
+
+        # Only the taskbar gets the mode switch. Hiding a panel used to be a
+        # one-way door — the way back was to remember its id and type
+        # `palisade hide <id> off`, which nobody is going to do. The taskbar is
+        # already the place you go to get something back, so hidden panels
+        # belong in the same list, behind a switch.
+        if self._is_windows:
+            self._mode_btn = Gtk.Button()
+            self._mode_btn.add_css_class("fence-collapse")
+            self._mode_btn.add_css_class("fence-mode")
+            self._mode_btn.set_child(
+                Gtk.Image.new_from_icon_name("view-reveal-symbolic")
+            )
+            self._mode_btn.connect("clicked", lambda *_: self._toggle_mode())
+            header.append(self._mode_btn)
+            self._sync_mode_button()
 
         self._collapse_btn = Gtk.Button()
         self._collapse_btn.add_css_class("fence-collapse")
@@ -386,6 +434,18 @@ class FenceWindow(Gtk.ApplicationWindow):
             )
             if list_item._sub.get_visible():
                 list_item._sub.set_text(w.wclass)
+        elif item.fence:
+            # A hidden panel is reached exactly like a minimized window, so it
+            # advertises the same shortcut rather than looking inert.
+            pos = list_item.get_position()
+            list_item._key.set_text(str(pos + 1) if pos < 9 else "")
+            list_item._key.set_visible(pos < 9)
+            list_item._label.set_tooltip_text(
+                f"hidden panel\nclick or press {pos + 1} to bring it back"
+                if pos < 9 else "hidden panel\nclick to bring it back"
+            )
+            if list_item._sub.get_visible():
+                list_item._sub.set_text("hidden")
         else:
             # Rows are recycled between a windows fence and a file fence only
             # across a reload, but a stale badge would outlive the item it
@@ -428,6 +488,9 @@ class FenceWindow(Gtk.ApplicationWindow):
         if item.window is not None:
             self._apply_window_icon(image, item.window.wclass)
             return
+        if item.fence:
+            image.set_from_icon_name("window-new-symbolic")
+            return
         gfile = Gio.File.new_for_path(str(item.path))
         try:
             info = gfile.query_info(
@@ -454,18 +517,56 @@ class FenceWindow(Gtk.ApplicationWindow):
     # -------------------------------------------------------------- content
 
     def refresh(self) -> None:
-        items = sort_items(
-            resolve(self.fence.source), self.fence.sort, self.fence.reverse
-        )
+        if self._mode == "hidden":
+            items = self._hidden_items()
+        else:
+            items = sort_items(
+                resolve(self.fence.source), self.fence.sort, self.fence.reverse
+            )
         self._store.remove_all()
         for item in items:
             self._store.append(ItemObject(item))
         self._count.set_text(str(len(items)))
         has_items = bool(items)
+        if self._mode == "hidden":
+            self._empty.set_label("Nothing is hidden")
         self._scroller.set_visible(has_items and not self._collapsed)
         self._empty.set_visible(not has_items and not self._collapsed)
         # A refresh that empties the fence would otherwise shrink the surface.
         self._apply_size()
+
+    def _hidden_items(self) -> list[Item]:
+        """Hidden panels as rows. `path` holds a fence id, not a real path.
+
+        `fence` being set is what keeps these out of every filesystem action —
+        see `Item.is_file_row`.
+        """
+        return [
+            Item(path=Path(fid), name=title, is_dir=False, size=0,
+                 mtime=0.0, fence=fid)
+            for fid, title in self.controller.hidden_fences()
+        ]
+
+    def _toggle_mode(self) -> None:
+        self._mode = "hidden" if self._mode == "windows" else "windows"
+        self._sync_mode_button()
+        self.refresh()
+
+    def _sync_mode_button(self) -> None:
+        """Say what the button switches *to*, not what is showing.
+
+        A toggle labelled with the current state reads as a status light and
+        gets pressed by mistake; labelled with the destination it reads as a
+        verb.
+        """
+        hidden_now = self._mode == "hidden"
+        self._title.set_text("Hidden panels" if hidden_now else self.fence.title)
+        self._mode_btn.set_child(Gtk.Image.new_from_icon_name(
+            "view-restore-symbolic" if hidden_now else "view-reveal-symbolic"
+        ))
+        self._mode_btn.set_tooltip_text(
+            "Show minimized windows" if hidden_now else "Show hidden panels"
+        )
 
     def _watch(self) -> None:
         """Monitor every root this fence reads from, debounced into one refresh."""
@@ -542,7 +643,7 @@ class FenceWindow(Gtk.ApplicationWindow):
 
     def _selected_files(self) -> list[Item]:
         """Selection with window rows removed — the input to any file action."""
-        return [i for i in self._selected_items() if i.window is None]
+        return [i for i in self._selected_items() if i.is_file_row]
 
     def _on_activate(self, _view, position: int) -> None:
         obj = self._store.get_item(position)
@@ -550,6 +651,10 @@ class FenceWindow(Gtk.ApplicationWindow):
             self._launch(obj.item)
 
     def _launch(self, item: Item) -> None:
+        if item.fence:
+            self.controller.unhide(item.fence)
+            self._dismiss_if_summoned()
+            return
         if item.window is not None:
             self._restore(item.window)
             return
@@ -573,12 +678,16 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._dismiss_if_summoned()
 
     def _restore_at(self, index: int) -> None:
-        """Restore the row at `index` — the 1-9 shortcuts land here."""
+        """Act on the row at `index` — one click and the 1-9 shortcuts.
+
+        Delegates to `_launch`, which already knows the difference between a
+        minimized window and a hidden panel, so the taskbar's two modes cannot
+        drift apart.
+        """
         obj = self._store.get_item(index)
-        if obj is None or obj.item.window is None:
+        if obj is None or obj.item.is_file_row:
             return
-        self._restore(obj.item.window)
-        self._dismiss_if_summoned()
+        self._launch(obj.item)
 
     def _dismiss_if_summoned(self) -> None:
         """A picker goes away once you have chosen out of it.
@@ -921,6 +1030,10 @@ class FenceWindow(Gtk.ApplicationWindow):
 
     def move_to(self, x: int, y: int) -> None:
         """Reposition the surface. Safe to call every frame during a drag."""
+        # A docked panel belongs to its edge; its position is the compositor's
+        # to decide, not ours.
+        if self.fence.dock:
+            return
         if (x, y) == (self.x, self.y):
             return
         self.x, self.y = int(x), int(y)
@@ -932,6 +1045,12 @@ class FenceWindow(Gtk.ApplicationWindow):
             return
         self.width, self.height = int(width), int(height)
         self._apply_size()
+        # The reserved zone is the panel's thickness, so resizing a docked
+        # panel has to re-reserve or the windows beside it keep the old gap.
+        if self.fence.dock:
+            thickness = (self.width if self.fence.dock in ("left", "right")
+                         else self.height)
+            LayerShell.set_exclusive_zone(self, thickness)
 
     def set_layer_name(self, layer: str) -> None:
         """Move the fence between compositor layers while it is mapped.

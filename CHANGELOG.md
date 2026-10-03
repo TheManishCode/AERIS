@@ -1,5 +1,65 @@
 # Changelog
 
+## 2026-10-03 — Taskbar takes its own column; hidden panels are reachable
+
+Role: Senior Product Designer + Frontend Engineer + QA Engineer
+Status: Added | Changed
+
+Reason:
+Three things asked for together. The taskbar floated over the windows it was
+meant to let you pick between. A tab opened behind whatever was already on
+screen, so the keybind that created it left you hunting for it. And hiding a
+panel was a one-way door — the only route back was to remember its id and type
+`palisade hide <id> off`, which nobody is going to do.
+
+Changes:
+- `dock = "left"|"right"|"top"|"bottom"` on a fence or group. A docked panel
+  spans that edge and sets a *positive* exclusive zone, so the compositor
+  shrinks the tiling area and every window is pushed aside — the mechanism a
+  bar uses, rather than covering what is underneath. It spans the two
+  perpendicular edges, so it stays a full column however the screen is split.
+  The minimized taskbar now docks right at 420px.
+- A docked panel ignores `x`/`y` and refuses `move_to`; it belongs to its edge.
+  `resize_to` re-reserves, or the gap beside it would keep the old width.
+- `NEW_TAB_LAYER`: a freshly opened tab lands on `overlay`, not the desktop
+  layer. It is something you just asked for. Its own menu still sends it to
+  the desktop.
+- The taskbar header gained a mode switch: minimized windows, or hidden
+  panels. Clicking a hidden row brings that panel back. Same 1-9 shortcuts and
+  single-click idiom as a window row, so the two modes cannot drift apart.
+- `Item.fence` marks a row that stands for a hidden panel, and `Item.is_file_row`
+  is now the single gate every filesystem action passes. A taskbar row can
+  stand for three different things and only one of them may meet `trash`.
+- `palisade hidden` and `palisade unhide <id>`, both in the `describe` catalog.
+
+Verification:
+- 80 tests (was 69). `tests/test_dock.py` is new (11). Confirmed it catches
+  both regressions it is written for — `to_fence` dropping `dock`, and
+  `is_file_row` forgetting the hidden-panel kind — by reintroducing each and
+  watching 3 tests fail, then restoring both files.
+- Live on Hyprland 0.56.2: opening the taskbar moved the monitor's reserved
+  area from `[0,45,0,0]` to `[0,45,420,0]`, the panel mapped at `1500,45
+  420x1035` — a full-height column — and Claude was pushed from 1908px to
+  1488px wide. Closing it released the reservation and Claude returned to
+  1908px.
+- A new tab reports `layer=overlay`.
+- Hidden flow driven with real clicks: hid a tab, opened the taskbar, clicked
+  the header switch (rows went from `[]` to `['Downloads']`), clicked the row
+  — the panel came back, the taskbar closed itself, and the reserved column
+  was released.
+- `unhide` on an unknown id is a clean `no fence with id`. Daemon log clean.
+
+Removed/Reverted:
+- Nothing.
+
+Result:
+The taskbar takes a column instead of covering the windows it lists, tabs open
+where you can see them, and hiding something is no longer a one-way door.
+
+Known Issues:
+- `dock` is per-fence, so two panels docked to the same edge each reserve their
+  own strip and stack outward. That is consistent, but nothing warns you.
+
 ## 2026-10-03 — The group picker stopped killing the mouse
 
 Role: Frontend Engineer + QA

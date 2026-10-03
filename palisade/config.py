@@ -21,6 +21,17 @@ CONFIG_PATH = CONFIG_DIR / "palisade.toml"
 
 LAYERS = ("background", "bottom", "top", "overlay")
 SOURCE_KINDS = ("directory", "paths", "query", "windows")
+DOCK_EDGES = ("left", "right", "top", "bottom")
+
+
+def _dock(raw, where: str) -> str:
+    """Validate a dock edge. Empty means float at x/y, which is the default."""
+    value = str(raw or "").strip().lower()
+    if value and value not in DOCK_EDGES:
+        raise ConfigError(
+            f"{where}: dock must be one of {', '.join(DOCK_EDGES)} (got {raw!r})"
+        )
+    return value
 VIEWS = ("icons", "list")
 SORTS = ("name", "mtime", "size", "kind", "manual")
 
@@ -171,6 +182,14 @@ class Fence:
     #: is always False and every picker behaviour silently stopped arming.
     picker: bool = False
 
+    #: Dock against a screen edge instead of floating at x/y: "left", "right",
+    #: "top", "bottom", or "" to float. A docked panel spans that edge and
+    #: *reserves* its space, so the compositor shrinks the tiling area and
+    #: every window is pushed aside — the same mechanism a bar uses. That is
+    #: the difference between a panel that covers your windows and one that
+    #: takes its own column, which is what a taskbar wants to be.
+    dock: str = ""
+
     @staticmethod
     def parse(raw: dict, index: int, seen: set[str]) -> "Fence":
         where = f"fence[{index}]"
@@ -227,6 +246,7 @@ class Fence:
             hidden=bool(raw.get("hidden", False)),
             picker=bool(raw.get("picker", False)),
             locked=bool(raw.get("locked", False)),
+            dock=_dock(raw.get("dock", ""), where),
         )
 
 
@@ -259,6 +279,9 @@ class Group:
     layer: str = ""
     #: Tabs spawned from this group behave as pickers. See Fence.picker.
     picker: bool = False
+
+    #: Dock a tab of this group against a screen edge. See Fence.dock.
+    dock: str = ""
 
     @staticmethod
     def parse(raw: dict, index: int, seen: set[str]) -> "Group":
@@ -300,6 +323,7 @@ class Group:
             opacity=opacity,
             layer=layer,
             picker=bool(raw.get("picker", False)),
+            dock=_dock(raw.get("dock", ""), where),
         )
 
     def to_fence(self, tab_id: str, **over) -> "Fence":
@@ -309,7 +333,7 @@ class Group:
             layer=self.layer, width=self.width, height=self.height,
             icon_size=self.icon_size, view=self.view, sort=self.sort,
             reverse=self.reverse, tint=self.tint, opacity=self.opacity,
-            picker=self.picker,
+            picker=self.picker, dock=self.dock,
         )
         fields.update({k: v for k, v in over.items() if v is not None})
         return Fence(**fields)

@@ -45,6 +45,13 @@ CASCADE_STEP = 36
 #: Cap on those steps, so a crowded desktop stacks rather than hangs.
 MAX_CASCADE = 24
 
+#: Layer a freshly opened tab lands on. A tab is something you just asked for,
+#: so it belongs in front of whatever is open — having to hunt for it behind a
+#: maximised window, or raise it by hand every time, makes the keybind useless.
+#: Send it to the desktop from its own menu when you want it to stay there.
+NEW_TAB_LAYER = "overlay"
+
+
 
 def default_collection_title(paths) -> str:
     """Name a collection after what it holds, not how many things it holds.
@@ -360,6 +367,8 @@ class Controller:
                     over.get("height") or group.height)
             over["x"], over["y"] = self._cascade_origin(size)
 
+        if not over.get("layer") and not group.layer:
+            over["layer"] = NEW_TAB_LAYER
         fence = group.to_fence(tab_id, **over)
         win = FenceWindow(self.app, fence, self.config.settings, self)
         self.windows[tab_id] = win
@@ -389,6 +398,7 @@ class Controller:
             over["x"], over["y"] = self._cascade_origin(size)
 
         fields = {k: v for k, v in over.items() if v is not None}
+        fields.setdefault("layer", NEW_TAB_LAYER)
         fence = Fence(id=tab_id, title=title, source=source, **fields)
         win = FenceWindow(self.app, fence, self.config.settings, self)
         self.windows[tab_id] = win
@@ -515,6 +525,27 @@ class Controller:
             return {"group": group_id, "open": False, "closed": []}
         spawned = self.spawn_tab(group_id)
         return {"group": group_id, "open": True, "id": spawned["id"]}
+
+    def hidden_fences(self) -> list[tuple[str, str]]:
+        """Every panel currently hidden, as (id, title).
+
+        Hiding used to be a one-way door: the only way back was to remember the
+        id and type `palisade hide <id> off`, which is not a thing anyone will
+        do. The taskbar lists these so they can be brought back by clicking.
+        """
+        return sorted(
+            ((fid, win.fence.title) for fid, win in self.windows.items()
+             if win.hidden),
+            key=lambda pair: pair[1].lower(),
+        )
+
+    def unhide(self, fence_id: str) -> dict:
+        win = self.windows.get(fence_id)
+        if win is None:
+            raise KeyError(fence_id)
+        win.set_hidden(False)
+        self.persist_fence(fence_id, hidden=False)
+        return {"id": fence_id, "hidden": False}
 
     def is_tab(self, fence_id: str) -> bool:
         """True for a runtime tab, false for a fence placed in the config."""

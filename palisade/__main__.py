@@ -249,6 +249,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("groups", help="list the groups a tab can show")
     sub.add_parser("tabs", help="list the tabs currently open")
+    sub.add_parser("hidden", help="list panels you have hidden")
+    uh = sub.add_parser("unhide", help="bring a hidden panel back")
+    uh.add_argument("id")
 
     nw = sub.add_parser(
         "new", help="open a new tab: a group id, a folder path, "
@@ -314,6 +317,8 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "peek":
         return _client(
             {"cmd": "peek", "seconds": args.seconds, "off": args.off}, args.json)
+    if cmd == "unhide":
+        return _client({"cmd": "unhide", "id": args.id}, args.json)
     if cmd in ("hide", "lock"):
         payload = {"cmd": cmd, "id": args.id}
         if args.value:

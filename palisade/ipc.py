@@ -54,6 +54,8 @@ COMMANDS = {
     "collect":        {"args": {"paths": "list of paths", "title": "optional tab title"}, "returns": "a new tab holding exactly those paths", "mutates": True},
     "close":          {"args": {"id": "tab id, or \"all\""}, "returns": "what was closed", "mutates": True},
     "tabs":           {"args": {}, "returns": "the tabs currently open", "mutates": False},
+    "hidden":         {"args": {}, "returns": "panels currently hidden, as id + title", "mutates": False},
+    "unhide":         {"args": {"id": "fence id"}, "returns": "brings a hidden panel back", "mutates": True},
     "toggle":         {"args": {"group": "group id"}, "returns": "opens that group as a tab, or closes it if already open", "mutates": True},
 }
 
@@ -272,6 +274,17 @@ class Server:
                 return c.toggle_group(group)
             except KeyError:
                 raise NotFound(f"no group with id {group!r}")
+        if cmd == "hidden":
+            return {"hidden": [
+                {"id": fid, "title": title}
+                for fid, title in c.hidden_fences()
+            ]}
+        if cmd == "unhide":
+            fid = req["id"]
+            try:
+                return c.unhide(str(fid))
+            except KeyError:
+                raise NotFound(f"no fence with id {fid!r}") from None
         if cmd == "tabs":
             open_tabs = {t["id"]: t.get("group") for t in c._tabs_state()}
             return {"tabs": [

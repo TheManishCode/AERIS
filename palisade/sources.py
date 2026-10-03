@@ -45,6 +45,20 @@ class Item:
     #: rename, trash, reveal) may run without checking it first.
     window: Window | None = None
 
+    #: Set only for rows standing in for a hidden fence, in the taskbar's
+    #: "Hidden" mode. Like `window`, its presence means this row is not a file:
+    #: `path` holds a fence id, and trashing or renaming that is meaningless.
+    fence: str = ""
+
+    @property
+    def is_file_row(self) -> bool:
+        """True only for rows that really are a path on disk.
+
+        Both non-file kinds are checked in one place so adding a third cannot
+        quietly inherit the filesystem actions.
+        """
+        return self.window is None and not self.fence
+
     @property
     def ext(self) -> str:
         return self.path.suffix.lower().lstrip(".")

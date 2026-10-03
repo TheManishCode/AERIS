@@ -96,6 +96,11 @@ id = "minimized"
 title = "Minimized"
 icon = "view-restore"
 layer = "overlay"       # a taskbar you cannot see is not a taskbar
+# Dock against the right edge and reserve the column, so opening the taskbar
+# pushes your tiled windows aside instead of covering them. Picking a window
+# out of a list that is hiding those windows is the one thing a taskbar must
+# not do. `width` below is how wide that column is.
+dock = "right"
 view = "list"
 sort = "mtime"          # most recently minimized first
 # Behave as a picker: take the keyboard while open, preselect the first

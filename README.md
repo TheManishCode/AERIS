@@ -109,6 +109,19 @@ meaning anything once two such tabs are open.
 > Drag-and-drop from the file manager is **not** supported, and cannot be: a
 > layer surface never receives the drop. See [Known limits](#known-limits).
 
+### Docking a panel
+
+`dock = "left" | "right" | "top" | "bottom"` spans that screen edge and
+**reserves** the space, so the compositor shrinks the tiling area and your
+windows are pushed aside rather than covered. The same mechanism a bar uses.
+
+The minimized taskbar is docked right by default, because picking a window out
+of a list that is covering those windows is the one thing a taskbar must not
+do. `width` sets how wide the column is; it holds that column however the rest
+of the screen is split.
+
+A docked panel ignores `x`/`y` and cannot be dragged — it belongs to its edge.
+
 ### Want something always on screen?
 
 A `[[fence]]` is a group that is placed in the config rather than opened from the
@@ -186,7 +199,8 @@ workspaces = [3, 4]     # only visible on Hyprland workspaces 3 and 4
 source = { type = "directory", path = "~/scratch" }
 ```
 
-Neither reserves space, so they will not push your tiled windows around.
+Neither reserves space, so they will not push your tiled windows around —
+unless you give it a `dock`, which is exactly what that option is for.
 
 Validate without touching the daemon: `palisade check`.
 
@@ -278,6 +292,15 @@ Right-click a fence header for the rest:
 | **Collapse** | fold it down to its title strip |
 | **Hide this fence** | remove it from the screen entirely |
 | **Close tab** | tabs only — a configured fence cannot be closed this way |
+
+A tab opens **above your windows**, because you just asked for it and hunting
+for it behind a maximised window defeats the keybind. Send it to the desktop
+from the same menu when you want it to stay there.
+
+Hiding a panel used to be a one-way door — the only way back was to remember
+its id. The taskbar now has a switch in its header: flip it and the list shows
+your hidden panels instead of minimized windows, and clicking one brings it
+back. From a script: `palisade hidden` and `palisade unhide <id>`.
 
 All of it is scriptable, so it binds to keys too:
 
