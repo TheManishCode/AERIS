@@ -148,13 +148,25 @@ scanning its dependency tree.
 
 ---
 
-## 6. Fences never reserve space
+## 6. A fence reserves space only when it is docked
 
-**Decision.** `exclusive_zone = -1` on every fence surface.
+**Decision.** `exclusive_zone = -1` on a floating fence. A fence with
+`dock = "left" | "right" | "top" | "bottom"` sets a *positive* zone equal to
+its thickness.
 
-**Why.** A fence is desktop furniture, not a bar. The default layer-shell
-behaviour would reserve screen area and push tiled windows around, which on a
-tiling compositor is actively hostile. `-1` opts out entirely.
+**Why.** A floating fence is desktop furniture, not a bar. The default
+layer-shell behaviour would reserve screen area and push tiled windows around,
+which on a tiling compositor is actively hostile. `-1` opts out entirely.
+
+A dock is the opposite thing and wants the opposite behaviour: it is a bar,
+it occupies an edge, and a bar your windows render underneath is a bar you
+cannot use. The positive zone is what makes the compositor shrink the tiling
+area around it.
+
+This file previously said "never", before docking existed. The distinction is
+the whole reason `dock` is a separate key rather than a position — a panel
+dragged to the edge of the screen is still furniture; one that declares an
+edge is a bar.
 
 ---
 
