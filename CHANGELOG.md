@@ -1,5 +1,82 @@
 # Changelog
 
+## 2026-10-03 — Rebuilt on the desktop's own design system
+
+Role: Product Designer + Frontend Engineer
+Status: Changed
+
+Reason:
+Reported: "still not clean … the current one had no padding and clean
+bordering … study what is there already and build from that".
+
+Investigated:
+Read the desktop's design system rather than guessing at it —
+`~/.config/quickshell/ii/modules/common/Appearance.qml` and the panels under
+`modules/ii/`, which are where every other surface on this screen gets its
+measurements. What came back:
+
+- rounding scale: verysmall 8, small 12, normal 17, large 23, window 18
+- panel padding 10 (`sidebarPadding`), content card inset 5, row 12 vertical
+- a **layer model**: 0 background, 1 surface_container_low, 2 surface_container
+  — each step is a raised surface, not a border
+- hover `mix(layer, on_layer, 0.10)`, active `0.20`
+- panel border `mix(outline_variant, layer0, 0.4)` — muted, not accented
+- scrollbar 4px visible, fully rounded, `on_surface_variant`
+- type 450 body / 550 title
+
+The layer model is what was actually missing, and it is why the panel read as
+flat however the paddings were tuned: content sat directly on the shell, so
+there was only ever one surface. Padding cannot separate two things that are
+the same colour.
+
+Changed:
+- The list now sits on a raised card (`surface_container_low`, radius 17,
+  5px inset) inside the shell. The shell's default tint drops to
+  `@m3_background` — layer 0 — so the card is above it rather than below;
+  tinted with `surface_container` the shell was sitting on top of its own
+  content.
+- The shell owns a single 10px padding, so every child is inset by the same
+  amount. Each one used to pad itself by a different number.
+- Border is `mix(outline_variant, background, 0.4)`, replacing the
+  primary-tinted hairline added earlier today. That was drawn from Hyprland's
+  *window* border colour, but the rice's panels use a muted layer border —
+  an accented one reads as a focus state, so every fence looked focused.
+- Rows: 12px vertical padding and radius 12. Hover and active now use the
+  desktop's mix model instead of an alpha overlay.
+- Selection moves to `secondary_container` / `on_secondary_container`,
+  Material 3's selected-list-item pair, which stays legible over a
+  translucent card where a 26% accent wash did not.
+- Mode switch is a true pill (`radius: height/2`, as the desktop draws every
+  segmented control), and the active segment carries the accent container
+  rather than just a lighter grey.
+- Scrollbar down to 4px visible on a 10px grab area.
+- Title weight 700 -> 550, the desktop's own title axis.
+- The empty-state label wears the same card and fills the panel, with its
+  text pinned to the top. Sized to its content it left a small card floating
+  above a bare panel; centred, the message landed halfway down a full-height
+  dock.
+
+Verification:
+- Stylesheet parses with no GTK warnings (the one remaining warning on start
+  is `~/.config/gtk-4.0/gtk.css:312`, the desktop's own file).
+- Grid panel, list panel, docked taskbar and empty state each captured and
+  inspected after the change.
+- 115 tests pass.
+
+Removed/Reverted:
+- The primary-tinted panel border from earlier today, as above.
+- The alpha-overlay hover/active model, replaced by the mix model.
+
+Result:
+A fence is built from the same scale as every other panel on this desktop
+instead of approximating one.
+
+Known Issues:
+- The measurements are read from illogical-impulse's Appearance.qml. On a
+  desktop without it the numbers are still a coherent Material 3 scale, but
+  they are no longer *that* desktop's scale. Colour already adapts; geometry
+  does not.
+
 ## 2026-10-03 — The desktop's own GTK theme was painting over the glass
 
 Role: Frontend Engineer + QA Engineer

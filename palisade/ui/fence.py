@@ -199,7 +199,12 @@ class FenceWindow(Gtk.ApplicationWindow):
     def _build_ui(self) -> None:
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.add_css_class("fence-root")
-        tint = self.fence.tint or "@m3_surface_container"
+        # Layer 0 of the desktop's layer model: the shell is the *darkest*
+        # surface and the card inside it is raised above it. Tinting the shell
+        # with surface_container instead put it above its own content, which
+        # is why the panel read as one flat slab however the paddings were
+        # tuned. See the token header in data/palisade.css.
+        tint = self.fence.tint or "@m3_background"
         # Per-fence opacity cannot live in the static sheet, so it is the one
         # inline style we set.
         provider = Gtk.CssProvider()
@@ -330,6 +335,15 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._empty = Gtk.Label(label=empty_text)
         self._empty.set_justify(Gtk.Justification.CENTER)
         self._empty.add_css_class("fence-empty")
+        # Fills the same space the list would, because it wears the same card:
+        # sized to its text it left the card floating at the top of an
+        # otherwise bare panel, which reads as a layout fault rather than as
+        # "there is nothing here".
+        self._empty.set_vexpand(True)
+        # The card fills; the text sits at the top of it. Centred, the message
+        # lands halfway down a full-height dock — a long way from where you
+        # are looking after opening it.
+        self._empty.set_yalign(0.0)
         self._empty.set_visible(False)
         root.append(self._empty)
 

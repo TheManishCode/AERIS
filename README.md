@@ -134,6 +134,15 @@ Material 3 tokens are read live from whatever matugen already generates for your
 desktop, so fences re-colour themselves when the wallpaper changes and sit inside
 your existing rice rather than beside it. No palette is hard-coded anywhere.
 
+The layout follows the desktop's design system too, not just its palette. The
+measurements in `data/palisade.css` are read from
+`~/.config/quickshell/ii/modules/common/Appearance.qml` — the rounding scale,
+the 10px panel padding, 12px rows, the 4px scrollbar, 450/550 type weights,
+and the layer model: a panel is a dark shell with a *raised* card inside it,
+rather than content painted straight onto the surface. That last one is the
+load-bearing part; padding cannot separate two things that are the same
+colour.
+
 The geometry follows the compositor for the same reason: `corner_radius`
 defaults to 18 to match Hyprland's `decoration:rounding`, the shadow uses the
 compositor's own range and offset, and the hairline border is drawn from the

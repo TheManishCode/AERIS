@@ -1,4 +1,4 @@
-# Session State — updated 2026-10-03 15:20
+# Session State — updated 2026-10-03 15:35
 
 Status: COMPLETE
 Task: Hover hints and adaptive unhide; then docks pushing panels aside, the
@@ -29,6 +29,13 @@ Done:
   blur and the `opacity` setting. Palisade's providers now register at 801.
   Measured back-to-back before and after; translucency and blur both verified
   live.
+- Rebuilt the stylesheet on the desktop's own design system, read from
+  `~/.config/quickshell/ii/modules/common/Appearance.qml`: the rounding scale,
+  10px panel padding, 12px rows, 4px scrollbar, 450/550 type, and the layer
+  model (dark shell, raised card). The layer model is what was missing — the
+  panel read as flat because content sat directly on the shell. Reverted the
+  primary-tinted border introduced earlier the same day; the rice uses a muted
+  layer border.
 - 115 tests (19 new, `tests/test_workarea.py`), reflow proven against its own
   bug. README, CHANGELOG and a new TODO.md updated.
 
