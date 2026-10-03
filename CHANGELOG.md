@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-10-04 — `list` could not see a tab
+
+Role: Backend Engineer + QA Engineer
+
+Status: Fixed
+
+Reason:
+`palisade list` answered `{"fences": []}` on a desktop with panels visibly on
+screen. It is the introspection verb an agent or a script reaches for first,
+and it was reporting that nothing existed.
+
+Root cause: it iterated `config.fences` — the `[[fence]]` blocks — while a tab
+opened from a group is never written back to the config. Tabs live in
+`controller.windows` and the state file. Since the groups/tabs split a typical
+config declares only `[[group]]`, so `config.fences` is empty and `list`
+returned nothing for every panel on screen. Every other verb (`show`,
+`collapse`, `move`, `tabs`) already went through `controller.windows`; `list`
+was the one left behind.
+
+Changes:
+- `list` iterates `controller.windows`, which is the superset:
+  `rebuild_windows` gives every declared fence a window and `spawn_tab` adds
+  the rest. The definition for each row comes from `win.fence`, so a tab and a
+  config fence produce the same shape.
+- The `win is None` fallbacks are gone with it — reading geometry, layer and
+  state from a definition that may be a drag out of date was only reachable
+  when the window was missing, which it now cannot be.
+
+Removed/Reverted:
+- None.
+
+Verification:
+- `tests/test_ipc_list.py` is new — `Server.handle` had no tests at all, so the
+  JSON envelope is covered here too. Seven cases: a tab is listed, a config
+  fence still is, both at once, an empty desktop, geometry comes from the
+  window rather than the definition, the item count is live, and the `describe`
+  catalog's promise matches what a row carries.
+- The bug was reintroduced to confirm the tests catch it: 5 of 7 failed, and
+  the source was then restored byte-identically.
+- 320 core tests pass; 608 across all four packages.
+- Live against a restarted daemon: `palisade list` reports `tab-15` with
+  `items: 6`, matching the count in the panel's own header.
+
+Result:
+`list` reports what is on screen.
+
+Known Issues:
+- `list` and `tabs` now enumerate the same windows. They differ in fields —
+  `list` carries source, view, sort, lock state and the item count, `tabs`
+  carries the group id — so neither is redundant, but the overlap is worth a
+  look when the CLI surface is next revised. Logged in TODO.md.
+
 ## 2026-10-04 — Make the padding rhythm a setting, default back to 10/5
 
 Role: Senior Product Designer + Frontend Engineer + QA Engineer
@@ -56,9 +108,9 @@ The default rhythm matches the desktop around it again, and the ladder still
 nests at every radius because the floor, not the padding, now guarantees it.
 
 Known Issues:
-- `palisade list` reports `{"fences": []}` while a tab is on screen. Found
-  during this verification; unrelated to the spacing change and not yet
-  diagnosed.
+- `palisade list` reported `{"fences": []}` while a tab was on screen. Found
+  during this verification, unrelated to the spacing change; diagnosed and
+  fixed in the entry above.
 
 ## 2026-10-03 — Tab completion, and the right half of shapeshift
 

@@ -173,27 +173,31 @@ class Server:
             return {"source": str(c.theme.source) if c.theme.source else None,
                     "tokens": c.theme.tokens}
         if cmd == "list":
-            def row(f):
-                # Geometry comes from the live window, not the config snapshot:
-                # after a drag the two differ, and the live one is the truth.
-                win = c.windows.get(f.id)
-                geo = (
-                    {"x": win.x, "y": win.y, "w": win.width, "h": win.height}
-                    if win else
-                    {"x": f.x, "y": f.y, "w": f.width, "h": f.height}
-                )
+            # Over the live windows, not `config.fences`. A tab opened from a
+            # group is never written back to the config, so iterating the
+            # config reported nothing at all on a desktop made of tabs — which
+            # is every desktop, since the groups/tabs split. Windows are the
+            # superset: `rebuild_windows` gives every config fence one, and
+            # `spawn_tab` adds the rest. Every other verb already works this
+            # way; `list` was the one left behind.
+            def row(fid, win):
+                f = win.fence
                 return {
-                    "id": f.id, "title": f.title, "source": f.source.kind,
+                    "id": fid, "title": f.title, "source": f.source.kind,
                     "view": f.view, "sort": f.sort,
-                    "geometry": geo,
-                    "layer": win.layer_name if win else (f.layer or c.config.settings.layer),
-                    "collapsed": win._collapsed if win else f.collapsed,
-                    "hidden": win.hidden if win else f.hidden,
-                    "locked": win.locked if win else f.locked,
+                    # Geometry from the live window, not the definition it was
+                    # built from: after a drag the two differ, and the live one
+                    # is the truth.
+                    "geometry": {"x": win.x, "y": win.y,
+                                 "w": win.width, "h": win.height},
+                    "layer": win.layer_name,
+                    "collapsed": win._collapsed,
+                    "hidden": win.hidden,
+                    "locked": win.locked,
                     "workspaces": list(f.workspaces),
-                    "items": win._store.get_n_items() if win else 0,
+                    "items": win._store.get_n_items(),
                 }
-            return {"fences": [row(f) for f in c.config.fences]}
+            return {"fences": [row(fid, win) for fid, win in c.windows.items()]}
         if cmd == "show":
             fid = req["id"]
             win = c.windows.get(fid)

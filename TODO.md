@@ -97,3 +97,12 @@ suggestion in the launcher.
 group/tab split and is commented "a fence is always on screen", which docking
 superseded. Replace the block with the groups-and-tabs model REFERENCE.md
 already documents.
+
+## `list` and `tabs` enumerate the same windows
+
+Both iterate `controller.windows` (`ipc.py`, the `list` and `tabs` handlers).
+They carry different fields — `list` has source, view, sort, lock state and the
+item count; `tabs` has the group id — so neither is redundant today. But two
+verbs over one set invites drift. Decide whether `tabs` becomes `list` with a
+projection, or gains a filter to live up to its name, next time the CLI surface
+is revised.
