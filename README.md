@@ -12,9 +12,26 @@ This is that category, built for wlroots compositors.
 
 ---
 
-## What a fence is here
+## Groups and tabs
 
-A fence is a panel on your desktop layer. Four kinds:
+**The desktop starts empty.** You define *groups* — a catalogue of things a panel
+could show — and open them as *tabs* when you want them.
+
+Press <kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd>, pick a group, get a tab. Open
+as many as you like, including several of the same group. Drag them anywhere.
+They remember where you put them and come back after a restart.
+
+Defining a group puts nothing on screen:
+
+```toml
+[[group]]
+id = "downloads"
+title = "Downloads"
+sort = "mtime"
+source = { type = "directory", path = "~/Downloads" }
+```
+
+A group's source is one of four kinds:
 
 | `source.type` | What it shows |
 | --- | --- |
@@ -29,7 +46,8 @@ the last fortnight, anywhere under `~/Documents` and `~/Downloads`" — which ne
 moves a file and never goes stale:
 
 ```toml
-[[fence]]
+[[group]]
+id = "recent"
 title = "Recent documents"
 view = "list"
 sort = "mtime"
@@ -37,7 +55,13 @@ source = { type = "query", roots = ["~/Documents", "~/Downloads"], \
            categories = ["document"], newer_than_days = 14, depth = 3, limit = 60 }
 ```
 
-Nothing is copied, moved or symlinked. A fence is a view.
+Nothing is copied, moved or symlinked. A tab is a view.
+
+### Want something always on screen?
+
+A `[[fence]]` is a group that is placed in the config rather than opened from the
+picker. Same keys, plus `x` and `y`. None are defined by default — opening what
+you need beats a desktop full of panels you stopped seeing weeks ago.
 
 ## What it looks like
 
@@ -81,7 +105,7 @@ One TOML file, `~/.config/palisade/palisade.toml`. **Palisade never rewrites
 it** — your comments and layout survive. Runtime state the daemon owns
 (collapsed, geometry) lives separately in `$XDG_STATE_HOME/palisade/state.json`.
 
-Save the file and fences reload live. No restart.
+Save the file and everything reloads live. No restart.
 
 ```toml
 [settings]
@@ -90,22 +114,28 @@ blur = true
 corner_radius = 20
 follow_material_you = true
 
-[[fence]]
+# A group is a menu entry, not a panel. Nothing appears until you open it.
+[[group]]
+id = "downloads"
 title = "Downloads"
-x = 452
-y = 64
+icon = "folder-download"
 width = 380
 height = 460
 sort = "mtime"
 source = { type = "directory", path = "~/Downloads" }
 
+# A fence is a group that is placed rather than opened. Note the x/y.
 [[fence]]
 title = "Scratch"
+x = 452
+y = 64
 workspaces = [3, 4]     # only visible on Hyprland workspaces 3 and 4
 source = { type = "directory", path = "~/scratch" }
 ```
 
-Fences never reserve space, so they will not push your tiled windows around.
+Neither reserves space, so they will not push your tiled windows around.
+
+Validate without touching the daemon: `palisade check`.
 
 ## Driving it from an agent
 
@@ -116,8 +146,12 @@ on the outcome, never parse prose.
 
 ```bash
 palisade describe        # machine-readable command catalog
-palisade list            # every fence + live item count
-palisade show downloads  # one fence's actual contents
+palisade groups          # the catalogue you can open
+palisade new downloads   # open one as a tab (no argument summons the picker)
+palisade tabs            # what is open, and where
+palisade close tab-3     # or: palisade close all
+palisade list            # every panel + live item count
+palisade show downloads  # one panel's actual contents
 palisade collapse desktop on
 palisade reload
 ```
@@ -143,15 +177,19 @@ Tags are compositor state, so they are visible in `hyprctl clients -j` and
 survive a config reload; nothing here keeps a state file that could go stale.
 
 ```toml
-[[fence]]
+[[group]]
 id = "minimized"
 title = "Minimized"
 layer = "overlay"       # a taskbar you can't see isn't a taskbar
 view = "list"
 sort = "mtime"          # most recently minimized first
-collapsed = true
+picker = true           # take the keyboard, pick with 1-9, then go away
 source = { type = "windows" }
 ```
+
+`picker = true` is what makes it a taskbar rather than a panel you have to tidy
+up after. It is also why it is the one tab not restored at login: a transient
+chooser that holds the keyboard should not be waiting for you when you log in.
 
 The keybind restores in LIFO order. This fence is how you skip the order:
 double-click the window you actually want. Right click gives Restore, Restore
@@ -184,6 +222,7 @@ Right-click a fence header for the rest:
 | **Lock position** | stop it being dragged by accident |
 | **Collapse** | fold it down to its title strip |
 | **Hide this fence** | remove it from the screen entirely |
+| **Close tab** | tabs only — a configured fence cannot be closed this way |
 
 All of it is scriptable, so it binds to keys too:
 
@@ -194,6 +233,10 @@ palisade layer downloads overlay     # or bottom / top / background
 palisade lock downloads on
 palisade hide downloads              # omit the value to toggle
 ```
+
+A new tab opens near your pointer, stepping aside if something is already there.
+Spawning from a keybind does not move the mouse, so without that every tab would
+land on the same pixel and bury the last one.
 
 ### Peek
 
@@ -210,7 +253,28 @@ palisade peek --off    # drop back early
 
 ## Keyboard
 
-Fences take `on-demand` keyboard focus — they are inert until you click one.
+Suggested binds (what `~/.config/hypr/custom/keybinds.lua` uses here):
+
+| Key | |
+| --- | --- |
+| <kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> | new tab — opens the group picker |
+| <kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> | close every tab |
+| <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Space</kbd> | peek above windows |
+
+In the picker — it takes the keyboard while it is up, and hands it straight back:
+
+| Key | |
+| --- | --- |
+| type | filter the list |
+| <kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd> | jump straight to that row |
+| <kbd>↑</kbd> <kbd>↓</kbd> then <kbd>Enter</kbd> | choose |
+| <kbd>Esc</kbd> | dismiss (so does pressing the summon key again) |
+
+The jump shortcut takes <kbd>Alt</kbd> rather than a bare digit because a digit
+is legitimate filter text — a group may well be called `2024-archive`.
+
+Panels themselves take `on-demand` keyboard focus — they are inert until you
+click one.
 
 | Key | File fence | Windows fence |
 | --- | --- | --- |

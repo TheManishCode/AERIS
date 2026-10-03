@@ -82,6 +82,9 @@ Changes:
   first lifecycle test spawned on the exact same pixel and buried each other.
   Cascades down-right, wrapping at the screen edge, bounded at `MAX_CASCADE`.
 - `ipc.py` / `__main__.py`: `groups`, `new`, `close`, `tabs`.
+- This change is what left the minimized taskbar dead, since it turned the
+  taskbar from a live fence into a group. `toggle` and `Group.picker` fix that
+  — see "Taskbar restored on the tabs model" above.
 - Fence context menu gained **Close tab**, gated on `is_tab()` so a configured
   fence cannot be closed into nonexistence.
 - `data/default.toml` rewritten: six groups, zero fences. The desktop now
@@ -113,8 +116,9 @@ Removed/Reverted:
   `palisade.toml` was replaced (backup: `palisade.toml.bak-20261003-082200`).
 
 Verification:
-- `python3 -m unittest discover -s tests` — 36 tests, 0 skips, OK. (Was 28 run
-  + 1 silent skip before the stub-leak fix.)
+- `python3 -m unittest discover -s tests` — 36 tests, 0 skips, OK at the time
+  of this change (43 once the taskbar work above landed). Was 28 run + 1 silent
+  skip before the stub-leak fix.
 - `tests/test_placement.py` (new, 9 tests): collision stepping, an 8-spawn run
   at one point producing 8 distinct origins, on-screen clamping, a panel larger
   than the screen, and termination when every slot is taken.

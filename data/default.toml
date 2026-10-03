@@ -1,126 +1,123 @@
 # Palisade — desktop fences for Wayland.
 #
 # This file is yours. Palisade reads it and never rewrites it, so your comments
-# and layout survive. Runtime state (collapsed, moved geometry) is kept apart in
+# and layout survive. What you have *open* is kept separately in
 # $XDG_STATE_HOME/palisade/state.json.
 #
-# Save the file and fences reload live — no restart.
+# Save the file and everything reloads live — no restart.
 # Validate without touching the daemon:  palisade check
 
 [settings]
-# Which compositor layer fences sit on.
+# Which compositor layer tabs sit on.
 #   bottom  = above the wallpaper, below your windows  (desktop furniture)
 #   top     = above windows, below fullscreen
 #   overlay = above everything
 layer = "bottom"
 
-# Ask the compositor to blur behind fences. On Hyprland this is real blur of
-# whatever is actually behind the fence, updated live — not a wallpaper snapshot.
+# Ask the compositor to blur behind tabs. On Hyprland this is real blur of
+# whatever is actually behind, updated live — not a wallpaper snapshot.
 blur = true
 
 corner_radius = 20
 font_scale = 1.0
 show_item_count = true
 
-# Re-colour fences from the wallpaper's Material You palette whenever it changes.
+# Re-colour from the wallpaper's Material You palette whenever it changes.
 follow_material_you = true
 
 
-# ---------------------------------------------------------------------------
-# Fences. Each [[fence]] is one panel.
+# ===========================================================================
+# GROUPS — the catalogue of things a tab can show.
 #
-# source.type is the interesting part:
+# Defining a group puts NOTHING on screen. It is a menu entry.
+#
+#   SUPER + ALT + T   open the picker, choose a group, get a tab
+#
+# Open as many tabs as you like, including several of the same group. Tabs
+# remember where you dragged them and come back after a restart.
+#
+# source.type:
 #   directory — mirror one folder
 #   paths     — a fixed, pinned list
 #   query     — a saved search; a live filtered view of the filesystem
 #   windows   — the windows you have minimized; a taskbar, not a folder
-# ---------------------------------------------------------------------------
+# ===========================================================================
 
-[[fence]]
+[[group]]
+id = "desktop"
 title = "Desktop"
-x = 48
-y = 64
-width = 380
-height = 460
-icon_size = 48
-sort = "name"
+icon = "user-desktop"
 source = { type = "directory", path = "~/Desktop", depth = 1 }
 
-
-[[fence]]
+[[group]]
+id = "downloads"
 title = "Downloads"
-x = 452
-y = 64
-width = 380
-height = 460
-icon_size = 48
+icon = "folder-download"
 sort = "mtime"          # newest first
 source = { type = "directory", path = "~/Downloads", depth = 1 }
 
+[[group]]
+id = "documents"
+title = "Documents"
+icon = "folder-documents"
+source = { type = "directory", path = "~/Documents", depth = 1 }
 
-# A query fence: documents touched in the last fortnight, wherever they live.
-# Nothing is moved or copied — this is a view, not a bucket.
-[[fence]]
+# A query group: documents touched recently, wherever they live. Nothing is
+# moved or copied — this is a view, not a bucket.
+[[group]]
+id = "recent"
 title = "Recent documents"
-x = 48
-y = 548
-width = 784
-height = 300
-icon_size = 32
+icon = "document-open-recent"
 view = "list"
 sort = "mtime"
+width = 640
+height = 320
 source = { type = "query", roots = [
     "~/Documents",
     "~/Downloads",
 ], categories = ["document"], newer_than_days = 14, depth = 3, limit = 60 }
 
-
-# Pinned shortcuts. Uncomment and point at the folders you actually live in.
-#
-# [[fence]]
-# title = "Pinned"
-# x = 856
-# y = 64
-# width = 240
-# height = 300
-# source = { type = "paths", paths = ["~/Projects", "~/Documents", "~/Wallpapers"] }
-
+# Screenshots and images from the last month, as a contact sheet.
+[[group]]
+id = "pictures"
+title = "Recent images"
+icon = "folder-pictures"
+icon_size = 64
+source = { type = "query", roots = [
+    "~/Pictures",
+    "~/Downloads",
+], categories = ["image"], newer_than_days = 30, depth = 3, limit = 80 }
 
 # Minimized windows, as a taskbar you can click a specific window out of.
-#
-# Hyprland has no minimize, so this pairs with the keybinds in
-# ~/.config/hypr/custom/minimize.lua:
-#
-#   SUPER + ALT + N          minimize the focused window
-#   CTRL + SUPER + N         bring back the last one
-#   CTRL + SUPER + SHIFT + N bring back all of them
-#
-# The keybind restores in order. This fence is how you skip the order and go
-# straight to the window you want: click it, or select and press Enter. Right
-# click for Restore all / Close.
-#
-# "overlay" rather than the global `layer`, because a taskbar you cannot see
-# while a window is covering it is not a taskbar. `collapsed = true` keeps it
-# as a title strip until you expand it.
-[[fence]]
+# Hyprland has no minimize; this pairs with ~/.config/hypr/custom/minimize.lua.
+#   SUPER + ALT + N  minimize    CTRL + SUPER + N  restore last
+[[group]]
 id = "minimized"
 title = "Minimized"
-layer = "overlay"
-x = 48
-y = 752
-width = 420
-height = 280
-icon_size = 24
+icon = "view-restore"
+layer = "overlay"       # a taskbar you cannot see is not a taskbar
 view = "list"
 sort = "mtime"          # most recently minimized first
-collapsed = true
+# Behave as a picker: take the keyboard while open, preselect the first
+# row, and close again once a window has been chosen (or on Esc, or on
+# click-away). Without this the tab opens but ignores 1-9 and sits there
+# after you have picked. A picker tab is also not restored at login — a
+# taskbar you never asked for, holding the keyboard, is not a greeting.
+picker = true
+icon_size = 24
+width = 420
+height = 280
 source = { type = "windows" }
 
 
-# A fence bound to Hyprland workspaces 3 and 4 only. Omit `workspaces`
-# (or leave it empty) and the fence shows on every workspace.
+# ---------------------------------------------------------------------------
+# Want something always on screen without opening it by hand? A [[fence]] is a
+# group that is placed in the config rather than spawned from the picker. None
+# are defined by default — the desktop starts empty on purpose.
 #
 # [[fence]]
-# title = "Scratch"
-# workspaces = [3, 4]
-# source = { type = "directory", path = "~/scratch" }
+# title = "Downloads"
+# x = 48
+# y = 64
+# source = { type = "directory", path = "~/Downloads" }
+# ---------------------------------------------------------------------------
