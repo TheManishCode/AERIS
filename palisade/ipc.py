@@ -238,16 +238,7 @@ class Server:
         if cmd == "hide":
             fid, win = self._fence(req)
             want = req.get("value")
-            if want is not None:
-                target = bool(want)
-            elif win.hidden and win.was_just_auto_dismissed():
-                # Clicking the bar's taskbar button takes focus off the fence,
-                # which dismisses it before this toggle even arrives. Without
-                # this the toggle would re-open what the click just closed, and
-                # the button could only ever open the taskbar.
-                target = True
-            else:
-                target = not win.hidden
+            target = (not win.hidden) if want is None else bool(want)
             win.set_hidden(target)
             # A fence declared `hidden` in the config is transient — it is
             # summoned and dismissed many times a session and always starts

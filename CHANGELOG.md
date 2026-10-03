@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-10-03 — The group picker stopped killing the mouse
+
+Role: Frontend Engineer + QA
+Status: Fixed
+
+Reason:
+Reported: "not even a single click works" while a Palisade surface was up. The
+taskbar had already been moved off `EXCLUSIVE` for exactly this reason, but the
+*group picker* (`SUPER+ALT+T`) had not — it was written before that was known
+and still asked for an exclusive keyboard grab. While it was open, pointer
+input to every other layer surface, including the bar and every open tab, was
+swallowed.
+
+Changes:
+- `GroupPicker` is `ON_DEMAND`, matching `FenceWindow._keyboard_mode`, with a
+  new `_grab_keyboard` that calls `present()` then focuses the search box on
+  idle. Deferred because the surface does not exist at construction time and
+  focusing an unmapped widget is a no-op — which is how the first keystroke
+  after a summon gets swallowed.
+- `ipc.py` `hide` drops the `was_just_auto_dismissed()` special case. That
+  method no longer exists; the reopen race is handled controller-side by
+  `REOPEN_GUARD_S` for every route at once, rather than once per command.
+
+Verification:
+- Keyboard still reaches the picker on ON_DEMAND — the risk of the change.
+  Re-ran the full set: `Esc` dismisses, type-to-filter + `Enter` selects,
+  `Alt+1` selects, re-summon dismisses. 69 tests pass.
+- Synthetic pointer injection is now reliable on this machine, which it was not
+  earlier in the session. ydotool's absolute mode is a clean linear 2x
+  (`got = 2*asked + 1`, clamped at 1918x1078), so the inverse lands within 1px
+  when the move is issued twice to settle. Calibrated across five points.
+- With that, two things previously listed as unverifiable were actually driven:
+  clicking a taskbar row restored the window (tags cleared, correct workspace,
+  taskbar self-closed), and click-away was confirmed selective.
+
+Result:
+No Palisade surface takes the pointer hostage any more.
+
+Known Issues:
+- Nothing new.
+
 ## 2026-10-03 — The bar's taskbar button closes as well as opens
 
 Role: Frontend Engineer + QA

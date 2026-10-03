@@ -87,12 +87,41 @@ class GroupPicker(Gtk.ApplicationWindow):
         LayerShell.set_namespace(self, "palisade")
         LayerShell.set_layer(self, LayerShell.Layer.OVERLAY)
         LayerShell.set_exclusive_zone(self, -1)
-        # Anchoring nothing centres the surface. EXCLUSIVE because the picker
-        # exists only for the second you are choosing: it must receive every
-        # keystroke, and it gives the keyboard back the moment it closes.
-        LayerShell.set_keyboard_mode(self, LayerShell.KeyboardMode.EXCLUSIVE)
+        # Anchoring nothing centres the surface.
+        #
+        # ON_DEMAND, not EXCLUSIVE. EXCLUSIVE reads as the right mode for a
+        # chooser — it is modal and wants the keyboard without being clicked —
+        # but on Hyprland it does not merely take the keyboard: while an
+        # exclusive layer surface is mapped, pointer input to *every other*
+        # layer surface is swallowed. With the picker up, the bar and every
+        # open tab went dead to the mouse. Same trap the taskbar hit; see
+        # FenceWindow._keyboard_mode.
+        #
+        # ON_DEMAND plus the explicit focus request in `_grab_keyboard` gets
+        # the keyboard without taking the screen hostage.
+        LayerShell.set_keyboard_mode(self, LayerShell.KeyboardMode.ON_DEMAND)
 
         self._build()
+        self._grab_keyboard()
+
+    def _grab_keyboard(self) -> None:
+        """Take the keyboard without an exclusive grab.
+
+        Deferred to idle: the surface does not exist yet at construction time,
+        and focusing a widget whose surface is unmapped is a no-op — which is
+        exactly how the first keystroke after a summon gets swallowed.
+        """
+        def grab() -> bool:
+            if not self.get_visible():
+                return False
+            # ON_DEMAND hands the keyboard over when the surface asks; present
+            # is the ask. Without it the picker would need a click before any
+            # key reached it, defeating the point of a keybind.
+            self.present()
+            self._search.grab_focus()
+            return False
+
+        GLib.idle_add(grab)
 
     # ------------------------------------------------------------------- ui
 
