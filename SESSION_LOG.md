@@ -242,3 +242,57 @@ Next recommended action:
 - Tab-completion in the field. `~/Doc`+Tab should complete to `~/Documents/`;
   right now Tab moves focus into the list, which is the less useful of the two
   things Tab could mean in a path.
+
+## 2026-10-03 (continued) — Tab completion, and the theme correction
+
+What we did:
+- Added Tab completion to the field. `Mode.complete` is a new optional half of
+  the mode contract and `complete_from` in core is the single implementation
+  all four modes use, so Tab behaves identically everywhere.
+- Path completion replaces only the segment after the last separator (so `~`
+  stays `~`) and adds the `/` when it lands on a single folder.
+- Reverted the paper theme in full after you corrected me — I had taken
+  shapeshift's palette as well as its layout. Palette, `@ss_*` namespace,
+  `theme` setting, `uses_paper`, the `_paper` flag, the opaque-tint branch,
+  the `.paper` sheet section and the config block are all gone.
+- Kept and generalised the layout half: the card and item radii are now
+  derived from `corner_radius` by subtracting the padding at each step, rather
+  than hardcoded. Insets 10/5 -> 8/4, one easing, pill controls.
+
+What worked:
+- 591 tests green (core 303, files 180, dock 48, apps 60) — whole suite, every
+  file alone, and under `unittest discover`.
+- The sheet is asserted to parse clean at radius 0, 2, 8, 18 and 48. The
+  zero-floor matters: `border-radius: -2px` is a declaration GTK discards
+  silently, so the corner would be square *and* unexplained.
+- Live on Hyprland with screenshots: `~/dow` + Tab became `~/Downloads/` —
+  case corrected, separator added, listing descended in one keystroke. `coo` +
+  Tab extended to `cookie-shop-website`, the longest prefix its three matches
+  share, and stopped rather than guessing between them. A third Tab, with
+  nothing left to add, moved focus into the list and selected the first row.
+- Panels confirmed dark and translucent again, corners nesting.
+
+What's still broken / unfinished:
+- Panels are now inset 8/4 against the rice's 10/5, so a Palisade panel sits
+  2px tighter at the shell than the quickshell panels beside it. A real
+  inconsistency, taken deliberately — the ladder has to fit inside an 18px
+  shell radius, and `corner_radius` is pinned to Hyprland's rounding.
+- No completion history. Tab is stateless.
+- Window-title completion rarely adds anything (a title is a sentence, not a
+  name); wired for consistency rather than usefulness.
+- Carried: breadcrumb one level deep, no syntax highlighting, no undo across
+  the edit-mode toggle, apps window-pinning designed not built, placeholder
+  repo URLs.
+
+Not yet verified:
+- Tab was exercised in path and filter modes live. `>` and `@` completion is
+  covered by unit tests only — I did not drive either on screen.
+- The new 6px item radius was seen on a grid view only; list-view rows take
+  the same rule but I did not put one on screen.
+- The 150ms easing change was not tested with `prefers-reduced-motion` set.
+
+Next recommended action:
+- Decide whether the 8/4 inset is worth the mismatch with the rice, now that
+  you can see it next to a quickshell panel. If not, the alternative is
+  raising `corner_radius` above 22 and going back to 10/5 — the ladder works
+  either way, it just needs the room.
