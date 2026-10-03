@@ -197,6 +197,19 @@ def main(argv: list[str] | None = None) -> int:
     lk = sub.add_parser("lock", help="stop a fence being dragged (omit value to toggle)")
     lk.add_argument("id"); lk.add_argument("value", nargs="?", choices=["on", "off"])
 
+    sub.add_parser("groups", help="list the groups a tab can show")
+    sub.add_parser("tabs", help="list the tabs currently open")
+
+    nw = sub.add_parser("new", help="open a new tab (omit group to get the picker)")
+    nw.add_argument("group", nargs="?")
+
+    cl = sub.add_parser("close", help="close a tab, or 'all'")
+    cl.add_argument("id")
+
+    tg = sub.add_parser(
+        "toggle", help="open a group as a tab, or close it if already open")
+    tg.add_argument("group")
+
     pk = sub.add_parser("peek", help="raise every fence above windows, briefly")
     pk.add_argument("seconds", nargs="?", type=float, default=4.0)
     pk.add_argument("--off", action="store_true", help="end a peek early")
@@ -227,6 +240,15 @@ def main(argv: list[str] | None = None) -> int:
              "width": args.width, "height": args.height}, args.json)
     if cmd == "layer":
         return _client({"cmd": "layer", "id": args.id, "value": args.value}, args.json)
+    if cmd == "new":
+        payload = {"cmd": "new"}
+        if args.group:
+            payload["group"] = args.group
+        return _client(payload, args.json)
+    if cmd == "close":
+        return _client({"cmd": "close", "id": args.id}, args.json)
+    if cmd == "toggle":
+        return _client({"cmd": "toggle", "group": args.group}, args.json)
     if cmd == "peek":
         return _client(
             {"cmd": "peek", "seconds": args.seconds, "off": args.off}, args.json)

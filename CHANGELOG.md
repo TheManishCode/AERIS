@@ -1,5 +1,146 @@
 # Changelog
 
+## 2026-10-03 — Taskbar restored on the tabs model
+
+Role: Backend Engineer + QA
+Status: Fixed | Added
+
+Reason:
+The move to groups-and-tabs left the minimized taskbar dead. `SUPER+ALT+Tab`
+and the bar button both ran `palisade hide minimized`, which answered "no fence
+with id 'minimized'" — the taskbar had become a *group* (a template) and was no
+longer a live fence. Swapping them to `new` was not enough either: `new` opens
+unconditionally, so each press stacked another identical taskbar.
+
+Changes:
+- `toggle <group>` (IPC + CLI + `Controller.toggle_group`): opens a group as a
+  tab, or closes it if already open. Closes every copy, not just the first.
+- `Fence.picker` / `Group.picker`: "behaves as a transient picker" — takes the
+  keyboard, preselects the first row, goes away once something is chosen.
+  Previously these three behaviours were keyed off `hidden`, which silently
+  stopped arming the moment the taskbar became a tab: a tab is shown by
+  existing, so its `hidden` is always False. `hidden` is about *where the
+  surface is*; `picker` is about *how the thing behaves*, and conflating them
+  is what broke.
+- `FenceWindow._dismiss` closes a picker *tab* rather than hiding it. Hiding
+  would leave an invisible tab the toggle still counts as open, so the next
+  press would "close" nothing.
+- `restore_tabs` no longer restores picker tabs: logging in to a taskbar you
+  never opened, holding the keyboard, is not a restored session.
+- The focus/toggle race is now handled controller-side too
+  (`note_picker_dismissed` + a 0.5 s guard), because by the time the bar
+  button's toggle arrives the window that knew about it is gone.
+
+Removed/Reverted:
+- Nothing. `hide` keeps working for fences placed in the config.
+
+Verification:
+- 43 tests pass, including a new `tests/test_toggle.py` covering both bugs:
+  two presses must not stack, and a toggle landing just after a self-dismissal
+  must stay closed (with a case proving the guard expires, so the button cannot
+  stick dead).
+- End-to-end on Hyprland 0.56.2: minimized a window, `toggle minimized` put the
+  taskbar on screen, `1` restored the window to workspace 3 with tags cleared,
+  and the tab closed itself.
+- Confirmed a picker tab left open at shutdown does not come back, while the
+  five ordinary tabs do.
+
+Result:
+The taskbar works again on the tabs model, and "picker" is now a property a
+group declares rather than a side effect of how the thing happened to be shown.
+
+Known Issues:
+- The bar button's click-to-close path is verified by unit test and by
+  reasoning about focus order, not by a real pointer click — synthetic pointer
+  drags into layer surfaces are not reliable on this machine.
+
+## 2026-10-03 — Groups and tabs replace always-placed fences
+
+Role: Senior Product Designer + Frontend Engineer + QA Engineer
+Status: Added | Changed | Fixed
+
+Reason:
+Every panel was declared in the config with an `x`/`y` and appeared at login,
+whether or not it was wanted that day. That is PecoFence's model, and it is the
+wrong one: a desktop full of panels you stopped seeing weeks ago. Requested
+model is a catalogue plus a keybind — open what you need, as many as you need,
+close them when done.
+
+Changes:
+- `config.py`: new `[[group]]` section and `Group` dataclass. A group is a
+  catalogue entry and places nothing on screen; `Group.to_fence()` stamps one
+  out as a panel on demand. `[[fence]]` is unchanged and still supported for
+  things that genuinely should always be there.
+- `ui/picker.py` (new): `GroupPicker`, an overlay layer-surface summoned by
+  keybind. Takes `EXCLUSIVE` keyboard while up, returns it on dismiss.
+  Type-to-filter, `Alt+1`-`9`, arrows, `Enter`, `Esc`. Re-summoning dismisses.
+- `app.py`: tab lifecycle — `open_picker`, `spawn_tab`, `close_tab`,
+  `close_all_tabs`, `restore_tabs`, `is_tab`. Open tabs persist in
+  `state.json` and are restored on start, including geometry you dragged.
+- `app.py`: `_free_origin()` steps a new tab off any already at that point.
+  Opening from a keybind does not move the pointer, so all six tabs in the
+  first lifecycle test spawned on the exact same pixel and buried each other.
+  Cascades down-right, wrapping at the screen edge, bounded at `MAX_CASCADE`.
+- `ipc.py` / `__main__.py`: `groups`, `new`, `close`, `tabs`.
+- Fence context menu gained **Close tab**, gated on `is_tab()` so a configured
+  fence cannot be closed into nonexistence.
+- `data/default.toml` rewritten: six groups, zero fences. The desktop now
+  starts empty by design. The shipped default had also drifted from the
+  installed config — it was missing `picker = true` on the `minimized` group,
+  so a fresh install would get a taskbar that behaved as an ordinary panel.
+- Keybinds: `Super+Alt+T` new tab, `Super+Alt+Shift+T` close all,
+  `Ctrl+Alt+Space` peek.
+- README: groups/tabs model, picker keys, new CLI verbs.
+
+Fixed:
+- Picker digit shortcut never fired. `Gtk.EventControllerKey` on the window
+  runs in the bubble phase, so the focused search entry consumed `1`-`9` as
+  filter text first. Moved to `Alt+1`-`9`, which is also the correct design:
+  a bare digit is legitimate filter text (`2024-archive`).
+- A tab sent to another layer reverted on restart. `restore_tabs()` overlaid
+  `x/y/width/height/collapsed/locked` from the fences overlay but omitted
+  `layer`, which `persist_fence` does write. Config fences already kept it.
+- `app.py` imported `Gdk` without `require_version`, so it only got Gdk 4 by
+  luck of import order. Surfaced as a `PyGIWarning` once the new test imported
+  it first.
+- `tests/`: `test_manipulate`'s module-level `gi` stub outlived its own file
+  under `unittest discover` and made `test_placement` fail its import and
+  *skip* — a green suite with tests silently not running. `test_placement` now
+  drops stub modules before importing.
+
+Removed/Reverted:
+- All six `[[fence]]` blocks from the shipped default config. The user's own
+  `palisade.toml` was replaced (backup: `palisade.toml.bak-20261003-082200`).
+
+Verification:
+- `python3 -m unittest discover -s tests` — 36 tests, 0 skips, OK. (Was 28 run
+  + 1 silent skip before the stub-leak fix.)
+- `tests/test_placement.py` (new, 9 tests): collision stepping, an 8-spawn run
+  at one point producing 8 distinct origins, on-screen clamping, a panel larger
+  than the screen, and termination when every slot is taken.
+- Live, against the running compositor: picker centres exactly (730,330 for
+  460x420 on 1920x1080); `Esc` dismisses, proving the keyboard grab; `Alt+2`
+  selects the 2nd group; `pic`+`Enter` filters and selects; `Enter` on an empty
+  filter is a no-op; backspace restores the list; re-summon dismisses.
+- Six tabs spawned from one cursor position: six distinct origins, all fully
+  on screen, six surfaces.
+- Full daemon stop and restart: five of six tabs restored, including a move and
+  resize applied to one beforehand. The sixth is the `minimized` taskbar, which
+  is `picker = true` and is deliberately *not* restored — a transient chooser
+  that holds the keyboard should not greet you at login. Layer change on
+  another tab survived a second restart.
+- Daemon log clean of errors throughout.
+
+Result:
+The desktop starts empty. One key opens anything in the catalogue, any number
+of times.
+
+Known Issues:
+- Drag-to-**resize** remains unit-tested only; synthetic pointer input is
+  unreliable on this machine (ydotool absolute mousemove is mis-scaled ~1.9x),
+  so whether the grip feels right is still a human check.
+- `--config` must precede the subcommand.
+
 ## 2026-10-03 — Taskbar becomes a summoned picker
 
 Role: Frontend Engineer + UX

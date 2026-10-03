@@ -15,24 +15,34 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import hypr
 from .config import CONFIG_PATH, Config, ConfigError
 from .theme import Theme, stylesheet
 from .ui.fence import FenceWindow
+from .ui.picker import GroupPicker
 
 STATE_PATH = Path(
     os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")
 ) / "palisade" / "state.json"
 
 APP_ID = "dev.palisade.Palisade"
+
+#: Gap kept between a new tab and the screen edge.
+MARGIN = 48
+#: How far a new tab steps when the spot it wanted is already occupied.
+CASCADE_STEP = 36
+#: Cap on those steps, so a crowded desktop stacks rather than hangs.
+MAX_CASCADE = 24
 
 
 class Controller:
@@ -51,6 +61,10 @@ class Controller:
         self._active_ws: int | None = None
         self._peek_timer: int | None = None
         self._peek_saved: dict[str, str] = {}
+        self._picker: GroupPicker | None = None
+        self._tab_seq = 0
+        # group id -> when a picker tab of it last closed itself.
+        self._dismissed_groups: dict[str, float] = {}
 
     # ----------------------------------------------------------------- state
 
@@ -147,6 +161,9 @@ class Controller:
             # flash onto the screen during startup before being hidden again.
             if not fence.hidden:
                 win.present()
+        # Tabs you opened at runtime come back too, so a reload (or a login)
+        # does not wipe the desktop you just arranged.
+        self.restore_tabs()
         self._apply_visibility()
 
     def refresh_all(self) -> None:
@@ -198,6 +215,247 @@ class Controller:
         self.rebuild_windows()
         hypr.apply_layer_rules(self.config.settings.blur)
         return True
+
+
+    # ------------------------------------------------------------------ tabs
+    #
+    # A tab is a runtime instance of a group. Groups live in the config (what
+    # you *can* open); tabs live in state.json (what you *have* open). Keeping
+    # them apart is what lets the same group be open twice, and what lets the
+    # desktop start empty without deleting anything from the config.
+
+    def _tabs_state(self) -> list[dict]:
+        tabs = self.state.get("tabs", [])
+        return tabs if isinstance(tabs, list) else []
+
+    def _save_tabs(self, tabs: list[dict]) -> None:
+        self.state["tabs"] = tabs
+        self._save_state()
+
+    def _next_tab_id(self) -> str:
+        existing = {t.get("id") for t in self._tabs_state()} | set(self.windows)
+        while True:
+            self._tab_seq += 1
+            candidate = f"tab-{self._tab_seq}"
+            if candidate not in existing:
+                return candidate
+
+    def _screen_size(self) -> tuple[int, int]:
+        """Size of the primary output, for keeping new tabs on screen."""
+        display = Gdk.Display.get_default()
+        if display is not None:
+            monitors = display.get_monitors()
+            if monitors.get_n_items():
+                rect = monitors.get_item(0).get_geometry()
+                return rect.width, rect.height
+        return 1920, 1080
+
+    def _cascade_origin(self, size: tuple[int, int]) -> tuple[int, int]:
+        """Where to drop a new tab so it does not land exactly on another.
+
+        Opens near the pointer when the compositor will say where that is —
+        a tab you asked for should appear where you are looking — and cascades
+        from a margin otherwise.
+        """
+        cursor = hypr.cursor_pos()
+        if cursor is not None:
+            start = max(MARGIN, cursor[0] - 40), max(MARGIN, cursor[1] - 20)
+        else:
+            n = len(self.windows)
+            start = MARGIN + (n % 6) * CASCADE_STEP, 64 + (n % 6) * CASCADE_STEP
+        return self._free_origin(start, size)
+
+    def _free_origin(self, start: tuple[int, int], size: tuple[int, int]):
+        """Step off any tab already sitting at this point.
+
+        Spawning from a keybind does not move the pointer, so without this
+        several tabs in a row land on the exact same pixel and bury each
+        other — which is the one thing an "open as many as you like" model
+        cannot afford. Cascades down-right, wrapping back to the margin at the
+        screen edge so a long run never walks a tab off the display.
+        """
+        screen_w, screen_h = self._screen_size()
+        max_x = max(MARGIN, screen_w - size[0] - MARGIN)
+        max_y = max(MARGIN, screen_h - size[1] - MARGIN)
+        x, y = min(start[0], max_x), min(start[1], max_y)
+        taken = [(w.x, w.y) for w in self.windows.values()]
+
+        def occupied(px: int, py: int) -> bool:
+            return any(
+                abs(px - tx) < CASCADE_STEP and abs(py - ty) < CASCADE_STEP
+                for tx, ty in taken
+            )
+
+        # Bounded: with enough tabs open every slot can be taken, and stacking
+        # the overflow beats looping forever.
+        for _ in range(MAX_CASCADE):
+            if not occupied(x, y):
+                break
+            x += CASCADE_STEP
+            y += CASCADE_STEP
+            if x > max_x or y > max_y:
+                x, y = MARGIN, MARGIN
+        return x, y
+
+    def open_picker(self) -> dict:
+        """Summon the group chooser. Re-summoning while it is up dismisses it."""
+        if self._picker is not None:
+            self._picker.close()
+            self._picker = None
+            return {"picker": "dismissed"}
+        if not self.config.groups:
+            self.notify("No groups defined — add a [[group]] to your config")
+            return {"picker": "no-groups"}
+
+        def chose(group_id: str):
+            self._picker = None
+            self.spawn_tab(group_id)
+
+        def cancelled():
+            self._picker = None
+
+        self._picker = GroupPicker(
+            self.app, self.config.groups, chose, cancelled
+        )
+        self._picker.present()
+        return {"picker": "open", "groups": [g.id for g in self.config.groups]}
+
+    def spawn_tab(self, group_id: str, **over) -> dict:
+        """Open a group as a new tab, and remember it."""
+        group = self.config.group(group_id)
+        if group is None:
+            raise KeyError(group_id)
+
+        tab_id = over.pop("tab_id", None) or self._next_tab_id()
+        if "x" not in over or over.get("x") is None:
+            size = (over.get("width") or group.width,
+                    over.get("height") or group.height)
+            over["x"], over["y"] = self._cascade_origin(size)
+
+        fence = group.to_fence(tab_id, **over)
+        win = FenceWindow(self.app, fence, self.config.settings, self)
+        self.windows[tab_id] = win
+        win.present()
+
+        tabs = self._tabs_state()
+        tabs.append({
+            "id": tab_id, "group": group_id,
+            "x": win.x, "y": win.y, "width": win.width, "height": win.height,
+            "layer": win.layer_name,
+        })
+        self._save_tabs(tabs)
+        return {"id": tab_id, "group": group_id, "x": win.x, "y": win.y}
+
+    #: A toggle arriving within this window of a picker dismissing itself is
+    #: read as "stay closed" — see `note_picker_dismissed`.
+    REOPEN_GUARD_S = 0.5
+
+    def note_picker_dismissed(self, fence_id: str) -> None:
+        """Record that a picker tab just closed itself because focus moved.
+
+        Must be called *before* the tab is closed, while it is still in the
+        tab state and its group can still be looked up.
+        """
+        group = next(
+            (t.get("group") for t in self._tabs_state() if t.get("id") == fence_id),
+            None,
+        )
+        if group:
+            self._dismissed_groups[group] = time.monotonic()
+
+    def toggle_group(self, group_id: str) -> dict:
+        """Open a group as a tab, or close it again if it is already open.
+
+        What a keybind or a bar button actually needs: one command meaning
+        "show me this, or put it away". `spawn_tab` alone is wrong for that —
+        pressing the key twice stacks a second identical tab on top of the
+        first, which is how the minimized taskbar ended up duplicated.
+
+        Closes *every* open tab of the group rather than only the first, so one
+        press leaves a clean desk even when extra copies were opened by hand.
+        """
+        if self.config.group(group_id) is None:
+            raise KeyError(group_id)
+        open_ids = [
+            t["id"] for t in self._tabs_state()
+            if t.get("group") == group_id and t.get("id") in self.windows
+        ]
+        if open_ids:
+            for tab_id in open_ids:
+                self.close_tab(tab_id)
+            return {"group": group_id, "open": False, "closed": open_ids}
+        # Clicking the bar's taskbar button moves focus off the picker, which
+        # closes itself before this toggle even arrives. Reopening here would
+        # undo the click, and the button could only ever open the taskbar.
+        since = time.monotonic() - self._dismissed_groups.get(group_id, 0.0)
+        if since < self.REOPEN_GUARD_S:
+            return {"group": group_id, "open": False, "closed": []}
+        spawned = self.spawn_tab(group_id)
+        return {"group": group_id, "open": True, "id": spawned["id"]}
+
+    def is_tab(self, fence_id: str) -> bool:
+        """True for a runtime tab, false for a fence placed in the config."""
+        return any(t.get("id") == fence_id for t in self._tabs_state())
+
+    def close_tab(self, tab_id: str) -> dict:
+        win = self.windows.pop(tab_id, None)
+        if win is None:
+            raise KeyError(tab_id)
+        win.shutdown()
+        win.destroy()
+        self._save_tabs([t for t in self._tabs_state() if t.get("id") != tab_id])
+        # A closed tab leaves no geometry worth keeping.
+        self.state.get("fences", {}).pop(tab_id, None)
+        self._save_state()
+        return {"closed": tab_id}
+
+    def close_all_tabs(self) -> dict:
+        ids = list(self.windows)
+        for tab_id in ids:
+            win = self.windows.pop(tab_id, None)
+            if win:
+                win.shutdown()
+                win.destroy()
+        self._save_tabs([])
+        return {"closed": ids}
+
+    def restore_tabs(self) -> None:
+        """Re-open the tabs that were open last time."""
+        kept = []
+        for tab in self._tabs_state():
+            group_id = tab.get("group")
+            group = self.config.group(group_id)
+            if not group:
+                continue          # group removed from config since; skip quietly
+            if group.picker:
+                # A picker is transient by definition: it is open only while
+                # you are choosing something. Restoring one means logging in to
+                # a taskbar you never asked for, holding the keyboard.
+                self.state.get("fences", {}).pop(tab.get("id"), None)
+                continue
+            kept.append(tab)
+            over = {k: tab.get(k) for k in ("x", "y", "width", "height", "layer")}
+            # The tabs entry holds where the tab was *spawned*; the fences
+            # overlay holds what you changed afterwards, so it wins. `layer`
+            # belongs here too — without it, sending a tab to the overlay
+            # layer survives until the next restart and then silently reverts.
+            saved = self.state.get("fences", {}).get(tab.get("id"), {})
+            over.update({k: v for k, v in saved.items()
+                         if k in {"x", "y", "width", "height", "collapsed",
+                                  "locked", "layer"}})
+            try:
+                fence = group.to_fence(tab["id"], **over)
+            except (KeyError, TypeError):
+                continue
+            win = FenceWindow(self.app, fence, self.config.settings, self)
+            self.windows[tab["id"]] = win
+            win.present()
+
+        # Write back without the dropped entries, so a picker left open at
+        # shutdown is forgotten rather than skipped again on every start.
+        if len(kept) != len(self._tabs_state()):
+            self._save_tabs(kept)
+            self._save_state()
 
     # ----------------------------------------------------------------- peek
 

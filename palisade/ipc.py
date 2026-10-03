@@ -53,6 +53,7 @@ COMMANDS = {
     "new":            {"args": {"group": "group id; omit to open the picker"}, "returns": "the new tab", "mutates": True},
     "close":          {"args": {"id": "tab id, or \"all\""}, "returns": "what was closed", "mutates": True},
     "tabs":           {"args": {}, "returns": "the tabs currently open", "mutates": False},
+    "toggle":         {"args": {"group": "group id"}, "returns": "opens that group as a tab, or closes it if already open", "mutates": True},
 }
 
 
@@ -273,6 +274,12 @@ class Server:
                  "icon": g.icon, "view": g.view, "sort": g.sort}
                 for g in c.config.groups
             ]}
+        if cmd == "toggle":
+            group = req["group"]
+            try:
+                return c.toggle_group(group)
+            except KeyError:
+                raise NotFound(f"no group with id {group!r}")
         if cmd == "tabs":
             open_tabs = {t["id"]: t.get("group") for t in c._tabs_state()}
             return {"tabs": [

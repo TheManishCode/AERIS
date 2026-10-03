@@ -159,6 +159,17 @@ class Fence:
     #: deliberately should not wander because you grabbed its header
     #: while reaching for something inside it.
     locked: bool = False
+    #: Behave as a transient picker: take the keyboard while on screen, select
+    #: the first row, and go away once something has been chosen (or on Esc, or
+    #: on click-away). This is what makes the minimized taskbar feel like a
+    #: taskbar rather than a panel you have to tidy up after.
+    #:
+    #: Deliberately separate from `hidden`. `hidden` says *where the surface
+    #: is right now*; `picker` says *how this thing behaves*. They coincided
+    #: while the taskbar was a placed fence summoned by `hide`, and came apart
+    #: the moment it became a tab — a tab is shown by existing, so its `hidden`
+    #: is always False and every picker behaviour silently stopped arming.
+    picker: bool = False
 
     @staticmethod
     def parse(raw: dict, index: int, seen: set[str]) -> "Fence":
@@ -214,8 +225,94 @@ class Fence:
             workspaces=tuple(ws),
             collapsed=bool(raw.get("collapsed", False)),
             hidden=bool(raw.get("hidden", False)),
+            picker=bool(raw.get("picker", False)),
             locked=bool(raw.get("locked", False)),
         )
+
+
+
+@dataclass(frozen=True)
+class Group:
+    """A named source you can open in a tab.
+
+    Defining a group puts nothing on screen. It is a catalogue entry: the
+    picker lists groups, and choosing one spawns a tab showing it. The same
+    group can be open in several tabs at once — two views of one folder,
+    sorted differently, is a legitimate thing to want.
+
+    Everything a fence needs *except position* lives here; position belongs to
+    the tab, because it is a property of the instance, not of the content.
+    """
+
+    id: str
+    title: str
+    source: Source
+    icon: str = ""                    # icon-theme name shown in the picker
+    view: str = "icons"
+    sort: str = "name"
+    reverse: bool = False
+    icon_size: int = 48
+    width: int = 420
+    height: int = 460
+    tint: str = ""
+    opacity: float = 0.55
+    layer: str = ""
+    #: Tabs spawned from this group behave as pickers. See Fence.picker.
+    picker: bool = False
+
+    @staticmethod
+    def parse(raw: dict, index: int, seen: set[str]) -> "Group":
+        where = f"group[{index}]"
+        if not isinstance(raw, dict):
+            raise ConfigError(f"{where}: each [[group]] must be a table")
+
+        title = str(raw.get("title") or raw.get("name") or f"Group {index + 1}")
+        gid = str(raw.get("id") or title.lower().replace(" ", "-"))
+        if gid in seen:
+            raise ConfigError(f"{where}: duplicate group id {gid!r}")
+        seen.add(gid)
+
+        view = str(raw.get("view", "icons"))
+        if view not in VIEWS:
+            raise ConfigError(f"{where}: view must be one of {VIEWS}")
+        sort = str(raw.get("sort", "name"))
+        if sort not in SORTS:
+            raise ConfigError(f"{where}: sort must be one of {SORTS}")
+        layer = str(raw.get("layer", ""))
+        if layer and layer not in LAYERS:
+            raise ConfigError(f"{where}: layer must be one of {LAYERS}")
+        opacity = float(raw.get("opacity", 0.55))
+        if not 0.0 <= opacity <= 1.0:
+            raise ConfigError(f"{where}: opacity must be between 0 and 1")
+
+        return Group(
+            id=gid,
+            title=title,
+            source=Source.parse(raw.get("source"), where),
+            icon=str(raw.get("icon", "")),
+            view=view,
+            sort=sort,
+            reverse=bool(raw.get("reverse", False)),
+            icon_size=int(raw.get("icon_size", 48)),
+            width=max(160, int(raw.get("width", 420))),
+            height=max(120, int(raw.get("height", 460))),
+            tint=str(raw.get("tint", "")),
+            opacity=opacity,
+            layer=layer,
+            picker=bool(raw.get("picker", False)),
+        )
+
+    def to_fence(self, tab_id: str, **over) -> "Fence":
+        """Instantiate this group as a placed tab."""
+        fields = dict(
+            id=tab_id, title=self.title, source=self.source,
+            layer=self.layer, width=self.width, height=self.height,
+            icon_size=self.icon_size, view=self.view, sort=self.sort,
+            reverse=self.reverse, tint=self.tint, opacity=self.opacity,
+            picker=self.picker,
+        )
+        fields.update({k: v for k, v in over.items() if v is not None})
+        return Fence(**fields)
 
 
 @dataclass(frozen=True)
@@ -245,6 +342,7 @@ class Settings:
 @dataclass(frozen=True)
 class Config:
     settings: Settings = field(default_factory=Settings)
+    groups: tuple[Group, ...] = ()
     fences: tuple[Fence, ...] = ()
     path: Path = CONFIG_PATH
 
@@ -264,6 +362,17 @@ class Config:
     @staticmethod
     def from_raw(raw: dict, path: Path = CONFIG_PATH) -> "Config":
         settings = Settings.parse(raw.get("settings", {}))
+
+        raw_groups = raw.get("group", [])
+        if isinstance(raw_groups, dict):
+            raw_groups = [raw_groups]
+        if not isinstance(raw_groups, list):
+            raise ConfigError("`group` must be an array of tables ([[group]])")
+        gseen: set[str] = set()
+        groups = tuple(
+            Group.parse(g, i, gseen) for i, g in enumerate(raw_groups)
+        )
+
         raw_fences = raw.get("fence", [])
         if isinstance(raw_fences, dict):           # a single [fence] table
             raw_fences = [raw_fences]
@@ -272,7 +381,10 @@ class Config:
 
         seen: set[str] = set()
         fences = tuple(Fence.parse(f, i, seen) for i, f in enumerate(raw_fences))
-        return Config(settings=settings, fences=fences, path=path)
+        return Config(settings=settings, groups=groups, fences=fences, path=path)
+
+    def group(self, gid: str) -> Group | None:
+        return next((g for g in self.groups if g.id == gid), None)
 
     def fence(self, fid: str) -> Fence | None:
         return next((f for f in self.fences if f.id == fid), None)

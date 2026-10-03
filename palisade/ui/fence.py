@@ -131,12 +131,12 @@ class FenceWindow(Gtk.ApplicationWindow):
     def _keyboard_mode(self):
         """EXCLUSIVE for a summoned fence, ON_DEMAND for one that lives on screen.
 
-        A fence configured `hidden` only exists while you are picking something
-        out of it, so it takes the keyboard outright and the keybind that opened
-        it can drive it end to end. A permanently-visible fence must never do
-        that — it would swallow every keystroke on the desktop.
+        A picker only exists while you are choosing something out of it, so it
+        takes the keyboard outright and the key that opened it can drive it end
+        to end. Anything else must never do that — it would swallow every
+        keystroke on the desktop.
         """
-        if self.fence.hidden:
+        if self.fence.picker:
             return LayerShell.KeyboardMode.EXCLUSIVE
         return LayerShell.KeyboardMode.ON_DEMAND
 
@@ -269,11 +269,11 @@ class FenceWindow(Gtk.ApplicationWindow):
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
 
-        # A summoned fence holds the keyboard exclusively, so it must not be
-        # able to stay up unattended: clicking away dismisses it, the same as
-        # any other picker. Without this, clicking another window would leave
-        # the grab in place and typing would go nowhere.
-        if self.fence.hidden:
+        # A picker holds the keyboard exclusively, so it must not be able to
+        # stay up unattended: clicking away dismisses it, the same as any other
+        # picker. Without this, clicking another window would leave the grab in
+        # place and typing would go nowhere.
+        if self.fence.picker:
             self.connect("notify::is-active", self._on_active_changed)
 
         # Also establishes the size request, so a fence that is empty or holds
@@ -495,6 +495,7 @@ class FenceWindow(Gtk.ApplicationWindow):
             ("toggle-lock", lambda *_: self._toggle_lock()),
             ("toggle-collapse", lambda *_: self.toggle_collapsed()),
             ("hide-fence", lambda *_: self._hide_persisted()),
+            ("close-tab", lambda *_: self.controller.close_tab(self.fence.id)),
             )
         else:
             actions = (
@@ -558,14 +559,13 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._dismiss_if_summoned()
 
     def _dismiss_if_summoned(self) -> None:
-        """A summoned taskbar closes once you have picked out of it.
+        """A picker goes away once you have chosen out of it.
 
         Leaving it up would keep the exclusive keyboard grab over the window
         that was just restored — you would get the window back and not be able
         to type into it.
         """
-        if self.fence.hidden:
-            self.set_hidden(True)
+        self._dismiss()
 
     def _restore_all(self) -> None:
         if not hwindows.restore_all():
@@ -730,13 +730,13 @@ class FenceWindow(Gtk.ApplicationWindow):
     def _escape(self) -> bool:
         """Dismiss a summoned fence; just clear the selection on a placed one.
 
-        A summoned fence holds the keyboard exclusively, so leaving it on screen
-        with nothing selected would strand every keystroke on the desktop — Esc
-        has to be the way out, not merely a deselect.
+        A picker holds the keyboard exclusively, so leaving it on screen with
+        nothing selected would strand every keystroke on the desktop — Esc has
+        to be the way out, not merely a deselect.
         """
         self._typeahead = ""
-        if self.fence.hidden:
-            self.set_hidden(True)
+        if self.fence.picker:
+            self._dismiss()
             return True
         self._selection.unselect_all()
         return True
@@ -819,6 +819,14 @@ class FenceWindow(Gtk.ApplicationWindow):
         )
         state.append("Hide this fence", "win.hide-fence")
         menu.append_section(None, state)
+
+        # Only a runtime tab can be closed. A fence placed in the config would
+        # simply come back on the next reload, so offering "close" for one
+        # would be a button that appears not to work.
+        if self.controller.is_tab(self.fence.id):
+            closing = Gio.Menu()
+            closing.append("Close tab", "win.close-tab")
+            menu.append_section(None, closing)
 
         popover = Gtk.PopoverMenu.new_from_model(menu)
         popover.set_parent(self._title.get_parent())
@@ -926,14 +934,31 @@ class FenceWindow(Gtk.ApplicationWindow):
         # can be stale by the time it is summoned.
         self.refresh()
         self.set_visible(True)
-        if self.fence.hidden:
+        if self.fence.picker:
             self._focus_for_picking()
+
+    def _dismiss(self) -> None:
+        """Put a picker away, by whichever route actually applies to it.
+
+        A tab is shown by existing, so dismissing one means closing it; hiding
+        it would leave an invisible tab that the toggle still counts as open,
+        and the next keypress would "close" nothing. A fence placed in the
+        config is the other way round — it must survive, so it only hides.
+        """
+        if not self.fence.picker:
+            return
+        if self.controller.is_tab(self.fence.id):
+            # Before closing, while the tab's group can still be looked up.
+            self.controller.note_picker_dismissed(self.fence.id)
+            self.controller.close_tab(self.fence.id)
+        else:
+            self.set_hidden(True)
 
     def _on_active_changed(self, *_args) -> None:
         # Only ever closes; becoming active is how it got here.
         if not self.get_property("is-active") and self.get_visible():
             self._auto_dismissed_at = time.monotonic()
-            self.set_hidden(True)
+            self._dismiss()
 
     #: A toggle arriving within this window of an automatic dismissal is read
     #: as "close", not "open" — see `was_just_auto_dismissed`.
