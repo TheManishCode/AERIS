@@ -388,3 +388,35 @@ class Config:
 
     def fence(self, fid: str) -> Fence | None:
         return next((f for f in self.fences if f.id == fid), None)
+
+
+def source_to_raw(src: Source) -> dict:
+    """Serialise a Source back to the same dict shape `Source.parse` reads.
+
+    Ad-hoc tabs — a typed location, a collected selection — have no `[[group]]`
+    behind them, so the state file has to carry their source verbatim. Emitting
+    the config's own format means one parser round-trips both, rather than a
+    second reader that can drift from it.
+
+    Only fields that differ from the defaults are written, so the stored blob
+    stays readable by a human who opens state.json.
+    """
+    raw: dict = {"type": src.kind}
+    if src.kind == "directory" and src.path is not None:
+        raw["path"] = str(src.path)
+    elif src.kind == "paths":
+        raw["paths"] = [str(p) for p in src.paths]
+    elif src.kind == "query":
+        raw["roots"] = [str(r) for r in src.roots]
+
+    default = Source()
+    for field in ("depth", "include_hidden", "name_contains",
+                  "newer_than_days", "min_size", "limit"):
+        value = getattr(src, field)
+        if value != getattr(default, field):
+            raw[field] = value
+    for field in ("ext", "categories"):
+        value = getattr(src, field)
+        if value:
+            raw[field] = list(value)
+    return raw

@@ -57,6 +57,34 @@ source = { type = "query", roots = ["~/Documents", "~/Downloads"], \
 
 Nothing is copied, moved or symlinked. A tab is a view.
 
+### Opening anything, not just the catalogue
+
+The picker's box takes a **location** as well as a filter. Type `~/src` or
+`/etc` and the folder itself becomes the top row — so you are never limited to
+the groups you thought to define in advance. Anything that is not an existing
+directory is treated as filter text, so typing `doc` still filters.
+
+```bash
+palisade new ~/Downloads     # same thing from a script
+```
+
+### Collecting a selection — a tab over just those items
+
+Select some files and folders, right-click, **Group into a new tab**. You get a
+tab containing exactly those items and nothing else, so <kbd>Ctrl</kbd>+<kbd>A</kbd>
+inside it reaches only them — never the rest of the folder they came from.
+
+Nothing is copied, moved or symlinked; the tab points at the same files, so
+making one costs nothing and closing it undoes it. The items can come from a
+single folder or be gathered from several.
+
+```bash
+palisade collect --title "Review" ~/a/draft.md ~/b/notes.md ~/c/figures
+```
+
+A collection is remembered across restarts. If every path in one has since been
+deleted, it is dropped rather than restored as a permanently empty tab.
+
 ### Want something always on screen?
 
 A `[[fence]]` is a group that is placed in the config rather than opened from the
@@ -148,6 +176,8 @@ on the outcome, never parse prose.
 palisade describe        # machine-readable command catalog
 palisade groups          # the catalogue you can open
 palisade new downloads   # open one as a tab (no argument summons the picker)
+palisade new ~/src       # or any folder, catalogued or not
+palisade collect a b c   # one tab holding exactly those paths
 palisade tabs            # what is open, and where
 palisade close tab-3     # or: palisade close all
 palisade list            # every panel + live item count
@@ -265,7 +295,7 @@ In the picker — it takes the keyboard while it is up, and hands it straight ba
 
 | Key | |
 | --- | --- |
-| type | filter the list |
+| type | filter the list — or type a path to open that folder |
 | <kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd> | jump straight to that row |
 | <kbd>↑</kbd> <kbd>↓</kbd> then <kbd>Enter</kbd> | choose |
 | <kbd>Esc</kbd> | dismiss (so does pressing the summon key again) |

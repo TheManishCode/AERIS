@@ -26,7 +26,8 @@ gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import hypr
-from .config import CONFIG_PATH, Config, ConfigError
+from .config import (CONFIG_PATH, Config, ConfigError, Fence, Source,
+                     source_to_raw)
 from .theme import Theme, stylesheet
 from .ui.fence import FenceWindow
 from .ui.picker import GroupPicker
@@ -307,9 +308,16 @@ class Controller:
             self.notify("No groups defined — add a [[group]] to your config")
             return {"picker": "no-groups"}
 
-        def chose(group_id: str):
+        def chose(choice):
             self._picker = None
-            self.spawn_tab(group_id)
+            # A Path means a location was typed rather than a group picked.
+            try:
+                if isinstance(choice, Path):
+                    self.spawn_location(choice)
+                else:
+                    self.spawn_tab(choice)
+            except (KeyError, NotADirectoryError, ValueError) as exc:
+                self.notify(f"Could not open that: {exc}")
 
         def cancelled():
             self._picker = None
@@ -345,6 +353,63 @@ class Controller:
         })
         self._save_tabs(tabs)
         return {"id": tab_id, "group": group_id, "x": win.x, "y": win.y}
+
+    def spawn_adhoc(self, title: str, source: Source, **over) -> dict:
+        """Open a tab that no `[[group]]` stands behind.
+
+        Two things need this and neither can be a catalogue entry: opening a
+        path you typed, and collecting a selection. Both are made at the moment
+        you ask for them, so there is nothing in `palisade.toml` to point at —
+        the tab carries its own source, and the state file stores it so the tab
+        still comes back after a restart.
+        """
+        tab_id = over.pop("tab_id", None) or self._next_tab_id()
+        if over.get("x") is None:
+            size = (over.get("width") or 420, over.get("height") or 460)
+            over["x"], over["y"] = self._cascade_origin(size)
+
+        fields = {k: v for k, v in over.items() if v is not None}
+        fence = Fence(id=tab_id, title=title, source=source, **fields)
+        win = FenceWindow(self.app, fence, self.config.settings, self)
+        self.windows[tab_id] = win
+        win.present()
+
+        tabs = self._tabs_state()
+        tabs.append({
+            "id": tab_id, "group": None, "title": title,
+            "source": source_to_raw(source),
+            "x": win.x, "y": win.y, "width": win.width, "height": win.height,
+            "layer": win.layer_name,
+        })
+        self._save_tabs(tabs)
+        return {"id": tab_id, "title": title, "x": win.x, "y": win.y,
+                "items": win._store.get_n_items()}
+
+    def spawn_location(self, path: str | Path, **over) -> dict:
+        """Open any folder as a tab, whether or not a group names it."""
+        target = Path(os.path.expanduser(str(path))).resolve()
+        if not target.is_dir():
+            raise NotADirectoryError(str(target))
+        return self.spawn_adhoc(
+            target.name or str(target),
+            Source(kind="directory", path=target, depth=1),
+            **over,
+        )
+
+    def spawn_collection(self, title: str, paths, **over) -> dict:
+        """Collect an explicit set of paths into one tab.
+
+        A `paths` source lists exactly what it was given and walks nothing, so
+        the tab is a workspace over those items: select-all inside it reaches
+        only them, never the rest of the folder they came from. The files are
+        not copied or moved — this is a view, like every other fence.
+        """
+        picked = tuple(Path(os.path.expanduser(str(p))) for p in paths)
+        if not picked:
+            raise ValueError("nothing selected")
+        return self.spawn_adhoc(
+            title, Source(kind="paths", paths=picked), **over
+        )
 
     #: A toggle arriving within this window of a picker dismissing itself is
     #: read as "stay closed" — see `note_picker_dismissed`.
@@ -424,7 +489,15 @@ class Controller:
         kept = []
         for tab in self._tabs_state():
             group_id = tab.get("group")
-            group = self.config.group(group_id)
+            group = self.config.group(group_id) if group_id else None
+
+            # An ad-hoc tab — a typed location or a collected selection —
+            # carries its own source because no group stands behind it.
+            if group is None and tab.get("source"):
+                if self._restore_adhoc(tab):
+                    kept.append(tab)
+                continue
+
             if not group:
                 continue          # group removed from config since; skip quietly
             if group.picker:
@@ -453,9 +526,52 @@ class Controller:
 
         # Write back without the dropped entries, so a picker left open at
         # shutdown is forgotten rather than skipped again on every start.
+        # An ad-hoc tab whose paths have all been deleted is dropped the same
+        # way: a tab that can only ever be empty is not worth restoring.
         if len(kept) != len(self._tabs_state()):
             self._save_tabs(kept)
             self._save_state()
+
+    def _restore_adhoc(self, tab: dict) -> bool:
+        """Rebuild a tab that carries its own source. True if it was restored.
+
+        The source is read back through the config's own parser, so a malformed
+        or stale entry is rejected the same way a bad `palisade.toml` would be
+        rather than crashing the daemon on start.
+        """
+        try:
+            source = Source.parse(tab["source"], f"state tab {tab.get('id')}")
+        except ConfigError:
+            return False
+        # A collection of paths that no longer exist restores as an empty tab
+        # you then have to close by hand. Drop it instead.
+        if source.kind == "paths":
+            live = tuple(p for p in source.paths if p.exists())
+            if not live:
+                return False
+            source = replace(source, paths=live)
+        elif source.kind == "directory" and not (
+            source.path and source.path.is_dir()
+        ):
+            return False
+
+        over = {k: tab.get(k) for k in ("x", "y", "width", "height", "layer")}
+        saved = self.state.get("fences", {}).get(tab.get("id"), {})
+        over.update({k: v for k, v in saved.items()
+                     if k in {"x", "y", "width", "height", "collapsed",
+                              "locked", "layer"}})
+        try:
+            fence = Fence(
+                id=tab["id"], title=tab.get("title") or "Collection",
+                source=source,
+                **{k: v for k, v in over.items() if v is not None},
+            )
+        except (KeyError, TypeError):
+            return False
+        win = FenceWindow(self.app, fence, self.config.settings, self)
+        self.windows[tab["id"]] = win
+        win.present()
+        return True
 
     # ----------------------------------------------------------------- peek
 

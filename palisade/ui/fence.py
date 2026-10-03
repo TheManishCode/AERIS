@@ -485,28 +485,35 @@ class FenceWindow(Gtk.ApplicationWindow):
         # merely hidden from its menu, they are never registered, so a stray
         # `win.trash` activation cannot reach a window row.
         if self._is_windows:
-            actions = (
+            content = (
                 ("restore", lambda *_: self._restore_selected()),
                 ("restore-all", lambda *_: self._restore_all()),
                 ("close-window", lambda *_: self._close_selected()),
-                ("refresh", lambda *_: self.refresh()),
+            )
+        else:
+            content = (
+                ("open", lambda *_: self._open_selected()),
+                ("open-folder", lambda *_: self._reveal_selected()),
+                ("copy-path", lambda *_: self._copy_paths()),
+                ("rename", lambda *_: self._rename_selected()),
+                ("trash", lambda *_: self._trash_selected()),
+                ("group-selection", lambda *_: self._group_selected()),
+            )
+
+        # Chrome verbs belong to every fence, whatever it shows. These lived in
+        # the windows branch only, so on a file fence `win.toggle-lock` and the
+        # rest resolved to nothing and GTK greyed out the whole header menu.
+        chrome = (
+            ("refresh", lambda *_: self.refresh()),
             ("layer-bottom", lambda *_: self._set_layer_persisted("bottom")),
             ("layer-overlay", lambda *_: self._set_layer_persisted("overlay")),
             ("toggle-lock", lambda *_: self._toggle_lock()),
             ("toggle-collapse", lambda *_: self.toggle_collapsed()),
             ("hide-fence", lambda *_: self._hide_persisted()),
             ("close-tab", lambda *_: self.controller.close_tab(self.fence.id)),
-            )
-        else:
-            actions = (
-                ("open", lambda *_: self._open_selected()),
-                ("open-folder", lambda *_: self._reveal_selected()),
-                ("copy-path", lambda *_: self._copy_paths()),
-                ("rename", lambda *_: self._rename_selected()),
-                ("trash", lambda *_: self._trash_selected()),
-                ("refresh", lambda *_: self.refresh()),
-            )
-        for name, handler in actions:
+        )
+
+        for name, handler in content + chrome:
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
             self.add_action(action)
@@ -661,6 +668,14 @@ class FenceWindow(Gtk.ApplicationWindow):
             edit.append("Copy path", "win.copy-path")
             edit.append("Rename…", "win.rename")
             menu.append_section(None, edit)
+
+            collect = Gio.Menu()
+            n = len(self._selected_files())
+            collect.append(
+                "Group into a new tab" if n < 2 else f"Group {n} items into a new tab",
+                "win.group-selection",
+            )
+            menu.append_section(None, collect)
 
             danger = Gio.Menu()
             danger.append("Move to trash", "win.trash")
@@ -833,6 +848,27 @@ class FenceWindow(Gtk.ApplicationWindow):
         popover.set_has_arrow(False)
         popover.set_pointing_to(Gdk.Rectangle(x=int(x), y=int(y), width=1, height=1))
         popover.popup()
+
+    def _group_selected(self) -> None:
+        """Collect the selection into a tab of its own.
+
+        A workspace over exactly those items: Ctrl+A inside it reaches only
+        them, never the rest of the folder they came from. Nothing is copied or
+        moved — the new tab points at the same files, so this is free and
+        undoable by closing it.
+        """
+        items = self._selected_files()
+        if not items:
+            self.controller.notify("Select something first")
+            return
+        title = (
+            items[0].name if len(items) == 1
+            else f"{len(items)} from {self.fence.title}"
+        )
+        try:
+            self.controller.spawn_collection(title, [i.path for i in items])
+        except ValueError as exc:
+            self.controller.notify(str(exc))
 
     def _set_layer_persisted(self, layer: str) -> None:
         self.set_layer_name(layer)

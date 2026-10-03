@@ -1,5 +1,77 @@
 # Changelog
 
+## 2026-10-03 — Open any location; collect a selection into its own tab
+
+Role: Frontend Engineer + UX + QA Engineer
+Status: Fixed | Added
+
+Reason:
+Reported: the fence header menu was almost entirely greyed out. Separately, a
+tab could only ever show something a `[[group]]` had named in advance, so
+opening an arbitrary folder meant editing TOML first — and there was no way to
+say "just these items" about a handful of files picked out of a folder.
+
+Fixed:
+- The header menu was dead on every file fence. `layer-bottom`,
+  `layer-overlay`, `toggle-lock`, `toggle-collapse`, `hide-fence`, `close-tab`
+  and `refresh` were registered *only* inside the `_is_windows` branch of
+  `_install_actions`, so on a file fence those `win.*` names resolved to
+  nothing. A GTK menu item with no matching action is not an error — it just
+  renders insensitive, which is why this never raised. They are window chrome
+  and now belong to both kinds; the content verbs stay branch-specific, so a
+  taskbar still cannot reach `win.trash`.
+
+Changes:
+- The picker's box takes a **location** as well as a filter. Type `~/src` or
+  `/etc` and that folder leads the list. `resolve_location` is deliberately
+  strict — only text starting `~`, `/`, `./` or `../` that resolves to a real
+  directory counts, so `doc` still filters rather than being read as a failed
+  path. Handles quoted paths pasted from a shell or file manager.
+- **Group into a new tab** on the item right-click menu: builds a `paths`
+  source over exactly the selection. Select-all inside it reaches only those
+  items, never the rest of the folder they came from. Nothing is copied or
+  moved — it is a view, like every other fence, so it costs nothing to make and
+  closing it undoes it.
+- `Controller.spawn_adhoc` / `spawn_location` / `spawn_collection`: tabs that
+  no group stands behind. They carry their own source, and `state.json` stores
+  it, so they survive a restart like any other tab.
+- `source_to_raw` in `config.py` emits the same dict shape `Source.parse`
+  reads, so one parser round-trips both config and state rather than a second
+  reader that could drift. Only non-default fields are written.
+- `restore_tabs` rebuilds ad-hoc tabs through that parser, and drops a
+  collection whose paths have all since been deleted rather than restoring a
+  permanently empty tab.
+- `palisade new <path>` and `palisade collect <paths…> [--title]`, both in the
+  `describe` catalog.
+
+Verification:
+- 50 tests pass (was 43). `tests/test_actions.py` is new: 7 tests over which
+  actions each fence kind registers. Confirmed it actually catches the bug by
+  reintroducing it — the chrome assertion fails with the exact missing set —
+  then restoring `fence.py` byte-identical.
+- Action registration also checked against real `FenceWindow`s built on the
+  live compositor: both kinds register all chrome, file fences also get
+  `group-selection`.
+- Live: `new ~/Downloads` → 4 items; `new /etc` → 195; `collect` of 3 paths out
+  of a 5-entry folder → exactly 3 items, which is the sandbox boundary holding.
+  `new /nope/nothing` → `not a folder`. `collect` with no paths → argparse
+  rejects it.
+- `source_to_raw` → `Source.parse` round-trips all four source kinds exactly.
+- Restart: ad-hoc location and collection tabs all restored; a collection whose
+  files were deleted in between was dropped. Daemon log clean.
+
+Removed/Reverted:
+- Nothing.
+
+Result:
+Any folder is one keystroke away whether or not it is catalogued, and a
+selection can become a workspace of its own without touching the originals.
+
+Known Issues:
+- A collection holds paths, not identities: rename or move a collected file
+  outside Palisade and that row drops out on the next refresh. Tracking
+  renames would need inode watching, which is out of scope here.
+
 ## 2026-10-03 — Taskbar restored on the tabs model
 
 Role: Backend Engineer + QA

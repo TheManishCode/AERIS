@@ -12,6 +12,7 @@ surface.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import gi
 
@@ -31,11 +32,39 @@ KIND_ICONS = {
 
 
 class GroupObject(GObject.Object):
+    """A row. Either a catalogue group, or a location you typed."""
+
     __gtype_name__ = "PalisadeGroupObject"
 
-    def __init__(self, group):
+    def __init__(self, group=None, location=None):
         super().__init__()
         self.group = group
+        self.location = location
+
+
+def resolve_location(text: str) -> Path | None:
+    """The directory `text` names, or None if it does not name one.
+
+    Deliberately strict about what counts as a location: anything that is not
+    an existing directory falls through and is treated as filter text, so
+    typing "doc" still filters rather than being read as a failed path.
+    """
+    text = text.strip()
+    if not text:
+        return None
+    # Quoting survives a paste from a file manager or a shell.
+    if len(text) > 1 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1]
+    if not (text.startswith(("~", "/", "./", "../")) or text == ".."):
+        return None
+    try:
+        path = Path(os.path.expanduser(text)).expanduser()
+        if not path.is_absolute():
+            path = Path.home() / path
+        resolved = path.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return resolved if resolved.is_dir() else None
 
 
 class GroupPicker(Gtk.ApplicationWindow):
@@ -76,14 +105,14 @@ class GroupPicker(Gtk.ApplicationWindow):
         header.add_css_class("picker-header")
         title = Gtk.Label(label="New tab", xalign=0.0)
         title.add_css_class("fence-title")
-        hint = Gtk.Label(label="Type to filter · Alt+1-9 to jump · Esc", xalign=0.0)
+        hint = Gtk.Label(label="Filter, or type a path · Alt+1-9 · Esc", xalign=0.0)
         hint.add_css_class("item-sub")
         header.append(title)
         header.append(hint)
         root.append(header)
 
         self._search = Gtk.Entry()
-        self._search.set_placeholder_text("Type to filter…")
+        self._search.set_placeholder_text("Filter, or type a path…")
         self._search.add_css_class("picker-search")
         self._search.connect("changed", lambda *_: self._refilter())
         self._search.connect("activate", lambda *_: self._choose_selected())
@@ -142,8 +171,15 @@ class GroupPicker(Gtk.ApplicationWindow):
         list_item._image, list_item._label, list_item._sub = image, label, sub
 
     def _on_bind(self, _f, list_item) -> None:
-        g = list_item.get_item().group
+        obj = list_item.get_item()
         pos = list_item.get_position()
+        if obj.location is not None:
+            list_item._key.set_text(str(pos + 1) if pos < 9 else "")
+            list_item._label.set_text(f"Open {obj.location.name or obj.location}")
+            list_item._sub.set_text(_tilde(obj.location))
+            list_item._image.set_from_icon_name("folder-open")
+            return
+        g = obj.group
         # Only the first nine rows have a shortcut; the rest are reached by
         # filtering or the arrows, and a badge there would promise a key that
         # does nothing.
@@ -157,8 +193,16 @@ class GroupPicker(Gtk.ApplicationWindow):
     # -------------------------------------------------------------- filtering
 
     def _refilter(self) -> None:
-        needle = self._search.get_text().strip().lower()
+        text = self._search.get_text().strip()
+        needle = text.lower()
         self._store.remove_all()
+
+        # A path you typed leads, because if you went to the trouble of typing
+        # one you did not mean to filter the catalogue by it.
+        location = resolve_location(text)
+        if location is not None:
+            self._store.append(GroupObject(location=location))
+
         for g in self._groups:
             if not needle or needle in g.title.lower() or needle in g.id.lower():
                 self._store.append(GroupObject(g))
@@ -167,6 +211,11 @@ class GroupPicker(Gtk.ApplicationWindow):
         self._empty.set_visible(not has)
         if has:
             self._selection.set_selected(0)
+        else:
+            self._empty.set_label(
+                "No such folder" if text.startswith(("~", "/", "."))
+                else "No groups match"
+            )
 
     # --------------------------------------------------------------- choosing
 
@@ -175,11 +224,13 @@ class GroupPicker(Gtk.ApplicationWindow):
         if obj is None or self._done:
             return
         self._done = True
-        gid = obj.group.id
+        # A group is named by id; a typed location is passed as the path
+        # itself. The controller tells them apart the same way.
+        chosen = obj.group.id if obj.group is not None else obj.location
         self.close()
         # Let the surface go before spawning, so the new tab is not mapped
         # underneath a picker that is still tearing down.
-        GLib.idle_add(lambda: (self._on_choose(gid), False)[1])
+        GLib.idle_add(lambda: (self._on_choose(chosen), False)[1])
 
     def _choose_selected(self) -> None:
         pos = self._selection.get_selected()

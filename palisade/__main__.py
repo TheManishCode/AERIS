@@ -200,8 +200,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("groups", help="list the groups a tab can show")
     sub.add_parser("tabs", help="list the tabs currently open")
 
-    nw = sub.add_parser("new", help="open a new tab (omit group to get the picker)")
+    nw = sub.add_parser(
+        "new", help="open a new tab: a group id, a folder path, "
+               "or nothing for the picker")
     nw.add_argument("group", nargs="?")
+
+    co = sub.add_parser(
+        "collect", help="gather paths into one tab holding exactly those items")
+    co.add_argument("paths", nargs="+")
+    co.add_argument("--title", default="")
 
     cl = sub.add_parser("close", help="close a tab, or 'all'")
     cl.add_argument("id")
@@ -240,6 +247,9 @@ def main(argv: list[str] | None = None) -> int:
              "width": args.width, "height": args.height}, args.json)
     if cmd == "layer":
         return _client({"cmd": "layer", "id": args.id, "value": args.value}, args.json)
+    if cmd == "collect":
+        return _client({"cmd": "collect", "paths": args.paths,
+                        "title": args.title}, args.json)
     if cmd == "new":
         payload = {"cmd": "new"}
         if args.group:

@@ -50,7 +50,8 @@ COMMANDS = {
     "lock":           {"args": {"id": "fence id", "value": "bool, omit to toggle"}, "returns": "new locked state", "mutates": True},
     "peek":           {"args": {"seconds": "float, default 4", "off": "bool"}, "returns": "raises every fence above windows, briefly", "mutates": True},
     "groups":         {"args": {}, "returns": "the catalogue of groups a tab can show", "mutates": False},
-    "new":            {"args": {"group": "group id; omit to open the picker"}, "returns": "the new tab", "mutates": True},
+    "new":            {"args": {"group": "group id, or a path to open that folder; omit to open the picker"}, "returns": "the new tab", "mutates": True},
+    "collect":        {"args": {"paths": "list of paths", "title": "optional tab title"}, "returns": "a new tab holding exactly those paths", "mutates": True},
     "close":          {"args": {"id": "tab id, or \"all\""}, "returns": "what was closed", "mutates": True},
     "tabs":           {"args": {}, "returns": "the tabs currently open", "mutates": False},
     "toggle":         {"args": {"group": "group id"}, "returns": "opens that group as a tab, or closes it if already open", "mutates": True},
@@ -294,10 +295,24 @@ class Server:
             group = req.get("group")
             if not group:
                 return c.open_picker()
+            # A group id and a location are both "open this as a tab", so one
+            # verb takes either rather than making the caller know which.
+            if str(group).startswith(("~", "/", "./", "../")):
+                try:
+                    return c.spawn_location(str(group))
+                except NotADirectoryError:
+                    raise NotFound(f"not a folder: {group}") from None
             try:
                 return c.spawn_tab(str(group))
             except KeyError:
                 raise NotFound(f"no group with id {group!r}") from None
+        if cmd == "collect":
+            paths = req.get("paths") or []
+            if not isinstance(paths, list) or not paths:
+                raise ValueError("collect needs a non-empty `paths` list")
+            return c.spawn_collection(
+                str(req.get("title") or f"{len(paths)} items"), paths
+            )
         if cmd == "close":
             tab_id = str(req["id"])
             if tab_id == "all":
