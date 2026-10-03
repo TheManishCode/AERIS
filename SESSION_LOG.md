@@ -176,3 +176,69 @@ Next recommended action:
 - Live with the minimize binds for a day. If a specific app still maximizes
   itself on launch, name it and apply the one-line `suppress_event` rule that
   is already documented in `custom/rules.lua`.
+
+## 2026-10-03 — Session Summary
+
+What we did:
+- Finished the omnibox started earlier: fixed the stabiliser flaw a failing
+  test had exposed (`CERTAIN` was 0.9, which let any confident guess skip the
+  anti-flicker machinery; it is 1.0, which only a sigil produces).
+- Added `Module.omnibox` so the field's modes come from installed packages,
+  and wrote four: core `filter`, files `path` (`~/…`, `/…`, `./…`), apps `>`
+  launcher, dock `@` window search.
+- Split `FenceWindow.refresh` into refresh (re-read the source) and `_render`
+  (draw), so a keystroke redraws without re-walking the folder.
+- Built the field into the panel, replacing type-to-jump.
+- Then, on your second request, applied shapeshift's theme to every fence
+  except the taskbar: palette, concentric radius scale, shadow tiers, easing.
+  Added `Settings.theme` ("paper" | "system", default paper).
+- Cleaned up: seven duplicated GI preambles in the tests, eight unused
+  imports, orphaned comments, dead `.paper` rules for the mode switch, and
+  one TODO the `>` launcher closed.
+- Removed the temporary `navtest` group and its scratch tree.
+
+What worked:
+- 543 tests green (core 286, files 167, dock 44, apps 46) — whole suite, every
+  file run alone, and under `unittest discover`. The per-file run matters: the
+  suite had been passing on collection order, and `test_navigate.py` alone
+  could not import the UI at all until `_realgi.py` replaced the preambles.
+- Live on Hyprland, with screenshots: typing opened the field; `j` filtered 2
+  rows to 1; `~/` listed 20 entries of home as "Go to", folders first,
+  dotfiles excluded; `>fire` found Firefox; `>term` found Alacritty, kitty and
+  Konsole by *category* rather than name; `@` showed "Nothing minimized
+  matches"; Enter on `~/Doc` navigated into Documents and closed the field;
+  Escape unwound field → folder → panel.
+- Paper measured from pixels, not eyeballed: shell #fafaf9 and card #ffffff
+  exact, focus ring #3b5bdb exact. A taskbar opened alongside stayed Material
+  You and translucent, which is the split you asked for.
+- The stylesheet is asserted to parse clean through GTK's `parsing-error`
+  signal, with a control test proving that assertion is live — GTK discards a
+  bad declaration silently, so this is not something a screenshot can catch.
+
+What's still broken / unfinished:
+- The field has no Tab-completion and no history. Both are things a launcher
+  is expected to do.
+- `corner_radius` is accepted and silently ignored under the paper theme. The
+  concentric scale is deliberate, but silently ignoring a setting reads as a
+  bug; it should say so.
+- The paper sheet duplicates colour rules rather than factoring colour out of
+  structure. Fine for two themes, wrong for three.
+- Carried from before: breadcrumb is one level deep, no syntax highlighting in
+  the viewer, no undo across the edit-mode toggle, palisade-apps window pinning
+  is designed and not built, `PALISADE_OWNER` placeholder URLs (nothing
+  pushed).
+
+Not yet verified:
+- The `@` mode was only exercised with *nothing* minimized — the empty path. I
+  did not minimize a window and search for it live; the populated path is
+  covered by unit tests only.
+- The paper theme was seen on `directory` fences only. `query` and `paths`
+  fences take the same code path and `uses_paper` is tested for them, but I did
+  not put one on screen.
+- Reduced-motion: the paper transitions are 150ms CSS and I did not test with
+  `prefers-reduced-motion` set.
+
+Next recommended action:
+- Tab-completion in the field. `~/Doc`+Tab should complete to `~/Documents/`;
+  right now Tab moves focus into the list, which is the less useful of the two
+  things Tab could mean in a path.
