@@ -14,7 +14,16 @@ modules.
 
 ## What it adds
 
-One source kind:
+**The `>` launcher.** Type `>` into any panel and the field becomes an
+application launcher; <kbd>Enter</kbd> starts the first match. Reachable only
+by its sigil, never by guessing — "code", "files" and "notes" are all programs
+*and* all plausible things to be filtering a folder for, so a launcher that
+competed on score would take the field away exactly when you wanted it.
+
+Name matches rank first; a match on an entry's comment or category follows, so
+`>browser` finds Firefox when you have forgotten what it is called.
+
+And one source kind:
 
 ```toml
 [[group]]

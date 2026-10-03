@@ -23,6 +23,13 @@ modules.
 | `paths` | A fixed, pinned list. |
 | `folder` | Alias for `directory`. |
 
+**A `path` mode for the field.** Type `~/Documents`, `/etc` or `./src` into any
+panel and it becomes a listing of that folder, anywhere on disk — folders
+first, dotfiles only once you type the dot. A trailing `/` lists the folder
+whole; without one the last segment filters it, the way shell completion
+behaves. <kbd>Enter</kbd> navigates the panel there, and the panel's own source
+is untouched: <kbd>Alt</kbd>+<kbd>Home</kbd> comes back.
+
 ```toml
 [[group]]
 id = "shots"
@@ -134,14 +141,15 @@ away — and that is the right tool for that job.
 | <kbd>Enter</kbd> / double-click | Open a file, or walk into a folder |
 | <kbd>Backspace</kbd> / <kbd>Alt</kbd>+<kbd>←</kbd> | Back up one folder |
 | <kbd>Alt</kbd>+<kbd>Home</kbd> | Back to the group's own folder |
-| <kbd>Esc</kbd> | Back to the list, then back up a folder |
+| <kbd>Esc</kbd> | Close the field, then back to the list, then back up a folder |
 | <kbd>Ctrl</kbd>+<kbd>E</kbd> | Edit, or toggle Markdown preview |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save |
 | <kbd>Ctrl</kbd>+<kbd>N</kbd> | New file |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> | New folder |
 | <kbd>F2</kbd> | Rename in place |
 | <kbd>Delete</kbd> | Move to trash |
-| Type | Jump to the first match |
+| Type | Open the field (filter, or `~/…` to go somewhere) |
+| <kbd>Ctrl</kbd>+<kbd>F</kbd> | Open the field empty |
 
 ---
 

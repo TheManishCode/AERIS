@@ -19,6 +19,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from _realgi import use_real_gi  # noqa: E402
+
+use_real_gi()
+
 from palisade.config import Source  # noqa: E402
 from palisade.ui import fence as fence_mod  # noqa: E402
 

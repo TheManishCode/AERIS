@@ -1,5 +1,105 @@
 # Changelog
 
+## 2026-10-03 — One field that changes what it is, and the paper theme
+
+Role: Senior Product Designer + Frontend Engineer + QA Engineer
+
+Status: Added, Changed, Removed
+
+Reason:
+Two requests. *"https://github.com/anishfn/shapeshift use this repo to improve
+the feature"*, and then *"use the theme from [shapeshift] for the group window
+n everything else just not the minimised one"*.
+
+Shapeshift (MIT) is a single input that morphs into whatever interface your
+text turns out to need. Three things in it are worth having here; one is not.
+
+Taken: **one field, many surfaces**; the **"decides / computes" split** between
+working out *which* interface and working out *what the values are*; and the
+**anti-flicker state machine**, which is the real engineering in it. Also its
+**design system** — palette, concentric radius scale, shadow tiers, easing.
+
+Not taken: the model. Shapeshift classifies with an LLM. A desktop panel must
+not make a network call per keystroke, and a local model is a poor trade for
+deciding whether a string starts with `~`. Classification here is sigils and
+scoring: faster, offline by construction, and explainable when it is wrong.
+
+Changes:
+- `palisade/omnibox.py` (new): `Mode`, `Candidate`, `classify`, `Stabiliser`,
+  `Registry`, and name matching (`match`/`rank`). No GTK import — the whole
+  decision layer is tested without a display.
+- The stabiliser is ported almost directly: a challenger must beat the sitting
+  mode by `MARGIN` (0.15) for `ROUNDS` (2) keystrokes in a row, and losing once
+  resets its streak. Only a sigil skips the wait.
+- `Module.omnibox` added to the registry, so the field's modes come from the
+  installed packages. `Registry.omnibox()` returns a fresh field per panel —
+  two open fields are two separate pieces of typing.
+- Modes: `filter` (core — narrow what is on screen), `path` (files — `~/…`,
+  `/…`, `./…` anywhere on disk), `apps` (`>` launcher), `windows` (`@` find a
+  minimized window). Core owns `filter` because it needs only `Item.name`;
+  without it a dock-only install would have a field that did nothing.
+- `FenceWindow.refresh` split into `refresh` (re-read the source) and
+  `_render` (draw). A keystroke re-renders without re-walking the folder.
+- `FenceWindow.rows()` is public: a filter mode must see the *unfiltered* list,
+  or deleting a character could never widen the results again.
+- The paper theme: shapeshift's palette as `@ss_*` alongside `@m3_*`, and a
+  `.paper` section in the sheet. Settings gains `theme = "paper" | "system"`,
+  default `paper`. The taskbar is always `system` whatever it says.
+- Paper panels are opaque. At the default 0.55 the warm white composited with
+  a dark wallpaper into a flat grey with the white card as a hard step;
+  `opacity` applies to the system theme and to a paper fence naming its own
+  `tint`.
+- `tests/_realgi.py` (new) replaces seven copies of the typelib/stub-drop
+  preamble, and `tests/conftest.py` runs it before collection.
+
+Removed/Reverted:
+- **Type-to-jump.** Typing a printable character used to move the selection to
+  the first row starting with it, invisibly, with a 1.2s reset. It is replaced
+  by the field, which starts the same way — type and it reacts — and then says
+  what it understood, narrows instead of jumping, and can be a path or a
+  launcher instead of a prefix match. `TYPEAHEAD_RESET_S`, `_typeahead`,
+  `_typeahead_at`, `_typeahead_key` and the now-unused `time` import are gone.
+  Keeping both would have been two search mechanisms on the same keys.
+- The duplicated GI preamble in seven test files (see `_realgi.py`).
+- `CERTAIN` was 0.9 in the first draft, which let any confident heuristic skip
+  the stabiliser entirely. It is 1.0, which only a sigil produces.
+- A comment in `_on_activate` claiming the row had to be read before closing
+  the field. It did not — `obj` is a reference, not an index — and the claim
+  was removed rather than left as a plausible-looking lie.
+- `.paper .mode-switch` / `.mode-tab`: the mode switch is built only for a
+  taskbar fence, and a taskbar never wears paper. Unreachable by construction.
+- Eight unused imports (`os`, `tempfile`) the GI preamble had left behind, and
+  the orphaned comments that described the block after it moved.
+- The "Application search is config-only" TODO, which the `>` launcher closes.
+
+Verification:
+- 543 tests pass (core 286, files 167, dock 44, apps 46), whole and one file at
+  a time, under both pytest and `unittest discover`.
+- The stylesheet is asserted to parse clean through `Gtk.CssProvider`'s
+  `parsing-error` signal, with a control proving the assertion is live. GTK
+  discards a bad declaration silently, so this cannot be eyeballed.
+- Live on Hyprland: typing opens the field; `j` filtered 2 rows to 1 with the
+  chip reading "Filter"; `~/` listed 20 entries of home as "Go to", folders
+  first, dotfiles excluded; `>fire` found Firefox with its real icon under
+  "Applications"; `@` showed "Nothing minimized matches"; Enter on `~/Doc`
+  navigated into Documents and closed the field; Escape unwound field, then
+  folder, then panel.
+- Paper measured from a screenshot: shell #fafaf9 and card #ffffff exact,
+  focus ring #3b5bdb exact, muted text #7b7973 against #706e68 (antialiased).
+  A taskbar opened alongside stayed Material You and translucent.
+
+Result:
+One field, four modes, contributed by whichever packages are installed. Group
+panels wear paper; the taskbar still matches the desktop.
+
+Known Issues:
+- A paper panel does not re-theme with the wallpaper. That is the point of it,
+  and `theme = "system"` is the way back. See DECISIONS.md.
+- `corner_radius` has no effect on a paper fence: the concentric scale is part
+  of the design being adopted, not a free parameter.
+- The field has no history and no completion — Tab moves focus into the list
+  rather than completing a path.
+
 ## 2026-10-03 — Audit: a stable launcher path, and a rename that works
 
 Role: Release Engineer + Frontend Engineer + QA Engineer

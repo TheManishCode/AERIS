@@ -155,3 +155,64 @@ scanning its dependency tree.
 **Why.** A fence is desktop furniture, not a bar. The default layer-shell
 behaviour would reserve screen area and push tiled windows around, which on a
 tiling compositor is actively hostile. `-1` opts out entirely.
+
+---
+
+## 7. The field classifies deterministically, not with a model
+
+**Decision.** The omnibox decides what it is from leading sigils and a cheap
+per-mode score. No model, local or remote.
+
+**Why.** The idea comes from shapeshift (MIT), where an LLM reads the text and
+picks the interface. That is the right call for a web app whose inputs are
+natural language — "lunch with Sam next Tuesday" is not something a regex
+should be parsing.
+
+A panel's inputs are not that. They are `~/Documents`, `>firefox`, `report`.
+Deciding whether a string starts with `~` does not need inference, and the
+costs of using it anyway are real: a network call per keystroke is unacceptable
+latency and an unacceptable amount of your filesystem leaving the machine, and
+a local model is hundreds of megabytes of resident memory to answer a question
+`str.startswith` answers exactly.
+
+What shapeshift is actually right about is the *split* — deciding which
+interface is a different job from computing the values — and that survives
+without the model. `Mode.score` decides; `Mode.run` computes; neither knows
+about the other's job.
+
+**What we lose.** Natural language. You cannot type "that pdf from last
+tuesday". A `query` source does that job declaratively instead.
+
+---
+
+## 8. A group panel does not follow the wallpaper; the taskbar does
+
+**Decision.** `theme = "paper"` by default, which is shapeshift's palette,
+radius scale and shadow tiers (MIT). Fixed, not derived from Material You.
+Every fence except the taskbar wears it; the taskbar is always `system`.
+
+**Why.** These are two different kinds of object and the Material You question
+has two different answers.
+
+The taskbar is *furniture*. It stands in a row with the rice's own bar and
+panels, built from the same tokens at the same opacity. One that did not match
+would read as a foreign window someone left open, not as part of the shell. It
+follows the wallpaper, and should.
+
+A group is *a surface you put things on*. Its job is to read as an object
+sitting on the desktop. A translucent panel tinted to match whatever is behind
+it reads as a hole in the desktop instead — and it changes identity every time
+the wallpaper does, so the thing you built and arranged is never quite the same
+thing twice. A fixed, opaque surface with its own shadow is what makes it an
+object.
+
+Paper is opaque for the same reason: the design has no translucency in it, and
+at the default 0.55 the warm white composited with a dark wallpaper into a flat
+grey with the white card sitting on it as a hard, muddy step. Measured, not
+guessed.
+
+**What we lose.** A paper panel no longer re-themes with the wallpaper, and
+`corner_radius` does not apply to it — the concentric scale (shell 28 → card 18
+→ item 13, each step the one outside it minus the padding between) is part of
+the design being adopted rather than a free parameter. `theme = "system"`
+restores both.

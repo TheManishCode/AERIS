@@ -23,7 +23,7 @@ from pathlib import Path
 from palisade.registry import Module
 from palisade.sources import Item
 
-from . import catalogue
+from . import catalogue, omnibox
 
 
 def resolve_apps(src) -> list[Item]:
@@ -83,4 +83,5 @@ MODULE = Module(
     title="Installed applications",
     sources={"apps": resolve_apps},
     activate=activate,
+    omnibox=omnibox.MODES,
 )

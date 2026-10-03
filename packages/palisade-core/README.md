@@ -76,6 +76,34 @@ an empty folder.
 
 ---
 
+## The field
+
+**Start typing in a panel.** A field appears and works out what you meant.
+
+| You type | What it becomes | From |
+| --- | --- | --- |
+| `report` | filters the rows already on screen | core |
+| `~/Documents`, `/etc`, `./src` | a listing of that folder, anywhere on disk | palisade-files |
+| `>firefox` | an application launcher | palisade-apps |
+| `@kitty` | find a minimized window | palisade-dock |
+
+<kbd>Enter</kbd> opens the first row. <kbd>Down</kbd> or <kbd>Tab</kbd> moves
+into the list. <kbd>Esc</kbd> closes the field, then backs out of a folder,
+then dismisses the panel — one step at a time. <kbd>Ctrl</kbd>+<kbd>F</kbd>
+opens it empty.
+
+It will not flicker while you type. A mode has to be better than the one
+showing for two keystrokes running before the panel changes shape — borrowed
+from [shapeshift](https://github.com/anishfn/shapeshift), which is where the
+whole idea comes from. Unlike shapeshift there is no model involved: `~` is
+recognised by `str.startswith`, not by inference, so nothing you type in a
+panel leaves the machine.
+
+What the field can turn into depends on what you have installed. With core
+alone it filters; each package adds its own modes.
+
+---
+
 ## Config
 
 `~/.config/palisade/palisade.toml`. `palisade init` writes a starter.
@@ -83,6 +111,7 @@ an empty folder.
 ```toml
 [settings]
 layer = "bottom"        # background | bottom | top | overlay
+theme = "paper"         # paper | system
 blur = true
 opacity = 0.55
 corner_radius = 18
@@ -100,6 +129,20 @@ path = "~/Documents/notes"
 ```
 
 `palisade check` validates it and previews what every fence would show.
+
+### Themes
+
+`paper` — warm paper, white cards, an indigo accent, and a concentric radius
+scale, from [shapeshift](https://github.com/anishfn/shapeshift) (MIT). A fixed
+identity that does not follow the wallpaper, so a panel reads as an object on
+the desktop rather than a hole in it. Opaque by design: `opacity` and
+`corner_radius` do not apply to it.
+
+`system` — the desktop's Material You palette, re-coloured from the wallpaper
+whenever it changes.
+
+The taskbar is always `system`. It stands in a row with your shell's own
+panels and one that did not match them would read as a foreign window.
 
 ---
 

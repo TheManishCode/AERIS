@@ -6,7 +6,6 @@ buries the last. The anti-collision walk is pure arithmetic over (requested
 point, open tabs, screen), so it is pinned down here rather than eyeballed.
 """
 
-import os
 import sys
 import unittest
 from pathlib import Path
@@ -19,26 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 # The import opens no display; the one call that would (_screen_size) is
 # overridden below, so this still runs headless.
 #
-# gtk4-layer-shell may be installed under ~/.local (see docs/INSTALL.md), in
-# which case only bin/palisade knows where its typelib is. Running the suite
-# with plain `python3 -m unittest` must not silently skip these, so the same
-# lookup is done here before the import.
-# test_manipulate installs a fake `gi` into the shared module table to avoid
-# needing GTK. Under `unittest discover` that fake outlives its own file, and
-# this module would import against it, fail, and *skip* — green suite, tests
-# silently not running. Drop any stub (a real module has a __file__) so the
-# genuine bindings get imported here.
-for _name in [m for m in list(sys.modules) if m == "gi" or m.startswith("gi.")]:
-    if getattr(sys.modules[_name], "__file__", None) is None:
-        del sys.modules[_name]
+# Called, not just imported — see _realgi for the two problems it solves and
+# why this has to run in every GTK test file rather than once in conftest.
+from _realgi import use_real_gi  # noqa: E402
 
-for _libdir in (Path.home() / ".local/lib", Path("/usr/lib"), Path("/usr/lib64")):
-    if (_libdir / "girepository-1.0/Gtk4LayerShell-1.0.typelib").exists():
-        _existing = os.environ.get("GI_TYPELIB_PATH")
-        os.environ["GI_TYPELIB_PATH"] = str(_libdir / "girepository-1.0") + (
-            f":{_existing}" if _existing else ""
-        )
-        break
+use_real_gi()
 
 try:
     from palisade.app import CASCADE_STEP, MARGIN, MAX_CASCADE, Controller

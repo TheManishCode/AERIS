@@ -16,7 +16,6 @@ This is pure decision logic over the open tabs, so it is pinned here rather
 than driven through a compositor.
 """
 
-import os
 import sys
 import unittest
 from pathlib import Path
@@ -25,20 +24,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 # toggle_group itself touches only tab bookkeeping — its collaborators are
 # stubbed below — but importing it means importing app.py, which reaches GTK
-# through fence.py. So the same typelib lookup test_placement does is needed
-# here; without it this file would not merely fail, it would *skip*, and the
-# suite would stay green with these cases never running.
-for _name in [m for m in list(sys.modules) if m == "gi" or m.startswith("gi.")]:
-    if getattr(sys.modules[_name], "__file__", None) is None:
-        del sys.modules[_name]
+# through fence.py, so the real bindings have to be in place first — see
+# _realgi. Without it this file would not merely fail, it would *skip*, and
+# the suite would stay green with these cases never running.
+from _realgi import use_real_gi  # noqa: E402
 
-for _libdir in (Path.home() / ".local/lib", Path("/usr/lib"), Path("/usr/lib64")):
-    if (_libdir / "girepository-1.0/Gtk4LayerShell-1.0.typelib").exists():
-        _existing = os.environ.get("GI_TYPELIB_PATH")
-        os.environ["GI_TYPELIB_PATH"] = str(_libdir / "girepository-1.0") + (
-            f":{_existing}" if _existing else ""
-        )
-        break
+use_real_gi()
 
 
 try:

@@ -132,6 +132,55 @@ class StatusTests(unittest.TestCase):
         self.assertIsNone(Registry([]).status_for("dock"))
 
 
+class OmniboxTests(unittest.TestCase):
+    """The modes the field can turn into come from the modules, so a core-only
+    install has a field that does nothing rather than one that is broken."""
+
+    def mode(self, id_):
+        from palisade.omnibox import Mode
+
+        return Mode(id=id_, title=id_.title(), score=lambda q: 0.5,
+                    run=lambda fence, q: [])
+
+    def test_modes_from_every_module_are_collected(self):
+        reg = Registry([
+            Module(id="a", omnibox=(self.mode("path"),)),
+            Module(id="b", omnibox=(self.mode("apps"),)),
+        ])
+        self.assertEqual([m.id for m in reg.modes], ["apps", "path"])
+
+    def test_a_contested_mode_id_is_a_reported_conflict(self):
+        reg = Registry([
+            Module(id="a", omnibox=(self.mode("path"),)),
+            Module(id="b", omnibox=(self.mode("path"),)),
+        ])
+        self.assertEqual(len(reg.modes), 1)
+        self.assertIn("omnibox.path", reg.conflicts[0])
+
+    def test_a_module_with_no_modes_contributes_none(self):
+        self.assertEqual(Registry([Module(id="a")]).modes, [])
+
+    def test_each_call_is_an_independent_field(self):
+        """Two panels with the field open must not share a streak."""
+        reg = Registry([Module(id="a", omnibox=(self.mode("path"),))])
+        self.assertIsNot(reg.omnibox(), reg.omnibox())
+
+    def test_the_field_is_loaded_with_the_installed_modes(self):
+        reg = Registry([Module(id="a", omnibox=(self.mode("path"),))])
+        self.assertEqual([m.id for m in reg.omnibox().modes],
+                         ["filter", "path"])
+
+    def test_core_alone_can_still_filter(self):
+        """Core owns `filter` because it needs only `Item.name`. Without it a
+        dock-only install would have a field that does nothing at all."""
+        self.assertEqual([m.id for m in Registry().omnibox().modes], ["filter"])
+
+    def test_a_module_cannot_shadow_the_filter(self):
+        reg = Registry([Module(id="a", omnibox=(self.mode("filter"),))])
+        self.assertEqual(len(reg.omnibox().modes), 1)
+        self.assertEqual(reg.omnibox().modes[0].title, "Filter")
+
+
 class HintTests(unittest.TestCase):
     def test_a_known_kind_names_the_package_to_install(self):
         hint = Registry([]).missing_source_hint("folder")

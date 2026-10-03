@@ -9,7 +9,6 @@ CLI, or by the in-app "Move to fence" picker instead. See DECISIONS.md.
 
 from __future__ import annotations
 
-import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -23,11 +22,10 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
 from ..config import Fence, Settings, Source
 from ..sources import Item, UnknownSource, resolve, sort_items
-from ..theme import CSS_PRIORITY
+from ..theme import CSS_PRIORITY, uses_paper
 from .manipulate import Manipulator, make_resize_grip
 
 REFRESH_DEBOUNCE_MS = 180
-TYPEAHEAD_RESET_S = 1.2
 
 
 def _human_size(n: int) -> str:
@@ -58,8 +56,17 @@ class FenceWindow(Gtk.ApplicationWindow):
         self.controller = controller
         self._monitors: list[Gio.FileMonitor] = []
         self._refresh_source: int | None = None
-        self._typeahead = ""
-        self._typeahead_at = 0.0
+        #: The field that changes what it is as you type. One per panel, so
+        #: two open fields are two separate pieces of typing — see
+        #: `palisade.omnibox.Stabiliser`.
+        self._omni = controller.registry.omnibox()
+        self._omni_open = False
+        #: Rows as resolved from the source, before the field narrows them.
+        #: Kept so a keystroke re-renders without re-walking the folder, and
+        #: so `rows()` can hand the *unfiltered* list to a filter mode that
+        #: would otherwise be filtering its own output.
+        self._source_items: list[Item] = []
+        self._missing_hint = ""
         self._collapsed = fence.collapsed
         #: Folders walked into from this panel, deepest last. Empty means the
         #: panel is showing its own source. Live only and never persisted: a
@@ -225,15 +232,28 @@ class FenceWindow(Gtk.ApplicationWindow):
         # with surface_container instead put it above its own content, which
         # is why the panel read as one flat slab however the paddings were
         # tuned. See the token header in data/palisade.css.
-        tint = self.fence.tint or "@m3_background"
+        self._paper = uses_paper(self.settings.theme, self.fence.source.kind)
+        tint = self.fence.tint or (
+            "@ss_background" if self._paper else "@m3_background"
+        )
         # Per-fence opacity cannot live in the static sheet, so it is the one
         # inline style we set.
         provider = Gtk.CssProvider()
-        colour = (
-            f"alpha({tint}, {self.fence.opacity:.3f})"
-            if tint.startswith("@")
-            else f"alpha(\"{tint}\", {self.fence.opacity:.3f})"
-        )
+        if self._paper and not self.fence.tint:
+            # Paper is opaque on purpose. The design it comes from has no
+            # translucency in it at all — depth is three tiers of warm shadow
+            # over a solid surface — and at the default 0.55 the warm white
+            # composited with a dark wallpaper into a flat grey, with the
+            # white card sitting on it as a hard, muddy step. `opacity`
+            # applies to the system theme, and to a paper fence that names
+            # its own `tint`.
+            colour = tint
+        else:
+            colour = (
+                f"alpha({tint}, {self.fence.opacity:.3f})"
+                if tint.startswith("@")
+                else f"alpha(\"{tint}\", {self.fence.opacity:.3f})"
+            )
         provider.load_from_string(
             f".fence-root.f-{self.fence.id} {{ background: {colour}; }}"
         )
@@ -241,6 +261,8 @@ class FenceWindow(Gtk.ApplicationWindow):
             Gdk.Display.get_default(), provider, CSS_PRIORITY
         )
         root.add_css_class(f"f-{self.fence.id}")
+        if self._paper:
+            root.add_css_class("paper")
         if self.fence.dock:
             # Squares the corners that sit on the screen edge — see the
             # .dock-* rules. Set here rather than in _apply_dock because the
@@ -314,6 +336,35 @@ class FenceWindow(Gtk.ApplicationWindow):
                 self._mode_tabs[mode] = btn
             root.append(self._mode_switch)
             self._sync_mode_switch()
+
+        # --- the field
+        #
+        # Its own row under the header rather than inside it: a field squeezed
+        # between the title and the collapse button is ~80px wide on a narrow
+        # panel, which is not enough to see a path in. Hidden until you type,
+        # so a panel at rest is still just its contents.
+        self._omni_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self._omni_bar.add_css_class("omni-bar")
+        self._omni_bar.set_visible(False)
+
+        # What the field has decided it is. A chip rather than a placeholder
+        # because it has to stay readable while there is text in the field —
+        # that is exactly when you need to know whether you are filtering this
+        # panel or listing a folder somewhere else.
+        self._omni_chip = Gtk.Label(label="")
+        self._omni_chip.add_css_class("omni-chip")
+        self._omni_bar.append(self._omni_chip)
+
+        self._omni_entry = Gtk.Entry()
+        self._omni_entry.add_css_class("omni-entry")
+        self._omni_entry.set_hexpand(True)
+        self._omni_entry.connect("changed", lambda *_: self._render())
+        self._omni_entry.connect("activate", self._omni_activate)
+        omni_keys = Gtk.EventControllerKey()
+        omni_keys.connect("key-pressed", self._on_omni_key)
+        self._omni_entry.add_controller(omni_keys)
+        self._omni_bar.append(self._omni_entry)
+        root.append(self._omni_bar)
 
         # Double-clicking the header collapses, matching every fence app.
         head_click = Gtk.GestureClick()
@@ -402,6 +453,10 @@ class FenceWindow(Gtk.ApplicationWindow):
         # The grip rides in an overlay so it sits over the bottom-right
         # corner without stealing a row from the layout.
         self._grip = make_resize_grip()
+        if self._paper:
+            # The grip is an overlay sibling of the root, not a child, so the
+            # descendant rules do not reach it.
+            self._grip.add_css_class("paper")
         self._grip.set_visible(not self.locked)
         overlay = Gtk.Overlay()
         overlay.set_child(root)
@@ -675,6 +730,13 @@ class FenceWindow(Gtk.ApplicationWindow):
     # -------------------------------------------------------------- content
 
     def refresh(self) -> None:
+        """Re-read the source, then draw.
+
+        Split from `_render` because the field runs on every keystroke and
+        walking a folder per character is the difference between a field that
+        keeps up with typing and one that does not. Only an actual change —
+        a file event, a navigation, F5 — comes through here.
+        """
         missing_hint = ""
         if self._prune_nav():
             self._rewatch()
@@ -698,6 +760,26 @@ class FenceWindow(Gtk.ApplicationWindow):
                 # installed, until the daemon restarted.
                 items = []
                 missing_hint = str(exc)
+        self._source_items = items
+        self._missing_hint = missing_hint
+        self._render()
+
+    def rows(self) -> list[Item]:
+        """What the source produced, before the field narrowed it.
+
+        Public because an omnibox mode is given the fence and nothing else;
+        `filter` is the one that needs this, and it must see the whole list
+        rather than its own previous output.
+        """
+        return list(self._source_items)
+
+    def _render(self) -> None:
+        """Draw `_source_items`, or whatever the field has made of them."""
+        items = self._source_items
+        missing_hint = self._missing_hint
+        empty_override = ""
+        if self._omni_open:
+            items, empty_override = self._omni_items()
         self._store.remove_all()
         for item in items:
             self._store.append(ItemObject(item))
@@ -729,11 +811,99 @@ class FenceWindow(Gtk.ApplicationWindow):
                 str(self._nav[-1]) if self._nav else ""
             )
             self._up_btn.set_visible(bool(self._nav) and not self._collapsed)
+        # Applied after the branch above so a mode's own wording wins on a
+        # taskbar too — "Nothing minimized matches" is a better answer to a
+        # query that found nothing than "Nothing is hidden".
+        if empty_override:
+            self._empty.set_label(empty_override)
         has_items = bool(items)
         self._scroller.set_visible(has_items and not self._collapsed)
         self._empty.set_visible(not has_items and not self._collapsed)
         # A refresh that empties the fence would otherwise shrink the surface.
         self._apply_size()
+
+    # ----------------------------------------------------------------- field
+
+    def _omni_items(self) -> tuple[list[Item], str]:
+        """Ask the field what to show. Returns (rows, empty-text override).
+
+        An empty field shows the panel unchanged rather than nothing, so
+        opening it and deleting back to nothing is not a dead end.
+        """
+        query = self._omni_entry.get_text()
+        got = self._omni.update(query)
+        if got is None:
+            self._omni_chip.set_label("Filter" if query else "")
+            return self._source_items, ""
+        self._omni_chip.set_label(got.mode.title)
+        try:
+            items = list(got.mode.run(self, got.query))
+        except Exception as exc:  # noqa: BLE001 - a bad mode must not blank it
+            # A module's mode raising is that module's bug, and the panel is
+            # still a panel: keep showing what the source gave us and say so
+            # once, rather than leaving an empty list that reads as "nothing
+            # here" every time you type.
+            self.notify(f"{got.mode.title}: {exc}")
+            return self._source_items, ""
+        return items, got.mode.empty
+
+    def open_omnibox(self, initial: str = "") -> None:
+        """Show the field, optionally seeded with the character that opened it."""
+        if self._collapsed or self.viewing:
+            return
+        if not self._omni_open:
+            self._omni_open = True
+            self._omni.stabiliser.reset()
+            self._omni_bar.set_visible(True)
+        self._omni_entry.set_text(initial)
+        self._omni_entry.set_position(-1)
+        self._omni_entry.grab_focus()
+        # grab_focus selects the whole text, which would make the next
+        # character replace the one that opened the field. Same trap as the
+        # in-place rename; same fix, and it has to come after the focus.
+        self._omni_entry.select_region(len(initial), len(initial))
+        self._render()
+
+    def close_omnibox(self) -> bool:
+        """Put the panel back. True if the field was actually open."""
+        if not self._omni_open:
+            return False
+        self._omni_open = False
+        self._omni_bar.set_visible(False)
+        self._omni_entry.set_text("")
+        self._omni_chip.set_label("")
+        self._omni.stabiliser.reset()
+        self._render()
+        self._view.grab_focus()
+        return True
+
+    @property
+    def omnibox_open(self) -> bool:
+        return self._omni_open
+
+    def _omni_activate(self, _entry=None) -> None:
+        """Enter in the field opens the first row.
+
+        The field is a picker: you type until the thing you want is at the
+        top, and Enter takes it. Having to Tab into the list first would make
+        the common case two gestures.
+        """
+        if self._store.get_n_items():
+            self._on_activate(self._view, 0)
+
+    def _on_omni_key(self, _ctrl, keyval: int, _code: int, state) -> bool:
+        if keyval == Gdk.KEY_Escape:
+            self.close_omnibox()
+            return True
+        if keyval in (Gdk.KEY_Down, Gdk.KEY_Tab):
+            # Into the list, keeping the query. The field stays open: it says
+            # what you searched for, and losing that on arrow-down would make
+            # the results look unexplained.
+            if self._store.get_n_items():
+                self._selection.select_item(0, True)
+                self._view.grab_focus()
+            return True
+        return False
 
     def _hidden_items(self) -> list[Item]:
         """Hidden panels as rows. `path` holds a fence id, not a real path.
@@ -870,8 +1040,14 @@ class FenceWindow(Gtk.ApplicationWindow):
 
     def _on_activate(self, _view, position: int) -> None:
         obj = self._store.get_item(position)
-        if obj is not None:
-            self._launch(obj.item)
+        if obj is None:
+            return
+        # Picking is the end of the query, so the field closes and the panel
+        # goes back to its own contents. Safe to do before the launch: `obj`
+        # is a reference to the row, not an index into a store the re-render
+        # is about to rebuild.
+        self.close_omnibox()
+        self._launch(obj.item)
 
     def _launch(self, item: Item) -> None:
         # A module's rows are its own to open: the dock restores a window, the
@@ -1365,6 +1541,13 @@ class FenceWindow(Gtk.ApplicationWindow):
             self._run_module_action("new-folder" if shift else "new-file")
             return True
 
+        # Ctrl+F for people who expect a find box to need asking for. Typing
+        # opens it too (see _omni_key); this is the discoverable way in, and
+        # the only one that opens it empty.
+        if ctrl and keyval in (Gdk.KEY_f, Gdk.KEY_F):
+            self.open_omnibox()
+            return True
+
         # Tab flips the taskbar between minimized windows and hidden panels,
         # so the switch is reachable from the keybind that opened it.
         if self._is_windows and keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
@@ -1382,16 +1565,16 @@ class FenceWindow(Gtk.ApplicationWindow):
                 return True
             if keyval == Gdk.KEY_Escape:
                 return self._escape()
-            # 1-9 restores that row outright. Checked before typeahead, which
-            # would otherwise swallow the digits looking for a window whose
-            # title starts with one. Rows are labelled with the same numbers so
-            # the mapping is visible rather than folklore.
+            # 1-9 restores that row outright. Checked before the field, which
+            # would otherwise swallow the digits as the start of a query. Rows
+            # are labelled with the same numbers so the mapping is visible
+            # rather than folklore.
             index = self._digit_index(keyval)
             if index is not None:
                 if index < self._store.get_n_items():
                     self.restore_at(index)
                 return True
-            return self._typeahead_key(keyval, ctrl)
+            return self._omni_key(keyval, ctrl)
         # Back out of a folder before anything else claims the key. Alt+Left
         # is the browser idiom and Backspace the file-manager one; both are
         # muscle memory, and neither does anything else here.
@@ -1419,11 +1602,13 @@ class FenceWindow(Gtk.ApplicationWindow):
             # Escape unwinds one step at a time. Dismissing a summoned panel
             # from three folders deep would throw away the walk as well as
             # the panel, and you cannot get either back.
+            if self.close_omnibox():
+                return True
             if self.navigate_up():
                 return True
             return self._escape()
 
-        return self._typeahead_key(keyval, ctrl)
+        return self._omni_key(keyval, ctrl)
 
     #: Keyval -> zero-based row, for both the number row and the keypad.
     _DIGITS = {
@@ -1441,29 +1626,27 @@ class FenceWindow(Gtk.ApplicationWindow):
         nothing selected would strand every keystroke on the desktop — Esc has
         to be the way out, not merely a deselect.
         """
-        self._typeahead = ""
         if self.fence.picker:
             self._dismiss()
             return True
         self._selection.unselect_all()
         return True
 
-    def _typeahead_key(self, keyval: int, ctrl: bool) -> bool:
-        """Jump to the first item starting with what you type."""
+    def _omni_key(self, keyval: int, ctrl: bool) -> bool:
+        """A printable character opens the field, holding that character.
+
+        This replaced a type-to-jump that moved the selection to the first row
+        starting with what you typed and showed you nothing about what it was
+        doing. The field starts the same way — type and it reacts — and then
+        tells you what it understood, narrows instead of jumping, and can be
+        a path or a launcher instead of a prefix match. Keeping both would
+        have meant two search mechanisms on the same keys.
+        """
         ch = Gdk.keyval_to_unicode(keyval)
         if not ch or ctrl or not chr(ch).isprintable():
             return False
-        now = time.monotonic()
-        if now - self._typeahead_at > TYPEAHEAD_RESET_S:
-            self._typeahead = ""
-        self._typeahead += chr(ch).lower()
-        self._typeahead_at = now
-        for i in range(self._store.get_n_items()):
-            if self._store.get_item(i).item.name.lower().startswith(self._typeahead):
-                self._selection.select_item(i, True)
-                self._view.scroll_to(i, Gtk.ListScrollFlags.FOCUS, None)
-                return True
-        return False
+        self.open_omnibox(chr(ch))
+        return True
 
     # ------------------------------------------------------------- collapse
 

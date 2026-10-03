@@ -11,25 +11,15 @@ would not switch workspaces on request. The decision is a pure function of one
 boolean, so it is pinned here instead.
 """
 
-import os
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-# See test_placement for why stub `gi` modules are dropped first.
-for _name in [m for m in list(sys.modules) if m == "gi" or m.startswith("gi.")]:
-    if getattr(sys.modules[_name], "__file__", None) is None:
-        del sys.modules[_name]
+from _realgi import use_real_gi  # noqa: E402
 
-for _libdir in (Path.home() / ".local/lib", Path("/usr/lib"), Path("/usr/lib64")):
-    if (_libdir / "girepository-1.0/Gtk4LayerShell-1.0.typelib").exists():
-        _existing = os.environ.get("GI_TYPELIB_PATH")
-        os.environ["GI_TYPELIB_PATH"] = str(_libdir / "girepository-1.0") + (
-            f":{_existing}" if _existing else ""
-        )
-        break
+use_real_gi()
 
 try:
     from palisade import app as app_mod

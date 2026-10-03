@@ -191,6 +191,73 @@ window.palisade {
   background: alpha(@m3_on_surface, 0.165);
 }
 
+/* --- the field ------------------------------------------------------------
+ * One row between the header and the card, shown only while you are typing.
+ * It wears the card's own surface rather than a brighter one: it sits at the
+ * same depth as the list it is narrowing, and lifting it above would read as
+ * a popup over the panel instead of part of it. */
+
+.omni-bar {
+  padding: 0 4px 6px 4px;
+}
+
+/* What the field has decided it is. Reads as a label on the input, not as a
+ * button — there is nothing to click here. */
+.omni-chip {
+  font-size: %FONT_SM_PT%pt;
+  font-weight: 550;
+  color: @m3_on_surface_variant;
+  padding: 0 2px;
+}
+
+.omni-entry {
+  font-size: %FONT_PT%pt;
+  min-height: 28px;
+  padding: 2px 8px;
+  color: @m3_on_surface;
+  caret-color: @m3_primary;
+  background: alpha(@m3_on_surface, 0.055);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  /* libadwaita draws an entry's focus ring as an `outline`, in the system
+   * accent — a hard blue rectangle that belongs to no other part of the
+   * panel. Resetting `border` alone left it: it is a separate property, and
+   * the ring was never a border. */
+  outline: none;
+  box-shadow: none;
+}
+
+/* The inner text node carries its own background in most themes, which shows
+ * through the entry's as a lighter rectangle inset by the padding. */
+.omni-entry > text {
+  background: transparent;
+  color: @m3_on_surface;
+}
+
+.omni-entry > text > placeholder {
+  color: @m3_on_surface_variant;
+  opacity: 0.7;
+}
+
+.omni-entry:focus-within {
+  background: alpha(@m3_on_surface, 0.085);
+  border-color: alpha(@m3_primary, 0.55);
+  outline: none;
+}
+
+.omni-entry selection {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+}
+
+/* A dock already carries its own tighter rhythm; match it. */
+.dock-left .omni-bar,
+.dock-right .omni-bar,
+.dock-top .omni-bar,
+.dock-bottom .omni-bar {
+  padding: 0 4px 6px 4px;
+}
+
 /* --- layer 1: the card ----------------------------------------------------
  * The list lives on a raised surface inside the shell rather than directly on
  * it. 5px inset matches the desktop's own content cards. `.fence-empty` wears
@@ -706,4 +773,200 @@ window.palisade-picker .fence-root {
 .pdf-page {
   background: #ffffff;
   border-radius: 6px;
+}
+
+/* ===========================================================================
+ * The paper theme
+ * ===========================================================================
+ *
+ * Adapted from **shapeshift** (github.com/anishfn/shapeshift, MIT) — palette,
+ * radius scale, shadow tiers and easing. Applied to every fence except the
+ * taskbar, which keeps the Material You tokens so it still matches the panels
+ * it stands among. See Settings.theme.
+ *
+ * Three things are taken, not just the colours:
+ *
+ * **The concentric radius scale.** shapeshift's own comment: "each step is the
+ * one outside it minus the padding between" — shell 28 → panel 20 (8px inset)
+ * → item 16 (4px inset) → control 12 → cell 8. That is why the curves nest
+ * instead of fighting: a 12px item inside a 12px card leaves a crescent of
+ * card visible in each corner, which is the thing that makes a rounded UI look
+ * approximately rounded. Our insets are 10px (shell→card) and 5px (card→item),
+ * so the scale lands at 28 → 18 → 13.
+ *
+ * **Three shadow tiers, warm-tinted.** rest / lift / float, all in the ink
+ * hue rather than neutral black, which is what keeps a shadow on warm paper
+ * from looking like a grey smudge.
+ *
+ * **One easing, one duration.** cubic-bezier(0.23, 1, 0.32, 1) at 150ms.
+ *
+ * This fence does not follow the wallpaper. That is the trade: see the note in
+ * theme.py, and DECISIONS.md.
+ */
+
+.paper.fence-root {
+  background: @ss_background;
+  border: 1px solid @ss_border;
+  border-radius: 28px;
+  /* --shadow-float: a panel on a desktop is the floating tier. */
+  box-shadow: 0 2px 4px alpha(@ss_foreground, 0.04),
+              0 20px 48px alpha(@ss_foreground, 0.14);
+}
+
+.paper.fence-root.dock-left,
+.paper.fence-root.dock-right,
+.paper.fence-root.dock-top,
+.paper.fence-root.dock-bottom {
+  box-shadow: none;
+}
+
+.paper .fence-title {
+  color: @ss_foreground;
+}
+
+.paper .fence-count {
+  color: @ss_muted_fg;
+}
+
+/* Buttons are pills in this system — shapeshift rounds every [data-slot=
+ * "button"] to 9999px — and press-scale rather than a darker fill. */
+.paper .fence-up,
+.paper .fence-collapse {
+  color: @ss_ink_2;
+  border-radius: 9999px;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1),
+              color 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.paper .fence-up:hover,
+.paper .fence-collapse:hover {
+  background: @ss_muted;
+  color: @ss_foreground;
+}
+
+.paper .fence-up:active,
+.paper .fence-collapse:active {
+  background: @ss_border;
+}
+
+/* Layer 1: the card. White on paper, with the hairline that does the work a
+ * shadow would do on a darker surface. 18px = 28 - 10, the shell's inset. */
+.paper .fence-body,
+.paper .fence-empty {
+  background: @ss_card;
+  border: 1px solid @ss_border;
+  border-radius: 18px;
+}
+
+.paper .fence-empty {
+  color: @ss_muted_fg;
+}
+
+/* Layer 2: the item. 13px = 18 - 5, the card's inset. */
+.paper .item {
+  border-radius: 13px;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.paper .item:hover {
+  background: @ss_muted;
+}
+
+.paper gridview > child:selected .item,
+.paper listview > row:selected .item {
+  background: @ss_brand_soft;
+}
+
+.paper gridview > child:selected .item:hover,
+.paper listview > row:selected .item:hover {
+  background: mix(@ss_brand_soft, @ss_brand, 0.08);
+}
+
+/* shapeshift's one verified focus indicator: 2px of brand, offset. Inset
+ * rather than outset here because a row's outline would otherwise be clipped
+ * by the card it sits in. */
+.paper gridview > child:focus .item,
+.paper listview > row:focus .item {
+  outline: 2px solid @ss_brand;
+  outline-offset: -2px;
+}
+
+.paper .item-label {
+  color: @ss_foreground;
+}
+
+.paper gridview > child:selected .item-label,
+.paper listview > row:selected .item-label {
+  color: @ss_brand;
+}
+
+.paper .item-sub {
+  color: @ss_muted_fg;
+}
+
+/* The badge widget is built on every list-view panel and filled in only by
+ * the taskbar — which never wears paper. Kept rather than deleted because the
+ * widget is there and would be styled the moment anything else numbers its
+ * rows; it is unused, not wrong. */
+.paper .item-key {
+  color: @ss_muted_fg;
+}
+
+.paper row:selected .item-key,
+.paper .item:hover .item-key {
+  color: @ss_brand;
+}
+
+/* The field. 12px — shapeshift's --radius-md, "tiles and controls: icon
+ * tiles, swatch, inputs". */
+.paper .omni-chip {
+  color: @ss_ink_2;
+}
+
+.paper .omni-entry {
+  background: @ss_card;
+  border: 1px solid @ss_border;
+  border-radius: 12px;
+  color: @ss_foreground;
+  caret-color: @ss_brand;
+}
+
+.paper .omni-entry > text {
+  color: @ss_foreground;
+}
+
+.paper .omni-entry > text > placeholder {
+  color: @ss_muted_fg;
+}
+
+.paper .omni-entry:focus-within {
+  background: @ss_card;
+  border-color: @ss_brand;
+  box-shadow: 0 0 0 2px alpha(@ss_brand, 0.18);
+}
+
+/* shapeshift's ::selection — brand on brand-soft, not the system highlight. */
+.paper .omni-entry selection,
+.paper .item-rename selection {
+  background: @ss_brand_soft;
+  color: @ss_brand;
+}
+
+.paper .item-rename {
+  background: @ss_card;
+  border: 1px solid @ss_brand;
+  border-radius: 12px;
+  color: @ss_foreground;
+}
+
+.paper scrollbar slider {
+  background: @ss_line_strong;
+}
+
+.paper scrollbar slider:hover {
+  background: @ss_ink_2;
+}
+
+.fence-grip.paper {
+  color: @ss_muted_fg;
 }

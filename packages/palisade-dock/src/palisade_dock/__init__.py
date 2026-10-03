@@ -20,7 +20,7 @@ from pathlib import Path
 from palisade.registry import Module
 from palisade.sources import Item
 
-from . import engine
+from . import engine, omnibox
 
 
 def resolve_windows(src) -> list[Item]:
@@ -113,6 +113,7 @@ MODULE = Module(
     title="Minimized applications",
     sources={"windows": resolve_windows},
     activate=activate,
+    omnibox=omnibox.MODES,
     status=status,
     actions={
         "restore": restore_selected,

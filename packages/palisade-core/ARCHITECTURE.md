@@ -63,6 +63,7 @@ the subset it needs and core asks for the rest and gets nothing.
 | `open_file` | `(path, on_close, notify) -> widget \| None` | `files` returns the viewer; `None` means "not mine" |
 | `activate` | `(fence, item) -> bool` — claim a row | `dock` claims a window row and restores it |
 | `status` | `() -> str \| None` — explain an empty panel | `dock` says the minimize engine is not loaded |
+| `omnibox` | modes the field can turn into | `files` adds `~/…` navigation; `apps` adds the `>` launcher |
 | `commands` | IPC verbs, and therefore CLI verbs | none yet; the hook is wired |
 | `actions` | menu entries and their handlers | `files` adds New file/New folder; `dock` adds Restore |
 
@@ -86,12 +87,54 @@ If none does, the error names the package to install. Core deliberately does
 have to be edited in core every time a module is written, which is exactly the
 coupling the registry exists to remove.
 
+### The omnibox
+
+One field per panel that changes what it is as you type. The idea and the
+anti-flicker state machine are from shapeshift (MIT); the classification is
+deterministic rather than a model, for the reasons in DECISIONS.md §7.
+
+`palisade/omnibox.py` is the decision layer and imports no GTK, so all of it
+is tested without a display. Three pieces:
+
+- **`classify(query, modes)`** ranks the installed modes. A leading sigil
+  short-circuits scoring outright — you typed the mode's name, so there is
+  nothing left to infer — and a sigil mode never competes on score, because
+  `>` sometimes being necessary and sometimes not is worse than always
+  needing it. Ties break on mode id, so which module pip wrote first does not
+  decide what the field does.
+- **`Stabiliser`** decides *when* to morph, which is a different question
+  from *what to*. A challenger must beat the sitting mode by `MARGIN` for
+  `ROUNDS` keystrokes in a row; losing once resets its streak. Without it the
+  panel restrobes on nearly every character of a query that is unambiguous by
+  the time you finish typing it — `~` looks like nothing, `~/` like a path,
+  `~/D` more so. There is a test that types a hostile string one character at
+  a time and counts how many times the panel changed shape.
+- **`Mode`** is what a module contributes: `score(query)` decides whether the
+  query is its business, `run(fence, query)` produces the rows. The same
+  decides/computes split shapeshift makes between its model and its parsers,
+  and neither half knows about the other's job.
+
+A `Registry` is built per panel, not shared: two open fields are two separate
+pieces of typing and must not share a streak.
+
+Core ships exactly one mode, `filter`, because narrowing a list by name needs
+nothing but `Item.name` — core's own type. Everything else comes from the
+feature packages, so a dock-only install has `filter` and `@`, and nothing it
+cannot do.
+
 ### What a module may touch on a fence
 
 A module's verbs receive the `FenceWindow` they were invoked on, and are
 limited to its public surface: `selected_items()`, `folder_root()`,
 `rename_path()`, `notify()`, `refresh()`, `schedule_refresh()`,
-`dismiss_if_summoned()`, `restore_at()`, and the `fence` config object.
+`dismiss_if_summoned()`, `restore_at()`, `rows()`, `navigate_to()`,
+`open_omnibox()`, and the `fence` config object.
+
+`rows()` is the one an omnibox mode usually wants: it is what the source
+produced, *before* the field narrowed it. A filter reading the view instead
+would be filtering its own previous output, so deleting a character could
+never widen the results again.
+
 Everything else is private and may be renamed without breaking a package core
 does not import.
 
@@ -112,8 +155,9 @@ the monorepo and an installed system both work with no extra step.
 ### palisade-core
 
 The layer-shell window and everything that is true of every panel: geometry
-and docking, the exclusive-zone reflow, layers and hiding, the theme bridge to
-the desktop's Material You palette, `palisade.toml` and `state.json`, the
+and docking, the exclusive-zone reflow, layers and hiding, the two themes (the Material You
+bridge, and the fixed paper palette — DECISIONS.md §8), the omnibox decision
+layer, `palisade.toml` and `state.json`, the
 daemon, the Unix-socket IPC, the group picker, and the registry above.
 
 Installing only core gives you a working `palisade` command and an empty

@@ -14,6 +14,18 @@
 #   overlay = above everything
 layer = "bottom"
 
+# What a panel looks like.
+#   paper  = warm paper, white cards, indigo accent. A fixed identity that
+#            does not follow the wallpaper — a group reads as an object on
+#            the desktop rather than a hole in it. (From shapeshift, MIT.)
+#   system = the Material You palette, so a panel matches the rest of the
+#            desktop and re-themes with it.
+#
+# The taskbar is always "system": it is furniture standing among the
+# desktop's own panels, and one that does not match them reads as a foreign
+# window. A paper panel is opaque — `opacity` below applies to "system".
+theme = "paper"
+
 # Ask the compositor to blur behind tabs. On Hyprland this is real blur of
 # whatever is actually behind, updated live — not a wallpaper snapshot.
 blur = true

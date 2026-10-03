@@ -72,6 +72,13 @@ class Module:
     #: Lets the dock say "minimize engine not loaded" without core knowing
     #: that a Lua plugin is involved.
     status: Callable | None = None
+    #: What this module makes the omnibox able to turn into.
+    #:
+    #: A list rather than a dict because a Mode already carries its own id,
+    #: and unlike a source kind there is no lookup by key: every mode is
+    #: scored against every query. See `palisade.omnibox`.
+    omnibox: tuple = ()
+
     #: IPC verb -> (controller, request) -> dict
     commands: dict[str, Callable] = field(default_factory=dict)
     #: action name -> (fence) -> None, surfaced in menus
@@ -99,6 +106,8 @@ class Registry:
         #: module id -> status callable, for empty-state explanations.
         self.statuses: dict[str, Callable] = {}
         self.actions: dict[str, Callable] = {}
+        #: Every mode every installed module contributes, in id order.
+        self.modes: list = []
         self.conflicts: list[str] = []
         for module in self.modules:
             self._merge(module)
@@ -110,6 +119,17 @@ class Registry:
             self.openers.append(module.open_file)
         if module.status is not None:
             self.statuses[module.id] = module.status
+        known = {m.id for m in self.modes}
+        for mode in module.omnibox:
+            if mode.id in known:
+                self.conflicts.append(
+                    f"{module.id} also provides omnibox.{mode.id}; "
+                    f"keeping the first"
+                )
+                continue
+            known.add(mode.id)
+            self.modes.append(mode)
+        self.modes.sort(key=lambda m: m.id)
         for table_name in ("sources", "commands", "actions"):
             target = getattr(self, table_name)
             for key, value in getattr(module, table_name, {}).items():
@@ -147,6 +167,21 @@ class Registry:
             if handler(fence, item):
                 return True
         return False
+
+    def omnibox(self):
+        """A fresh field over the installed modes.
+
+        One per fence, not one shared: the stabiliser holds the streak of the
+        text being typed, and two panels with the field open are two separate
+        pieces of typing.
+        """
+        from . import omnibox as _omnibox
+
+        # Core's own modes go in first, so a module cannot shadow `filter`
+        # with something that does not filter.
+        field = _omnibox.Registry(list(_omnibox.core_modes()))
+        field.add(self.modes)
+        return field
 
     def status_for(self, module_id: str) -> str | None:
         fn = self.statuses.get(module_id)

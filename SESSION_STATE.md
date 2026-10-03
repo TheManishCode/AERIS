@@ -1,87 +1,42 @@
-# Session State — updated 2026-10-03 18:40
+# Session State — updated 2026-10-03 20:45
 
 Status: COMPLETE
-Task: Split Palisade into four packages — a shared core plus three separately
-installable modules — each publishable as its own GitHub repository with a
-one-command installer. Then: folders that open in the panel instead of
-spawning tabs, in-place editing, and applications that actually launch.
-Branch / worktree: master   Recovery point: d139641 (pre-split), then this commit
+Task: Build the omnibox (one field that changes what it is as you type) and
+the paper theme, both adapted from shapeshift (MIT).
+Branch / worktree: master   Recovery point: 6616021 (the commit before this)
 
 Done:
-- `packages/palisade-core` — the panel and nothing else. Source at
-  `src/palisade/`; data files moved inside the package so one path works from
-  a checkout and from site-packages.
-- `packages/palisade-files`, `palisade-dock`, `palisade-apps` — each a
-  complete repository: pyproject, README, LICENSE, install.sh, tests that run
-  from its own root with no PYTHONPATH.
-- `palisade/registry.py` — the seam. `Module` carries `sources`, `open_file`,
-  `activate`, `status`, `commands`, `actions`; `discover()` reads the
-  `palisade.modules` entry point group. Core never imports a module by name.
-- Core stripped of what belonged to a module: the filesystem walk, file
-  creation, the viewer, the dock verbs. `sources.resolve` now raises
-  `UnknownSource` carrying the install hint.
-- `config.py` no longer whitelists `source.type`; kinds come from modules.
-- `palisade doctor`; `palisade check` reports per-fence what is missing.
-- `PALISADE_MODULES` env hook + `bin/palisade` sibling discovery, so the
-  monorepo runs without editable installs.
-- `tools/gen-installers.py` (three installers from one template) and
-  `tools/split-repos.sh` (subtree split, optional push).
-- `minimize.lua` vendored into palisade-dock and placeable with
-  `python3 -m palisade_dock install-engine`; previously it existed only in the
-  author's `~/.config` and the module was unshippable.
-
-Verified:
-- 298 tests, four suites, each from its own package root: core 136, files 105,
-  dock 36, apps 21.
-- `doctor` with three modules, one, and none. `check` against a config whose
-  modules are absent: each fence named its package, exit 1.
-- Daemon run live from the new layout: docked taskbar with the dock module's
-  own empty text and the Minimized/Hidden switch; a file group opened;
-  Markdown and Python both rendered through the registry's `open_file`;
-  Escape returned to the list; the Run button appeared on the Python file.
-- `install-engine` run twice over a temp XDG_CONFIG_HOME, second time over an
-  edited file — backup made, keybind hint printed.
-
-Then, in the same session:
-- Folders open in place (`navigate_to`/`navigate_up`/`navigate_home`/
-  `current_source` in core, `palisade_files.activate` claiming folder rows).
-- In-place editing: `palisade_files/edit.py` plus Edit/Save/Done in the
-  viewer. Atomic save, permissions preserved, symlinks followed, changed-on-
-  disk refused, truncated reads not editable.
-- Applications launch (`palisade_apps.activate`, which did not exist) and
-  wear their own icons (`Item.icon_name`, which core was ignoring).
-- The layer model made relative: raised surfaces are `alpha(@m3_on_surface,
-  n)` rather than an absolute colour that only out-lightens a translucent
-  shell on a dark wallpaper. Card-minus-shell went from -2 to +10, measured.
-- 366 tests. Verified live: navigation two levels deep with one tab open
-  throughout; a scratch file edited and saved with permissions intact;
-  Alacritty launched from an applications panel.
+- `palisade/omnibox.py` + 52 tests. Stabiliser ported from shapeshift;
+  `CERTAIN` corrected from 0.9 to 1.0 after a hostile-sequence test caught it
+  strobing on all ten keystrokes.
+- `Module.omnibox` on the registry; `Registry.omnibox()` per panel.
+- Four modes: core `filter`, files `path`, apps `>`, dock `@`.
+- `refresh`/`_render` split so a keystroke does not re-walk the folder.
+- Type-to-jump removed and replaced by the field.
+- Paper theme: shapeshift palette as `@ss_*`, `.paper` sheet section,
+  `Settings.theme`, taskbar always `system`.
+- `tests/_realgi.py` + `conftest.py` replace seven copies of the GI preamble.
+- 543 tests pass (core 286, files 167, dock 44, apps 46), whole, per-file, and
+  under `unittest discover`.
+- Live-verified on Hyprland with screenshots and pixel measurements — see the
+  CHANGELOG entry for what was checked.
+- Docs updated: CHANGELOG, DECISIONS §7 and §8, ARCHITECTURE, four READMEs,
+  default.toml, TODO.
 
 In flight:
 - Nothing.
 
 Not started:
-- Running `tools/split-repos.sh` for real, and replacing the `PALISADE_OWNER`
-  placeholder URLs. See TODO.md.
+- The TODO items added this session: field completion/history, `corner_radius`
+  being silently ignored under paper, factoring colour out of the sheet.
 
 Blocked on:
-- The GitHub owner name, for the placeholder URLs. Nothing else.
+- Nothing.
 
 Danger:
-- Two uncommitted test files were destroyed during the move by an `rm -rf
-  tests` of mine (`tests/test_registry.py`, `tests/test_window_rows.py`). Both
-  were written earlier the same session, never committed, and have been
-  rewritten against the final contract. Nothing else was lost.
-- The daemon runs from `/home/Fool/palisade/packages/palisade-core/bin/palisade`
-  on the current tree. The five Hyprland keybinds and the autostart line in
-  `~/.config/hypr/custom/{keybinds,execs}.lua` were repointed at the new path
-  and `hyprctl reload` run; they had all been broken by the move.
-- Test tabs from live verification may still be open; `palisade close all`
-  clears them.
-- `~/.config/palisade/palisade.toml` had two temporary groups appended during
-  verification and they have been removed; the file now diffs identical to
-  the backup taken before.
+- Nothing. The temporary `navtest` group was removed from
+  `~/.config/palisade/palisade.toml` (backup at the session scratchpad) and its
+  scratch tree deleted; `palisade check` passes and no tabs are open.
 
 Resume by:
-- Decide the GitHub owner, sed the placeholders, run `tools/split-repos.sh`,
-  inspect the four branches, then `--push`.
+- Nothing pending. Next useful piece of work is Tab-completion in the field.

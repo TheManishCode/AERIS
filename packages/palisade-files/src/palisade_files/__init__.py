@@ -16,7 +16,7 @@ from pathlib import Path
 from palisade.registry import Module
 from palisade.sources import Item
 
-from . import create, preview, walk
+from . import create, omnibox, preview, walk
 
 # `markdown` and `toolchains` are imported by `viewer` when a file is actually
 # opened, not here: discovery must stay cheap and must not need a display.
@@ -142,6 +142,7 @@ MODULE = Module(
     sources={kind: resolve_files for kind in ("folder", "directory", "query", "paths")},
     open_file=open_file,
     activate=activate,
+    omnibox=omnibox.MODES,
     actions={
         "new-file": lambda fence: _new_entry(fence, "file"),
         "new-folder": lambda fence: _new_entry(fence, "folder"),

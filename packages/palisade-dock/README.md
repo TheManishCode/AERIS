@@ -96,6 +96,19 @@ hl.bind("SUPER + D",         function() minimize.toggle_show_desktop() end)
 
 ---
 
+## The `@` field mode
+
+Type `@` into any panel and the field becomes a search over your minimized
+windows, most recently minimized first — the same order the restore keybind
+pops them in. <kbd>Enter</kbd> restores the first match.
+
+Sigil-only, for the same reason as the launcher: a window title is ordinary
+text. With the minimize engine not loaded there is simply nothing to list; the
+mode stays rather than disappearing, because one that exists only sometimes is
+harder to learn than one that is occasionally empty.
+
+---
+
 ## Scope
 
 Hyprland only, and it says so rather than failing quietly: with the engine
