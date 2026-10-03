@@ -1,5 +1,89 @@
 # Changelog
 
+## 2026-10-03 — Audit: a stable launcher path, and a rename that works
+
+Role: Release Engineer + Frontend Engineer + QA Engineer
+Status: Fixed, Removed
+
+Reason:
+Reported with a screenshot: *"Could not find the program
+'/home/Fool/palisade/bin/palisade'"* from the status bar's taskbar button —
+"yeah minimise button in taskbar is failing and many more mistakes u did study
+all verify and rework on everything".
+
+The package split moved the launcher and I fixed only the two Hyprland files I
+happened to grep. Three more references were left broken, and the root cause
+was worse than any of them: external things pointed into a *checkout*, which
+can move.
+
+Changes:
+- `palisade install-launcher` symlinks `~/.local/bin/palisade` at the current
+  checkout. The launcher already resolves itself with `readlink -f`, so being
+  reached through a symlink is the case it was written for.
+- `launcher_path()` prefers `$PALISADE_LAUNCHER`, then the installed symlink,
+  then the in-tree script. Everything outside the repository now points at
+  `~/.local/bin/palisade`: the quickshell bar button, the five Hyprland
+  keybinds, the autostart line, and both KIO service menus.
+- Fixed: `cmd_install_menus` computed the launcher as
+  `__file__/../../bin/palisade`, which after the move resolved to
+  `src/bin/palisade` and did not exist — the command failed outright.
+- Fixed: the install hint for a missing module was written into `_empty_base`,
+  so a panel kept telling you to install a package you had since installed
+  until the daemon restarted.
+- Added `_prune_nav`: a walked-into folder can be deleted while you are
+  standing in it, including by you with Delete in that very panel. The panel
+  now climbs out to the nearest level that still exists instead of showing an
+  empty folder that is not empty.
+- **Rename now happens in place, on the row.** This is the big one.
+  `prompt_rename` built a `Gtk.Window` with `transient_for` the fence — but a
+  layer-shell surface has no xdg_surface, so that parenting means nothing and
+  the "modal" was mapped by the compositor as a 949x1023 tiled window in the
+  corner of the screen. Measured, not guessed: `hyprctl clients` reported
+  `('python3', 'Rename', [6, 51], [949, 1023])`.
+  Three comments in the codebase already described an in-place rename that
+  did not exist, and `.item-rename` CSS had been sitting there unused.
+- Two bugs found while building it, both caught by the new tests:
+  `grab_focus()` after `select_region` is silently undone (GTK selects the
+  whole entry on focus-in), so typing replaced the extension and `notes.md`
+  became `journal`; and re-selecting the stem on every bind yanked the cursor
+  to the start whenever a refresh rebound the row.
+- `schedule_refresh` is suppressed while renaming — a rename creates its own
+  directory-changed events, which would rebuild the field under the cursor.
+- Docs: `docs/INSTALL.md` autostart lines, and a new section saying plainly
+  that external references must use `~/.local/bin/palisade` and never a path
+  into the checkout. `default.toml` now lists `apps` and names the package
+  each source kind comes from.
+
+Removed/Reverted:
+- `Controller.prompt_rename` and its dialog, replaced by the in-row field.
+- Unused imports: `typing.Any` in registry.py, `os` in palisade_files, `time`
+  in test_edit.py.
+
+Verification:
+- 392 tests across four suites: core 181, files 140, dock 36, apps 35.
+- The rename tests were proven against both of their bugs; the source was
+  restored byte-identical afterwards.
+- Live: clicked the status-bar button — the taskbar opened, no dialog.
+  Renamed `notes.md` to `journal.md` in place on the row and confirmed the
+  extension survived on disk. Created a file with Ctrl+N two folders deep and
+  confirmed it landed in the folder on screen, not at the group root.
+- All four wheels built and installed into a clean venv; module discovery
+  worked through real entry points with no `PALISADE_MODULES`. Verified with
+  core+dock only, then with all four. `python3 -m palisade_dock
+  install-engine` placed `minimize.lua` from the installed wheel.
+- Mechanical sweeps: every relative markdown link resolves; every CLI verb
+  mentioned in the docs exists; the shipped `default.toml` validates.
+
+Result:
+The bar button works. Rename works, in the panel, on the row. Nothing outside
+the repository points into the checkout any more.
+
+Known Issues:
+- The rename field needs its row on screen; a row scrolled out of view says so
+  rather than silently doing nothing.
+- `git filter-repo` is still not installed, so the split repos would carry one
+  commit each. Unchanged from the previous entry.
+
 ## 2026-10-03 — Folders open in place, files are editable, applications launch
 
 Role: Frontend Engineer + Product Designer + QA Engineer

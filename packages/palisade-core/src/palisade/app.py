@@ -948,38 +948,6 @@ class Controller:
         except (GLib.Error, TypeError):
             pass
 
-    def prompt_rename(self, parent: Gtk.Window, item) -> None:
-        dialog = Gtk.Window(title="Rename", transient_for=parent, modal=True)
-        dialog.set_default_size(360, -1)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        for side in ("top", "bottom", "start", "end"):
-            getattr(box, f"set_margin_{side}")(16)
-
-        entry = Gtk.Entry(text=item.name)
-        entry.set_activates_default(True)
-        box.append(Gtk.Label(label=f"Rename “{item.name}” to:", xalign=0.0))
-        box.append(entry)
-
-        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        buttons.set_halign(Gtk.Align.END)
-        cancel = Gtk.Button(label="Cancel")
-        confirm = Gtk.Button(label="Rename")
-        confirm.add_css_class("suggested-action")
-        buttons.append(cancel)
-        buttons.append(confirm)
-        box.append(buttons)
-        dialog.set_child(box)
-
-        def do_rename(*_):
-            parent.rename_to(item, entry.get_text())
-            dialog.destroy()
-
-        confirm.connect("clicked", do_rename)
-        entry.connect("activate", do_rename)
-        cancel.connect("clicked", lambda *_: dialog.destroy())
-        dialog.present()
-
     def shutdown(self) -> None:
         self._end_peek()
         if self._listener:

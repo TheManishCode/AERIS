@@ -36,11 +36,16 @@ follow_material_you = true
 # Open as many tabs as you like, including several of the same group. Tabs
 # remember where you dragged them and come back after a restart.
 #
-# source.type:
-#   directory — mirror one folder
-#   paths     — a fixed, pinned list
-#   query     — a saved search; a live filtered view of the filesystem
-#   windows   — the windows you have minimized; a taskbar, not a folder
+# source.type — each kind comes from a module, so what you can use depends on
+# what you have installed. `palisade doctor` lists them.
+#   directory — mirror one folder                       (palisade-files)
+#   paths     — a fixed, pinned list                    (palisade-files)
+#   query     — a saved search; a live filtered view    (palisade-files)
+#   windows   — the windows you have minimized          (palisade-dock)
+#   apps      — every installed application             (palisade-apps)
+#
+# A kind whose package is not installed does not fail quietly: the panel says
+# which package to install.
 # ===========================================================================
 
 [[group]]

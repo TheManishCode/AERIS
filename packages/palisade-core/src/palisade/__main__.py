@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,17 +22,72 @@ def _default_config_text() -> str:
 SERVICEMENU_DIR = Path.home() / ".local/share/kio/servicemenus"
 
 
+#: Where an installed launcher lives. Everything outside this repository —
+#: the file-manager menus, compositor keybinds, a status-bar button — should
+#: point here and not into a checkout, because a checkout can be moved and
+#: then every one of those breaks at once with no single place to fix it.
+INSTALLED_LAUNCHER = Path.home() / ".local" / "bin" / "palisade"
+
+
+def launcher_path() -> Path | None:
+    """The `palisade` launcher, preferring the stable installed location.
+
+    `bin/palisade` is a shell script because gtk4-layer-shell has to be
+    LD_PRELOADed before python starts, which a console-script entry point
+    cannot do — so there is a real file to find, and finding the right one
+    matters.
+    """
+    override = os.environ.get("PALISADE_LAUNCHER")
+    if override and Path(override).exists():
+        return Path(override)
+    if INSTALLED_LAUNCHER.exists():
+        return INSTALLED_LAUNCHER
+    # Running from a checkout: src/palisade/__main__.py -> <repo>/bin/palisade
+    in_tree = Path(__file__).resolve().parent.parent.parent / "bin" / "palisade"
+    return in_tree if in_tree.exists() else None
+
+
+def cmd_install_launcher(args) -> int:
+    """Put `palisade` on PATH, pointing at this checkout.
+
+    A symlink rather than a copy, so the command tracks the working tree
+    instead of going stale the next time the code changes. The launcher
+    resolves its own location with `readlink -f`, so being reached through a
+    symlink is already the case it was written for.
+    """
+    in_tree = Path(__file__).resolve().parent.parent.parent / "bin" / "palisade"
+    if not in_tree.exists():
+        print(f"palisade: no launcher at {in_tree}", file=sys.stderr)
+        return 1
+    INSTALLED_LAUNCHER.parent.mkdir(parents=True, exist_ok=True)
+    if INSTALLED_LAUNCHER.is_symlink() or INSTALLED_LAUNCHER.exists():
+        INSTALLED_LAUNCHER.unlink()
+    INSTALLED_LAUNCHER.symlink_to(in_tree)
+    print(f"palisade: {INSTALLED_LAUNCHER} -> {in_tree}")
+    if str(INSTALLED_LAUNCHER.parent) not in os.environ.get("PATH", "").split(":"):
+        print(f"palisade: {INSTALLED_LAUNCHER.parent} is not on your PATH.",
+              file=sys.stderr)
+    print("Point keybinds and menus at `palisade`, not at the checkout.")
+    return 0
+
+
 def cmd_install_menus(args) -> int:
     """Add Palisade to the file manager's right-click menu.
 
-    Dolphin invokes the Exec line directly, so the launcher path is baked in
+    Dolphin invokes the Exec line directly, so an absolute path is baked in
     rather than relying on PATH — a file manager started by the session does
-    not necessarily have ~/.local/bin on it.
+    not necessarily have ~/.local/bin on it. `launcher_path` prefers the
+    installed symlink over the checkout for exactly that reason.
     """
-    launcher = (Path(__file__).parent.parent / "bin" / "palisade").resolve()
-    if not launcher.exists():
-        print(f"palisade: launcher not found at {launcher}", file=sys.stderr)
+    launcher = launcher_path()
+    if launcher is None:
+        print("palisade: no launcher found. Run `palisade install-launcher` "
+              "from a checkout, or install.sh.", file=sys.stderr)
         return 1
+    if launcher != INSTALLED_LAUNCHER:
+        print(f"palisade: pointing the menus at {launcher}.\n"
+              f"  Moving this checkout will break them. "
+              f"`palisade install-launcher` fixes that.", file=sys.stderr)
 
     source = Path(__file__).parent / "data"
     entries = sorted(source.glob("palisade-*.desktop"))
@@ -247,6 +303,10 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("--force", action="store_true")
     sub.add_parser("check", help="validate the config and preview every fence")
     sub.add_parser("doctor", help="show which modules are installed")
+    sub.add_parser(
+        "install-launcher",
+        help="symlink ~/.local/bin/palisade at this checkout",
+    )
     sub.add_parser("hyprland-rule", help="print compositor rules for permanent blur")
     sub.add_parser(
         "install-menus",
@@ -317,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_init(args)
     if cmd == "doctor":
         return cmd_doctor(args)
+    if cmd == "install-launcher":
+        return cmd_install_launcher(args)
     if cmd == "check":
         return cmd_check(args)
     if cmd == "hyprland-rule":

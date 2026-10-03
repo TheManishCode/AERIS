@@ -66,6 +66,22 @@ class FenceWindow(Gtk.ApplicationWindow):
         #: tab is a view of a group, and reopening one should put you at the
         #: group, not three folders down where you happened to stop.
         self._nav: list[Path] = []
+        #: Path currently being renamed in place, or None. Held on the window
+        #: rather than on a row because GTK4 list factories recycle row
+        #: widgets — the entry has to be rebuilt whenever its row is rebound,
+        #: and a reference to one row's widget would go stale under scrolling.
+        self._renaming: Path | None = None
+        self._rename_text = ""
+        #: One-shot: the field takes focus and pre-selects the stem once, when
+        #: the rename starts. Doing it on every bind would yank the cursor
+        #: back to the start each time the row was rebound mid-edit.
+        self._rename_armed = False
+        #: path -> the row widget currently showing it. Maintained by the
+        #: factory's bind/unbind pair, which is the only reliable handle on a
+        #: recycled row: GTK4 gives no way to ask a view for the widget at an
+        #: index, and asking the model to re-emit items-changed does not
+        #: re-run bind.
+        self._rows: dict[Path, object] = {}
         # A taskbar fence holds live windows, not files. Every filesystem
         # action below is gated on this (and on `item.window`), because an
         # Item for a window carries the window address in `path` and trashing
@@ -321,6 +337,7 @@ class FenceWindow(Gtk.ApplicationWindow):
         factory = Gtk.SignalListItemFactory()
         factory.connect("setup", self._on_setup)
         factory.connect("bind", self._on_bind)
+        factory.connect("unbind", self._on_unbind)
 
         if self.fence.view == "list":
             self._view = Gtk.ListView(model=self._selection, factory=factory)
@@ -463,9 +480,32 @@ class FenceWindow(Gtk.ApplicationWindow):
         sub.set_visible(not vertical)
         box.append(sub)
 
+        # The rename field, built once per row and hidden until needed. A
+        # dialog was the old answer and could not work: a layer-shell surface
+        # has no xdg_surface, so `transient_for` is meaningless and the
+        # "modal" window was mapped by the compositor as a full-size tiled
+        # window in the corner of the screen.
+        rename = Gtk.Entry()
+        rename.add_css_class("item-rename")
+        rename.set_visible(False)
+        rename.set_has_frame(False)
+        if vertical:
+            rename.set_max_width_chars(max(8, self.fence.icon_size // 5))
+            rename.set_width_chars(max(8, self.fence.icon_size // 5))
+        rename.connect("activate", self._commit_rename)
+        rename.connect(
+            "notify::text",
+            lambda e, _p: setattr(self, "_rename_text", e.get_text()),
+        )
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self._on_rename_key)
+        rename.add_controller(keys)
+        box.append(rename)
+
         list_item.set_child(box)
         list_item._image, list_item._label, list_item._sub = image, label, sub
         list_item._key = key
+        list_item._rename = rename
 
         # On a taskbar, one click restores. Double-click is a file-manager
         # idiom and wrong here: every taskbar in every desktop restores on a
@@ -495,6 +535,8 @@ class FenceWindow(Gtk.ApplicationWindow):
         obj: ItemObject = list_item.get_item()
         item = obj.item
         list_item._label.set_text(item.name)
+        self._rows[item.path] = list_item
+        self._bind_rename(list_item, item)
         if item.window is not None:
             w = item.window
             # Show the shortcut that restores this row, for the first nine.
@@ -633,6 +675,9 @@ class FenceWindow(Gtk.ApplicationWindow):
     # -------------------------------------------------------------- content
 
     def refresh(self) -> None:
+        missing_hint = ""
+        if self._prune_nav():
+            self._rewatch()
         if self._mode == "hidden":
             items = self._hidden_items()
         else:
@@ -646,9 +691,13 @@ class FenceWindow(Gtk.ApplicationWindow):
                 # Nobody installed the package this fence's kind comes from.
                 # Showing an empty panel would read as an empty folder, so the
                 # panel says what to install instead.
+                #
+                # Not written into `_empty_base`: that is the fence's resting
+                # empty text, and overwriting it made the hint permanent — a
+                # panel kept telling you to install a package you had since
+                # installed, until the daemon restarted.
                 items = []
-                self._empty_base = str(exc)
-                self._empty.set_label(self._empty_base)
+                missing_hint = str(exc)
         self._store.remove_all()
         for item in items:
             self._store.append(ItemObject(item))
@@ -668,6 +717,7 @@ class FenceWindow(Gtk.ApplicationWindow):
                 "Nothing is hidden" if hidden_mode else self._empty_base
             )
         else:
+            self._empty.set_label(missing_hint or self._empty_base)
             # Below the root the header names the folder you are in, because
             # "Documents" over the contents of Documents/invoices is a lie
             # about where a new file would land.
@@ -745,6 +795,11 @@ class FenceWindow(Gtk.ApplicationWindow):
             self._monitors.append(mon)
 
     def schedule_refresh(self) -> None:
+        # Renaming creates its own directory-changed events — the entry would
+        # be rebuilt from disk under the cursor mid-keystroke. The rename
+        # itself refreshes when it finishes.
+        if self._renaming is not None:
+            return
         # Bursty writes (an archive extracting, a download finishing) would
         # otherwise cause one full rescan per inotify event.
         if self._refresh_source is not None:
@@ -929,6 +984,21 @@ class FenceWindow(Gtk.ApplicationWindow):
         self.refresh()
         self._scroll_to_top()
 
+    def _prune_nav(self) -> bool:
+        """Drop walked-into folders that no longer exist. True if any went.
+
+        A folder can be deleted, renamed or unmounted while you are standing
+        in it — by you, in this very panel, with Delete. Resolving it then
+        returns nothing and the panel reads as an empty folder, which is the
+        one thing it is not. Climbing out to the nearest level that still
+        exists is the only honest answer.
+        """
+        pruned = False
+        while self._nav and not self._nav[-1].is_dir():
+            self._nav.pop()
+            pruned = True
+        return pruned
+
     def navigate_up(self) -> bool:
         """Back one level. False at the root, so a caller can fall through."""
         if not self._nav:
@@ -1000,12 +1070,122 @@ class FenceWindow(Gtk.ApplicationWindow):
             return Path(source.path).expanduser()
         return None
 
+    def _on_unbind(self, _factory, list_item) -> None:
+        """Forget a row as it is recycled onto another item.
+
+        Without this the map keeps a widget that is now showing something
+        else, and a rename would put the entry on the wrong row.
+        """
+        obj = list_item.get_item()
+        if obj is not None and self._rows.get(obj.item.path) is list_item:
+            del self._rows[obj.item.path]
+
+    # ------------------------------------------------------------- renaming
+
+    def _bind_rename(self, list_item, item: Item) -> None:
+        """Swap a row's label for an entry while that row is being renamed.
+
+        Driven from bind rather than held as a widget reference because GTK4
+        recycles row widgets: scrolling the renamed row out and back must
+        rebuild the entry, with the text typed so far still in it.
+        """
+        entry = list_item._rename
+        renaming = self._renaming is not None and item.path == self._renaming
+        entry.set_visible(renaming)
+        list_item._label.set_visible(not renaming)
+        if not renaming:
+            return
+        if entry.get_text() != self._rename_text:
+            entry.set_text(self._rename_text)
+        if not self._rename_armed:
+            return
+        self._rename_armed = False
+        # Focus *first*. GTK selects the whole entry on focus-in, so selecting
+        # before grabbing focus was silently undone — and typing then replaced
+        # the extension too, turning `notes.md` into `renamed`.
+        entry.grab_focus()
+        # Then the stem, not the extension: renaming a file almost never means
+        # renaming `.md`, and selecting everything makes you retype it.
+        stem = len(item.path.stem) if not item.is_dir else len(item.name)
+        entry.select_region(0, stem)
+
+    def begin_rename(self, item: Item) -> None:
+        """Put the rename field on `item`'s row."""
+        if not item.is_file_row:
+            return
+        self._renaming = item.path
+        self._rename_text = item.name
+        self._rename_armed = True
+        row = self._rows.get(item.path)
+        if row is None:
+            # Scrolled out of view, so there is no widget to put the field on.
+            self._renaming = None
+            self._rename_armed = False
+            self.controller.notify(f"Scroll {item.name} into view to rename it")
+            return
+        self._bind_rename(row, item)
+
+    def _cancel_rename(self) -> None:
+        if self._renaming is None:
+            return
+        self._renaming = None
+        self._rename_text = ""
+        self._rename_armed = False
+        self._hide_rename_fields()
+        self._view.grab_focus()
+
+    def _commit_rename(self, _entry=None) -> None:
+        if self._renaming is None:
+            return
+        target, text = self._renaming, self._rename_text
+        # Cleared *before* renaming: the rename fires a directory-changed
+        # event, whose refresh would otherwise rebind the row and put the
+        # entry straight back on a path that no longer exists.
+        self._renaming = None
+        self._rename_text = ""
+        self._rename_armed = False
+        item = next(
+            (i for i in self._all_items() if i.path == target), None
+        )
+        if item is not None and text and text != item.name:
+            self.rename_to(item, text)
+        self._hide_rename_fields()
+        self._view.grab_focus()
+
+    def _on_rename_key(self, _ctrl, keyval, _code, _state) -> bool:
+        """Escape abandons the rename without touching the file.
+
+        Handled here rather than on the window: while the entry has focus the
+        window-level handler never sees the key, and Escape there would close
+        the panel instead of the field.
+        """
+        if keyval == Gdk.KEY_Escape:
+            self._cancel_rename()
+            return True
+        return False
+
+    def _all_items(self) -> list[Item]:
+        return [
+            self._store.get_item(i).item for i in range(self._store.get_n_items())
+        ]
+
+    def _hide_rename_fields(self) -> None:
+        """Put every row back to showing its label.
+
+        Walks the live rows rather than refreshing: a cancelled rename must
+        not re-walk the folder, and the row being renamed may have been
+        recycled while the field was open.
+        """
+        for path, row in list(self._rows.items()):
+            row._rename.set_visible(False)
+            row._label.set_visible(True)
+
     def rename_path(self, path: Path) -> None:
         """Put the rename entry on a freshly created row, if it is showing."""
         for i in range(self._store.get_n_items()):
             if self._store.get_item(i).item.path == path:
                 self._selection.select_item(i, True)
-                GLib.idle_add(self._rename_selected)
+                self.begin_rename(self._store.get_item(i).item)
                 return
 
     def notify(self, message: str) -> None:
@@ -1106,7 +1286,7 @@ class FenceWindow(Gtk.ApplicationWindow):
         if len(items) != 1:
             self.controller.notify("Select exactly one item to rename")
             return
-        self.controller.prompt_rename(self, items[0])
+        self.begin_rename(items[0])
 
     def rename_to(self, item: Item, new_name: str) -> None:
         new_name = new_name.strip()

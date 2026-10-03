@@ -29,6 +29,14 @@ ninja -C build && ninja -C build install
 `bin/palisade` searches `/usr` then `$HOME/.local` and sets `LD_PRELOAD`,
 `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH` for whichever it finds.
 
+### Always reference `~/.local/bin/palisade`
+
+`install.sh` puts the launcher there; from a checkout, `palisade
+install-launcher` symlinks it. Point keybinds, status-bar buttons and
+file-manager menus at **that** path and never into the checkout — a checkout
+can be moved, and then every one of them breaks at once with no single place
+to fix it. (It has happened.)
+
 ### Why LD_PRELOAD
 
 gtk4-layer-shell must be loaded before `libwayland-client`. A language binding
@@ -40,13 +48,13 @@ use the library from Python. The launcher handles it; you do not need to.
 Hyprland (Lua):
 
 ```lua
-hl.exec_once("~/palisade/bin/palisade run")
+hl.exec_once("~/.local/bin/palisade run")
 ```
 
 Hyprland (legacy) or any other wlroots compositor:
 
 ```
-exec-once = ~/palisade/bin/palisade run
+exec-once = ~/.local/bin/palisade run
 ```
 
 systemd user service, if you prefer supervision:
@@ -59,7 +67,7 @@ PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
-ExecStart=%h/palisade/bin/palisade run
+ExecStart=%h/.local/bin/palisade run
 Restart=on-failure
 
 [Install]

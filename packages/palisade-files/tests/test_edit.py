@@ -12,7 +12,6 @@ this reason.
 import os
 import stat
 import tempfile
-import time
 import unittest
 from pathlib import Path
 

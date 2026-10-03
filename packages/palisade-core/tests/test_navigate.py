@@ -71,6 +71,7 @@ class Nav:
     navigate_up = FenceWindow.navigate_up
     navigate_home = FenceWindow.navigate_home
     navigated = FenceWindow.navigated
+    _prune_nav = FenceWindow._prune_nav
     _scroll_to_top = FenceWindow._scroll_to_top
     _rewatch = FenceWindow._rewatch
 
@@ -210,6 +211,48 @@ class WalkTests(Tree):
         nav._scroller.adj.value = 250.0
         nav.navigate_up()
         self.assertEqual(nav._scroller.adj.value, 0.0)
+
+
+class PruneTests(Tree):
+    """A folder can vanish while you are standing in it — including because
+    you deleted it from this very panel with Delete."""
+
+    def nav_in(self, *parts):
+        nav = self.nav()
+        for p in parts:
+            nav.navigate_to(p)
+        return nav
+
+    def test_a_deleted_folder_is_climbed_out_of(self):
+        nav = self.nav_in(self.root / "sub")
+        (self.root / "sub" / "deeper").rmdir()
+        (self.root / "sub").rmdir()
+        self.assertTrue(nav._prune_nav())
+        self.assertFalse(nav.navigated)
+
+    def test_it_stops_at_the_deepest_level_that_still_exists(self):
+        nav = self.nav_in(self.root / "sub", self.root / "sub" / "deeper")
+        (self.root / "sub" / "deeper").rmdir()
+        nav._prune_nav()
+        self.assertEqual(nav.current_source().path, self.root / "sub")
+
+    def test_a_folder_that_is_still_there_is_left_alone(self):
+        nav = self.nav_in(self.root / "sub")
+        self.assertFalse(nav._prune_nav())
+        self.assertEqual(nav.current_source().path, self.root / "sub")
+
+    def test_at_the_root_there_is_nothing_to_prune(self):
+        self.assertFalse(self.nav()._prune_nav())
+
+    def test_a_folder_replaced_by_a_file_is_also_climbed_out_of(self):
+        """`rm -r sub && touch sub` is unusual but the check is `is_dir`, not
+        `exists`, so it has to hold."""
+        nav = self.nav_in(self.root / "sub")
+        (self.root / "sub" / "deeper").rmdir()
+        (self.root / "sub").rmdir()
+        (self.root / "sub").write_text("now a file", encoding="utf-8")
+        self.assertTrue(nav._prune_nav())
+        self.assertFalse(nav.navigated)
 
 
 class WatchTests(Tree):

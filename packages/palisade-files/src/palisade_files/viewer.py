@@ -87,6 +87,9 @@ class Viewer(Gtk.Box):
         #: flag. A layer-shell panel cannot host a modal dialog, so the
         #: confirmation is a second keypress rather than a button.
         self._discard_armed = False
+        #: Rebuilt by every render, so it must be cleared by every render too
+        #: — otherwise it holds a destroyed widget from the previous file.
+        self._save_btn: Gtk.Button | None = None
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         header.add_css_class("viewer-header")
@@ -408,6 +411,7 @@ class Viewer(Gtk.Box):
         when the whole file was read. A truncated read offers nothing, and
         says why in the banner at the top of the text.
         """
+        self._save_btn = None
         if not edit.can_edit(self.kind, self._complete):
             return
         if not self._editing:
@@ -439,7 +443,7 @@ class Viewer(Gtk.Box):
         the header is where you are already looking.
         """
         dirty = self.dirty
-        btn = getattr(self, "_save_btn", None)
+        btn = self._save_btn
         if btn is not None:
             btn.set_label("Save •" if dirty else "Saved")
             btn.set_sensitive(dirty)

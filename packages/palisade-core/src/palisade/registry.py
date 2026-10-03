@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Callable
 
 #: The entry-point group modules register under.
 GROUP = "palisade.modules"

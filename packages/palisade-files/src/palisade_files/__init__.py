@@ -10,7 +10,6 @@ That is the rule that keeps the three separately installable.
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 
