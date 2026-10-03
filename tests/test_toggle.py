@@ -5,13 +5,15 @@ it away". `spawn_tab` alone is not that: pressing the key twice opened a second
 identical taskbar on top of the first, which is how the minimized taskbar came
 to be duplicated on screen.
 
-The second case here is subtler and was a real bug twice over. Clicking the bar
-button moves focus off the picker, the picker closes itself, and only *then*
-does the button's toggle arrive — so a naive toggle sees nothing open and
-re-opens what the click just closed, and the button can only ever open.
+There was a second bug layered on that one: the picker used to close itself
+when it lost focus, which happened ~750ms *before* the bar button's own toggle
+arrived, so the toggle saw nothing open and re-opened what the click had just
+closed. That is fixed by removing the dismiss-on-focus-loss entirely rather
+than by timing around it, so there is no guard left to test — only that a
+toggle is a plain toggle.
 
-Both are pure decision logic over (open tabs, dismissal times), so they are
-pinned here rather than driven through a compositor.
+This is pure decision logic over the open tabs, so it is pinned here rather
+than driven through a compositor.
 """
 
 import os
@@ -49,20 +51,24 @@ class FakeToggler:
     """`Controller.toggle_group`, with its collaborators replaced."""
 
     _C = Controller
-    REOPEN_GUARD_S = _C.REOPEN_GUARD_S
     toggle_group = _C.toggle_group
-    note_picker_dismissed = _C.note_picker_dismissed
+    # Taken from the real class, not duplicated, so the test cannot drift
+    # from the guard it is asserting about.
+    REOPEN_GUARD_S = _C.REOPEN_GUARD_S
     del _C
 
     def __init__(self, groups=("minimized",), now=100.0):
         self._groups = set(groups)
         self._tabs = []
         self.windows = {}
-        self._dismissed_groups = {}
         self._seq = 0
         self.now = now
+        self._dismissed_groups = {}
 
     # -- the bits toggle_group leans on
+    def _now(self):
+        return self.now
+
     def _tabs_state(self):
         return list(self._tabs)
 
@@ -141,28 +147,6 @@ class ToggleTests(unittest.TestCase):
         self.assertEqual(len(result["closed"]), 2)
         self.assertEqual(t._tabs, [])
 
-    def test_toggle_right_after_a_self_dismissal_stays_closed(self):
-        """The bar button: focus-loss closes it, then the toggle arrives."""
-        t = FakeToggler()
-        with _Clock(100.0):
-            t.toggle_group("minimized")
-            t.note_picker_dismissed("tab-1")
-            t.close_tab("tab-1")
-            result = t.toggle_group("minimized")
-        self.assertFalse(result["open"])
-        self.assertEqual(t._tabs, [])
-
-    def test_the_guard_expires(self):
-        """A later press must open again, or the button would stay dead."""
-        t = FakeToggler()
-        with _Clock(100.0):
-            t.toggle_group("minimized")
-            t.note_picker_dismissed("tab-1")
-            t.close_tab("tab-1")
-        with _Clock(100.0 + FakeToggler.REOPEN_GUARD_S + 0.01):
-            result = t.toggle_group("minimized")
-        self.assertTrue(result["open"])
-
     def test_a_tab_whose_window_is_gone_does_not_count_as_open(self):
         """Otherwise a torn-down window would make the toggle a no-op forever."""
         t = FakeToggler()
@@ -173,6 +157,48 @@ class ToggleTests(unittest.TestCase):
             result = t.toggle_group("minimized")
         self.assertTrue(result["open"])
 
+
+class ReopenGuardTests(unittest.TestCase):
+    """Clicking the bar's taskbar button must be able to *close* it.
+
+    Pickers dismiss on click-away. Clicking that button moves focus off the
+    taskbar, so the taskbar closes itself, and only then does the button's
+    toggle arrive. Without the guard it finds nothing open, reopens what the
+    click just closed, and the button can only ever open.
+    """
+
+    def test_a_toggle_just_after_a_self_dismissal_stays_closed(self):
+        t = FakeToggler(now=100.0)
+        t.toggle_group("minimized")          # open
+        t._dismissed_groups["minimized"] = 100.0   # it closed itself on click-away
+        t._tabs = []
+        t.windows = {}
+        t.now = 100.0 + (FakeToggler.REOPEN_GUARD_S / 2)
+        result = t.toggle_group("minimized")
+        self.assertFalse(result["open"], "the click's toggle reopened it")
+
+    def test_the_guard_expires_so_the_button_cannot_stick_dead(self):
+        """A guard that never lifts is worse than the bug it fixes."""
+        t = FakeToggler(now=100.0)
+        t._dismissed_groups["minimized"] = 100.0
+        t.now = 100.0 + FakeToggler.REOPEN_GUARD_S + 0.01
+        self.assertTrue(t.toggle_group("minimized")["open"])
+
+    def test_the_guard_is_per_group(self):
+        """Dismissing the taskbar must not block opening something else."""
+        t = FakeToggler(groups=("minimized", "downloads"), now=100.0)
+        t._dismissed_groups["minimized"] = 100.0
+        t.now = 100.0
+        self.assertTrue(t.toggle_group("downloads")["open"])
+
+    def test_closing_an_open_tab_is_never_blocked_by_the_guard(self):
+        """The guard suppresses re-*opening*; closing must always work."""
+        t = FakeToggler(now=100.0)
+        t.toggle_group("minimized")
+        t._dismissed_groups["minimized"] = 100.0
+        result = t.toggle_group("minimized")
+        self.assertFalse(result["open"])
+        self.assertTrue(result["closed"], "an open tab should still close")
 
 if __name__ == "__main__":
     unittest.main()

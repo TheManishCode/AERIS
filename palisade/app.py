@@ -83,7 +83,8 @@ class Controller:
         self._peek_saved: dict[str, str] = {}
         self._picker: GroupPicker | None = None
         self._tab_seq = 0
-        # group id -> when a picker tab of it last closed itself.
+        # group id -> when a picker tab of it last closed itself on
+        # click-away. See REOPEN_GUARD_S.
         self._dismissed_groups: dict[str, float] = {}
 
     # ----------------------------------------------------------------- state
@@ -450,22 +451,39 @@ class Controller:
             result["skipped"] = [str(p) for p in missing]
         return result
 
-    #: A toggle arriving within this window of a picker dismissing itself is
-    #: read as "stay closed" — see `note_picker_dismissed`.
-    REOPEN_GUARD_S = 0.5
+
+    #: A toggle landing within this long of a picker closing itself is read as
+    #: "stay closed". Load-bearing only because pickers dismiss on click-away:
+    #: clicking the bar's taskbar button moves focus off the taskbar, which
+    #: closes itself, and the button's toggle then arrives to find nothing open
+    #: and reopens what the click just closed — so the button could only ever
+    #: open, never close.
+    #:
+    #: 1.5s, not the 0.5s this started as. Traced on this machine, the gap
+    #: between the focus-loss dismissal and the toggle reaching the daemon was
+    #: 756ms: `Quickshell.execDetached` spawns a CLI client, and most of that
+    #: is Python interpreter startup before a byte reaches the socket. 0.5s sat
+    #: under the real latency, so the guard never fired and the bug survived
+    #: being "fixed". The window is consumed on use (below), so erring long
+    #: costs nothing.
+    REOPEN_GUARD_S = 1.5
+
+    def _now(self) -> float:
+        """Monotonic clock, as a seam so the guard can be tested exactly."""
+        return time.monotonic()
 
     def note_picker_dismissed(self, fence_id: str) -> None:
-        """Record that a picker tab just closed itself because focus moved.
+        """Record that a picker closed itself because focus moved away.
 
-        Must be called *before* the tab is closed, while it is still in the
-        tab state and its group can still be looked up.
+        Must be called *before* the tab is closed, while it is still in the tab
+        state and its group can still be looked up.
         """
         group = next(
             (t.get("group") for t in self._tabs_state() if t.get("id") == fence_id),
             None,
         )
         if group:
-            self._dismissed_groups[group] = time.monotonic()
+            self._dismissed_groups[group] = self._now()
 
     def toggle_group(self, group_id: str) -> dict:
         """Open a group as a tab, or close it again if it is already open.
@@ -488,11 +506,12 @@ class Controller:
             for tab_id in open_ids:
                 self.close_tab(tab_id)
             return {"group": group_id, "open": False, "closed": open_ids}
-        # Clicking the bar's taskbar button moves focus off the picker, which
-        # closes itself before this toggle even arrives. Reopening here would
-        # undo the click, and the button could only ever open the taskbar.
-        since = time.monotonic() - self._dismissed_groups.get(group_id, 0.0)
-        if since < self.REOPEN_GUARD_S:
+        # One-shot: consume the record whether or not it was still in date, so
+        # a stale dismissal can never swallow a later, deliberate press. Only
+        # the toggle belonging to the same click is absorbed.
+        dismissed_at = self._dismissed_groups.pop(group_id, None)
+        if dismissed_at is not None and \
+                self._now() - dismissed_at < self.REOPEN_GUARD_S:
             return {"group": group_id, "open": False, "closed": []}
         spawned = self.spawn_tab(group_id)
         return {"group": group_id, "open": True, "id": spawned["id"]}

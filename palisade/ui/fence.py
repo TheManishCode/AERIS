@@ -76,7 +76,6 @@ class FenceWindow(Gtk.ApplicationWindow):
         # Two independent reasons a fence may be off screen; see _sync_visible.
         self._hidden = fence.hidden
         self._on_workspace = True
-        self._auto_dismissed_at = 0.0
 
         self.add_css_class("palisade")
         self.set_default_size(fence.width, fence.height)
@@ -86,6 +85,15 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._install_actions()
         self.refresh()
         self._watch()
+
+        # Click-away closes a picker, and *only* a picker. A taskbar is a
+        # transient chooser: clicking somewhere else means "not that, then".
+        # A grouping tab is furniture you arranged on purpose, and having one
+        # vanish because you clicked a window would make the desktop feel like
+        # it was deleting your work.
+        if fence.picker:
+            self._had_focus = False
+            self.connect("notify::is-active", self._on_active_changed)
 
     # ---------------------------------------------------------------- layer
 
@@ -129,15 +137,20 @@ class FenceWindow(Gtk.ApplicationWindow):
                     break
 
     def _keyboard_mode(self):
-        """EXCLUSIVE for a summoned fence, ON_DEMAND for one that lives on screen.
+        """Always ON_DEMAND — never EXCLUSIVE, even for a picker.
 
-        A picker only exists while you are choosing something out of it, so it
-        takes the keyboard outright and the key that opened it can drive it end
-        to end. Anything else must never do that — it would swallow every
-        keystroke on the desktop.
+        EXCLUSIVE looks like the right mode for a picker: it is modal, and it
+        wants the keyboard without being clicked first. But on Hyprland it does
+        not merely take the keyboard — while an exclusive layer surface is
+        mapped, pointer input to *other* layer surfaces is swallowed. Measured:
+        with the taskbar open, clicking the bar's mic button did nothing, and
+        clicking the taskbar's own bar button did nothing (the toggle never
+        reached the daemon), so the button could only ever open. The whole bar
+        was dead for as long as the taskbar was up.
+
+        ON_DEMAND plus an explicit focus request in `_focus_for_picking` gets
+        the keyboard without taking the screen hostage.
         """
-        if self.fence.picker:
-            return LayerShell.KeyboardMode.EXCLUSIVE
         return LayerShell.KeyboardMode.ON_DEMAND
 
     # ------------------------------------------------------------------- ui
@@ -269,12 +282,14 @@ class FenceWindow(Gtk.ApplicationWindow):
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
 
-        # A picker holds the keyboard exclusively, so it must not be able to
-        # stay up unattended: clicking away dismisses it, the same as any other
-        # picker. Without this, clicking another window would leave the grab in
-        # place and typing would go nowhere.
-        if self.fence.picker:
-            self.connect("notify::is-active", self._on_active_changed)
+        # Deliberately no dismiss-on-focus-loss. It was here while pickers
+        # used EXCLUSIVE keyboard, where losing focus could strand input — but
+        # it raced every toggle: clicking the bar button moved focus off the
+        # picker, which closed it ~750ms before the button's own toggle
+        # arrived, so the toggle saw nothing open and re-opened it. The button
+        # could only ever open the taskbar. ON_DEMAND makes focus loss
+        # harmless, so the race is deleted rather than timed out. Closing is
+        # by picking, Esc, or the same key/button that opened it.
 
         # Also establishes the size request, so a fence that is empty or holds
         # one item still renders at its configured size rather than shrink-wrapping.
@@ -973,6 +988,35 @@ class FenceWindow(Gtk.ApplicationWindow):
         if self.fence.picker:
             self._focus_for_picking()
 
+    def _on_active_changed(self, *_args) -> None:
+        """Close a picker when focus leaves it — i.e. you clicked elsewhere.
+
+        Armed only after the picker has actually held focus once. A surface is
+        inactive for the moment between mapping and the focus request landing,
+        and closing on that would make the taskbar flash open and vanish
+        without anyone touching it.
+        """
+        if self.is_active():
+            self._had_focus = True
+            return
+        if not self._had_focus:
+            return
+
+        def close_it() -> bool:
+            # Re-check: focus can come straight back, e.g. a popover opening.
+            if self.is_active():
+                return False
+            # Tell the controller first, while this tab still exists to be
+            # looked up — otherwise the bar button's toggle arrives to find
+            # nothing open and reopens what the click just closed.
+            self.controller.note_picker_dismissed(self.fence.id)
+            self._dismiss()
+            return False
+
+        # Deferred: _dismiss destroys this window, which must not happen
+        # inside its own property notification.
+        GLib.idle_add(close_it)
+
     def _dismiss(self) -> None:
         """Put a picker away, by whichever route actually applies to it.
 
@@ -984,33 +1028,9 @@ class FenceWindow(Gtk.ApplicationWindow):
         if not self.fence.picker:
             return
         if self.controller.is_tab(self.fence.id):
-            # Before closing, while the tab's group can still be looked up.
-            self.controller.note_picker_dismissed(self.fence.id)
             self.controller.close_tab(self.fence.id)
         else:
             self.set_hidden(True)
-
-    def _on_active_changed(self, *_args) -> None:
-        # Only ever closes; becoming active is how it got here.
-        if not self.get_property("is-active") and self.get_visible():
-            self._auto_dismissed_at = time.monotonic()
-            self._dismiss()
-
-    #: A toggle arriving within this window of an automatic dismissal is read
-    #: as "close", not "open" — see `was_just_auto_dismissed`.
-    REOPEN_GUARD_S = 0.5
-
-    def was_just_auto_dismissed(self) -> bool:
-        """Did clicking away dismiss this fence a moment ago?
-
-        Clicking the bar's taskbar button moves focus off the fence, which
-        auto-dismisses it, and only then does the button's `hide` toggle run —
-        so a blind toggle sees a hidden fence and re-opens it. The button then
-        appears to only ever open the taskbar, never close it. Treating a
-        toggle this soon after an auto-dismiss as "stay closed" makes the
-        button a real toggle without the caller needing to know any of this.
-        """
-        return time.monotonic() - self._auto_dismissed_at < self.REOPEN_GUARD_S
 
     def _focus_for_picking(self) -> None:
         """Make a summoned fence usable without touching the mouse.
@@ -1024,6 +1044,11 @@ class FenceWindow(Gtk.ApplicationWindow):
                 return False
             if self._collapsed:
                 self._apply_collapsed(False)
+            # ON_DEMAND means the compositor hands over the keyboard when the
+            # surface asks. `present` is the ask — without it the fence would
+            # need a click before any key reached it, which defeats the point
+            # of opening it from a keybind.
+            self.present()
             self._view.grab_focus()
             if self._store.get_n_items():
                 self._selection.select_item(0, True)

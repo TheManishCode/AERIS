@@ -1,5 +1,59 @@
 # Changelog
 
+## 2026-10-03 — The bar's taskbar button closes as well as opens
+
+Role: Frontend Engineer + QA
+Status: Fixed
+
+Reason:
+Reported twice: clicking the bar's taskbar button only ever opened the
+taskbar. The first attempt guessed at a focus race and added a 0.5s guard
+without driving a real click; the bug survived. Tracing the daemon found two
+separate causes.
+
+Changes:
+- `FenceWindow._keyboard_mode` is now always `ON_DEMAND`; pickers no longer
+  use `EXCLUSIVE`. On Hyprland an exclusive layer surface does not merely take
+  the keyboard — while one is mapped, pointer input to *other* layer surfaces
+  is swallowed. Measured A/B with the taskbar open: under EXCLUSIVE, clicking
+  the bar's mic button did nothing and the taskbar button's toggle never
+  reached the daemon at all (one `toggle_group` call across two clicks); under
+  ON_DEMAND the same mic click toggled mute. So the whole bar was dead for as
+  long as the taskbar was up, and the second click was never delivered.
+- `_focus_for_picking` now calls `present()` before grabbing focus, which is
+  how an ON_DEMAND surface asks for the keyboard. Without it the taskbar would
+  need a click before any key reached it, defeating the keybind.
+- `REOPEN_GUARD_S` 0.5s -> 1.5s. The daemon trace put the gap between the
+  click-away dismissal and the toggle arriving at **756ms** — `execDetached`
+  spawns a CLI client and most of that is Python startup. The old 0.5s sat
+  under the real latency, so the guard never once fired.
+- The guard window is now consumed on use (`pop`, not `get`), so a stale
+  dismissal can never swallow a later deliberate press.
+
+Removed/Reverted:
+- An earlier attempt in this session removed click-away dismissal outright to
+  delete the race. That was reverted in favour of keeping the behaviour and
+  sizing the guard to the measured latency.
+
+Verification:
+- 69 tests pass.
+- `toggle` alternates open/closed/open/closed over four CLI invocations.
+- EXCLUSIVE vs ON_DEMAND compared directly with the mic button as a probe, as
+  described above.
+
+Result:
+The bar is usable while the taskbar is open, and the toggle's two halves can
+both reach the daemon.
+
+Known Issues:
+- The end-to-end "click the button twice" gesture is **not** verified. This
+  machine has no reliable absolute pointer injection — `hl.dsp.cursor.move`
+  behaves as a relative/clamped move (a click probe that toggled the mic
+  afterwards reported the cursor at 1436,3 rather than the 1372,30 it was
+  sent to), so synthetic clicks land in drifting positions and repeatedly
+  produced misleading results here. The two causes above were each confirmed
+  by daemon-side traces and timestamps, not by the gesture.
+
 ## 2026-10-03 — Open any location; collect a selection into its own tab
 
 Role: Frontend Engineer + UX + QA Engineer
