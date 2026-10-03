@@ -407,9 +407,28 @@ class Controller:
         picked = tuple(Path(os.path.expanduser(str(p))) for p in paths)
         if not picked:
             raise ValueError("nothing selected")
-        return self.spawn_adhoc(
-            title, Source(kind="paths", paths=picked), **over
+
+        # Restoring already drops a collection whose paths have all gone, but
+        # creating one did not check at all: a typo produced an empty tab and
+        # said nothing, which reads as "Palisade is broken" rather than "that
+        # path does not exist".
+        live = tuple(p for p in picked if p.exists())
+        if not live:
+            raise ValueError(
+                "no such path: " + ", ".join(str(p) for p in picked[:3])
+                + ("…" if len(picked) > 3 else "")
+            )
+        missing = [p for p in picked if not p.exists()]
+        result = self.spawn_adhoc(
+            title, Source(kind="paths", paths=live), **over
         )
+        if missing:
+            self.notify(
+                f"{len(missing)} path(s) skipped — not found: {missing[0]}"
+                + (f" (+{len(missing) - 1} more)" if len(missing) > 1 else "")
+            )
+            result["skipped"] = [str(p) for p in missing]
+        return result
 
     #: A toggle arriving within this window of a picker dismissing itself is
     #: read as "stay closed" — see `note_picker_dismissed`.

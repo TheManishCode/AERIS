@@ -45,7 +45,7 @@ Changes:
   `describe` catalog.
 
 Verification:
-- 50 tests pass (was 43). `tests/test_actions.py` is new: 7 tests over which
+- 60 tests pass (was 43). `tests/test_actions.py` is new: 7 tests over which
   actions each fence kind registers. Confirmed it actually catches the bug by
   reintroducing it — the chrome assertion fails with the exact missing set —
   then restoring `fence.py` byte-identical.
@@ -66,6 +66,16 @@ Removed/Reverted:
 Result:
 Any folder is one keystroke away whether or not it is catalogued, and a
 selection can become a workspace of its own without touching the originals.
+
+Follow-up, same day:
+- `collect` accepted paths that do not exist and produced a silent empty tab.
+  Found by running the README's own example, whose placeholder paths are not
+  real. `restore_tabs` already dropped such a collection on the next start, so
+  the check existed on the way back in but not on the way out. Now: all paths
+  missing is refused with the paths named, some missing are skipped with a
+  notification and reported as `skipped` in the reply. `tests/test_collect.py`
+  (10 tests) covers it, confirmed to fail with the validation removed. The
+  README example no longer uses paths that cannot exist.
 
 Known Issues:
 - A collection holds paths, not identities: rename or move a collected file

@@ -79,8 +79,11 @@ making one costs nothing and closing it undoes it. The items can come from a
 single folder or be gathered from several.
 
 ```bash
-palisade collect --title "Review" ~/a/draft.md ~/b/notes.md ~/c/figures
+palisade collect --title "Review" ~/Documents/draft.md ~/Pictures/figure.png
 ```
+
+Paths that do not exist are skipped with a notification, and a `collect` where
+none of them exist is refused rather than producing an empty tab.
 
 A collection is remembered across restarts. If every path in one has since been
 deleted, it is dropped rather than restored as a permanently empty tab.
