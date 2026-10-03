@@ -88,6 +88,27 @@ none of them exist is refused rather than producing an empty tab.
 A collection is remembered across restarts. If every path in one has since been
 deleted, it is dropped rather than restored as a permanently empty tab.
 
+### From the file manager
+
+Select files in Dolphin, right-click, **Group in Palisade**. Right-click a
+folder for **Open as a Palisade tab**.
+
+```bash
+palisade install-menus
+```
+
+That writes two KIO service menus to `~/.local/share/kio/servicemenus/` with
+the launcher path baked into the `Exec` line — a file manager started by the
+session does not necessarily have `~/.local/bin` on its `PATH`. Dolphin picks
+them up on its next start, or immediately after `kbuildsycoca6 --noincremental`.
+
+Collections sent this way are named after where they came from — *"3 from
+Downloads"* — since a file manager has no title to pass and *"3 items"* stops
+meaning anything once two such tabs are open.
+
+> Drag-and-drop from the file manager is **not** supported, and cannot be: a
+> layer surface never receives the drop. See [Known limits](#known-limits).
+
 ### Want something always on screen?
 
 A `[[fence]]` is a group that is placed in the config rather than opened from the
@@ -121,6 +142,7 @@ git clone <this repo> ~/palisade
 ~/palisade/bin/palisade init     # writes ~/.config/palisade/palisade.toml
 ~/palisade/bin/palisade check    # validate + preview every fence, no GUI
 ~/palisade/bin/palisade run
+~/palisade/bin/palisade install-menus   # optional: Dolphin right-click actions
 ```
 
 Make the blur permanent (Palisade applies it at startup, but a `hyprctl reload`

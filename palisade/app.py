@@ -46,6 +46,25 @@ CASCADE_STEP = 36
 MAX_CASCADE = 24
 
 
+def default_collection_title(paths) -> str:
+    """Name a collection after what it holds, not how many things it holds.
+
+    Sent from a file manager there is no title to pass, and "3 items" tells you
+    nothing once two of those tabs are open. The folder the selection came from
+    is the one piece of context always available.
+    """
+    paths = list(paths)
+    if len(paths) == 1:
+        return paths[0].name or str(paths[0])
+    parents = {p.parent for p in paths}
+    if len(parents) == 1:
+        home = Path.home()
+        parent = parents.pop()
+        where = "home" if parent == home else (parent.name or str(parent))
+        return f"{len(paths)} from {where}"
+    return f"{len(paths)} items"
+
+
 class Controller:
     def __init__(self, app: Gtk.Application, config_path: Path | None = None):
         self.app = app
@@ -407,6 +426,7 @@ class Controller:
         picked = tuple(Path(os.path.expanduser(str(p))) for p in paths)
         if not picked:
             raise ValueError("nothing selected")
+        title = title or default_collection_title(picked)
 
         # Restoring already drops a collection whose paths have all gone, but
         # creating one did not check at all: a typo produced an empty tab and

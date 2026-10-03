@@ -16,6 +16,53 @@ def _default_config_text() -> str:
     )
 
 
+#: KF6 reads user service menus from here. KF5 used kservices5/ServiceMenus;
+#: this targets KF6 only, which is what Plasma 6 and Dolphin 24+ ship.
+SERVICEMENU_DIR = Path.home() / ".local/share/kio/servicemenus"
+
+
+def cmd_install_menus(args) -> int:
+    """Add Palisade to the file manager's right-click menu.
+
+    Dolphin invokes the Exec line directly, so the launcher path is baked in
+    rather than relying on PATH — a file manager started by the session does
+    not necessarily have ~/.local/bin on it.
+    """
+    launcher = (Path(__file__).parent.parent / "bin" / "palisade").resolve()
+    if not launcher.exists():
+        print(f"palisade: launcher not found at {launcher}", file=sys.stderr)
+        return 1
+
+    source = Path(__file__).parent.parent / "data"
+    entries = sorted(source.glob("palisade-*.desktop"))
+    if not entries:
+        print("palisade: no service menu templates found", file=sys.stderr)
+        return 1
+
+    SERVICEMENU_DIR.mkdir(parents=True, exist_ok=True)
+    written = []
+    for entry in entries:
+        target = SERVICEMENU_DIR / entry.name
+        target.write_text(
+            entry.read_text(encoding="utf-8").replace(
+                "PALISADE_BIN", str(launcher)
+            ),
+            encoding="utf-8",
+        )
+        # KF6 expects service menu files to be executable; a non-executable one
+        # is ignored with only a warning on stderr nobody reads.
+        target.chmod(0o755)
+        written.append(target)
+
+    for target in written:
+        print(f"palisade: wrote {target}")
+    print()
+    print("Right-click a selection in Dolphin -> Group in Palisade.")
+    print("Right-click a folder -> Open as a Palisade tab.")
+    print("Dolphin picks these up on its next start (or: kbuildsycoca6 --noincremental).")
+    return 0
+
+
 def cmd_init(args) -> int:
     from .config import CONFIG_PATH
 
@@ -167,6 +214,9 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("--force", action="store_true")
     sub.add_parser("check", help="validate the config and preview every fence")
     sub.add_parser("hyprland-rule", help="print compositor rules for permanent blur")
+    sub.add_parser(
+        "install-menus",
+        help="add Palisade to the file manager right-click menu (KDE/Dolphin)")
     sub.add_parser("describe", help="machine-readable command catalog (for agents)")
     sub.add_parser("list", help="list fences and live item counts")
     sub.add_parser("ping", help="check whether the daemon is up")
@@ -232,6 +282,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(args)
     if cmd == "hyprland-rule":
         return cmd_hyprland_rule(args)
+    if cmd == "install-menus":
+        return cmd_install_menus(args)
     if cmd == "show":
         return _client({"cmd": "show", "id": args.id}, args.json)
     if cmd == "collapse":

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Service
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+# Separate from the collect menu because a service menu applies one MimeType to
+# every action it declares, and "open this as a tab" only means anything for a
+# folder.
+MimeType=inode/directory;
+Actions=palisadeOpenFolder;
+
+[Desktop Action palisadeOpenFolder]
+TryExec=PALISADE_BIN
+Exec=PALISADE_BIN new %f
+Icon=folder-open
+Name=Open as a Palisade tab

@@ -77,6 +77,35 @@ Follow-up, same day:
   (10 tests) covers it, confirmed to fail with the validation removed. The
   README example no longer uses paths that cannot exist.
 
+Follow-up — file manager integration:
+- `palisade install-menus` writes two KIO service menus to
+  `~/.local/share/kio/servicemenus/`: **Group in Palisade** on any selection
+  (`all/all`), and **Open as a Palisade tab** on a folder (`inode/directory`).
+  Two files rather than one because a service menu applies a single `MimeType`
+  to every action it declares, and "open as a tab" only means anything for a
+  folder. The launcher path is substituted into `Exec` rather than relying on
+  `PATH`, since a file manager started by the session need not have
+  `~/.local/bin` on it. Files are written 0755 — KF6 ignores a non-executable
+  service menu with only a stderr warning.
+- `default_collection_title`: a file manager sends no title, and "3 items" is
+  useless once two such tabs are open. Now "3 from Downloads", the item's own
+  name for a single file, and a plain count only when the selection spans
+  several folders.
+
+Verification (file manager):
+- `desktop-file-validate` rejects both files, but it rejects KDE's own shipped
+  `konsolerun.desktop` the same way — it does not know `Type=Service`.
+  Dismissed only after checking that, not on assumption.
+- `all/all` confirmed supported: it is not in shared-mime-info, but both
+  `all/all` and `all/allfiles` are built into `libKF6KIOWidgets`.
+- `kbuildsycoca6 --noincremental` — KDE's own parser — accepts both with zero
+  warnings.
+- The exact `Exec` lines run under `env -i` (no `PATH`, no inherited
+  environment): collect produced "3 from sbx", the folder action produced a
+  tab. 67 tests pass (7 new on title inference).
+- Not verified: an actual right-click in Dolphin. The menu files parse and the
+  commands they invoke work, but nobody has clicked the entry.
+
 Known Issues:
 - A collection holds paths, not identities: rename or move a collected file
   outside Palisade and that row drops out on the next refresh. Tracking

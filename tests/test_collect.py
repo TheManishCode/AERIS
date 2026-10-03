@@ -32,7 +32,7 @@ for _libdir in (Path.home() / ".local/lib", Path("/usr/lib"), Path("/usr/lib64")
         break
 
 try:
-    from palisade.app import Controller
+    from palisade.app import Controller, default_collection_title
     from palisade.config import Source, source_to_raw
 except (ImportError, ValueError) as exc:  # pragma: no cover - env without GTK
     raise unittest.SkipTest(f"GTK bindings unavailable: {exc}") from exc
@@ -123,6 +123,56 @@ class CollectTests(unittest.TestCase):
         c.spawn_collection("Round", [self.real, self.subdir])
         source = c.spawned[1]
         self.assertEqual(Source.parse(source_to_raw(source), "t"), source)
+
+
+class DefaultTitleTests(unittest.TestCase):
+    """Sent from a file manager there is no title, so one has to be inferred.
+
+    "3 items" is useless the moment two such tabs are open; the folder the
+    selection came from is the context that is always available.
+    """
+
+    def test_a_single_item_is_named_after_itself(self):
+        self.assertEqual(
+            default_collection_title([Path("/home/u/Downloads/report.pdf")]),
+            "report.pdf",
+        )
+
+    def test_several_from_one_folder_name_that_folder(self):
+        base = Path("/home/u/Downloads")
+        self.assertEqual(
+            default_collection_title([base / "a", base / "b", base / "c"]),
+            "3 from Downloads",
+        )
+
+    def test_a_mixed_selection_falls_back_to_a_count(self):
+        self.assertEqual(
+            default_collection_title([Path("/home/u/a/x"), Path("/home/u/b/y")]),
+            "2 items",
+        )
+
+    def test_home_is_called_home_not_the_username(self):
+        """`Path.home().name` is the user's login name, which reads as a
+        stranger's folder rather than as home."""
+        home = Path.home()
+        self.assertEqual(
+            default_collection_title([home / "a", home / "b"]), "2 from home"
+        )
+
+    def test_a_root_level_selection_does_not_produce_an_empty_name(self):
+        self.assertEqual(
+            default_collection_title([Path("/etc"), Path("/opt")]), "2 from /"
+        )
+
+    def test_an_explicit_title_is_never_overridden(self):
+        c = Collector()
+        c.spawn_collection("Mine", [Path.home()])
+        self.assertEqual(c.spawned[0], "Mine")
+
+    def test_an_empty_title_is_replaced(self):
+        c = Collector()
+        c.spawn_collection("", [Path.home()])
+        self.assertTrue(c.spawned[0])
 
 
 if __name__ == "__main__":

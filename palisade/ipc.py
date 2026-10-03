@@ -310,9 +310,9 @@ class Server:
             paths = req.get("paths") or []
             if not isinstance(paths, list) or not paths:
                 raise ValueError("collect needs a non-empty `paths` list")
-            return c.spawn_collection(
-                str(req.get("title") or f"{len(paths)} items"), paths
-            )
+            # An empty title means "name it yourself" — see
+            # default_collection_title. A file manager has none to send.
+            return c.spawn_collection(str(req.get("title") or ""), paths)
         if cmd == "close":
             tab_id = str(req["id"])
             if tab_id == "all":
