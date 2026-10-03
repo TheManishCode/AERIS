@@ -444,3 +444,193 @@ window.palisade-picker .fence-root {
 .mode-tab.active:hover {
   background: mix(@m3_secondary_container, @m3_on_secondary_container, 0.10);
 }
+
+/* --- the in-panel viewer --------------------------------------------------
+ * Opening a file from a fence used to hand it to the desktop and lose it
+ * behind whatever claimed it. The viewer shows it where it already is, so the
+ * surfaces below are the panel's own card vocabulary, not a second theme. */
+
+.viewer-header {
+  padding: 0 0 8px 0;
+}
+
+.viewer-title {
+  font-size: %FONT_PT%pt;
+  font-weight: 550;
+  color: @m3_on_surface;
+  padding-left: 4px;
+}
+
+.viewer-back {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 13px;
+  background: transparent;
+  border: none;
+  color: @m3_on_surface_variant;
+  transition: background 110ms ease-out, color 110ms ease-out;
+}
+
+.viewer-back:hover {
+  background: mix(@m3_surface_container_low, @m3_on_surface, 0.10);
+  color: @m3_on_surface;
+}
+
+/* Actions are the panel's pill vocabulary at a smaller size, so the viewer
+ * reads as part of the fence rather than as an embedded application. */
+.viewer-action {
+  min-height: 26px;
+  padding: 2px 12px;
+  border: none;
+  border-radius: 999px;
+  background: @m3_surface_container_low;
+  box-shadow: none;
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  transition: background 110ms ease-out, color 110ms ease-out;
+}
+
+.viewer-action:hover {
+  background: mix(@m3_surface_container_low, @m3_on_surface, 0.10);
+  color: @m3_on_surface;
+}
+
+.viewer-icon-action {
+  min-width: 26px;
+  padding: 0;
+}
+
+/* Running something is the one action here with a side effect, so it is the
+ * one that carries the accent. */
+.viewer-run {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+}
+
+.viewer-run:hover {
+  background: mix(@m3_secondary_container, @m3_on_secondary_container, 0.10);
+}
+
+/* Not a button: it states why Run is absent, and must not look clickable. */
+.viewer-hint {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  opacity: 0.7;
+  padding: 0 8px;
+}
+
+.viewer-body {
+  background: @m3_surface_container_low;
+  border-radius: 17px;
+  padding: 5px;
+}
+
+.viewer-image,
+.viewer-video {
+  border-radius: 12px;
+}
+
+.viewer-describe {
+  padding: 32px 24px;
+  color: @m3_on_surface_variant;
+}
+
+.viewer-describe-why {
+  font-size: %FONT_PT%pt;
+  color: @m3_on_surface;
+}
+
+.viewer-describe-detail {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+}
+
+/* --- code ----------------------------------------------------------------
+ * No syntax highlighting: GtkSourceView is not a hard dependency, because a
+ * missing library should cost colour, not the preview. */
+
+.code-view {
+  font-family: monospace;
+  font-size: %FONT_SM_PT%pt;
+  background: transparent;
+  color: @m3_on_surface;
+  padding: 8px;
+}
+
+.code-view text {
+  background: transparent;
+  color: @m3_on_surface;
+}
+
+/* --- rendered markdown ----------------------------------------------------
+ * Built one widget per block rather than one Pango string, which is what lets
+ * a code block have its own surface and a heading have real space above it. */
+
+.markdown {
+  padding: 10px 12px 16px 12px;
+}
+
+.md-para,
+.md-list-item {
+  font-size: %FONT_PT%pt;
+  color: @m3_on_surface;
+  padding: 4px 0;
+}
+
+.md-h1 { font-size: 1.6em; font-weight: 550; color: @m3_on_surface; padding: 14px 0 6px 0; }
+.md-h2 { font-size: 1.35em; font-weight: 550; color: @m3_on_surface; padding: 12px 0 5px 0; }
+.md-h3 { font-size: 1.15em; font-weight: 550; color: @m3_on_surface; padding: 10px 0 4px 0; }
+.md-h4,
+.md-h5,
+.md-h6 { font-weight: 550; color: @m3_on_surface_variant; padding: 8px 0 4px 0; }
+
+.md-marker {
+  color: @m3_primary;
+  min-width: 20px;
+}
+
+/* Quoted text gets an accent rule rather than italics: a long quote set in
+ * italic is harder to read than the thing it is quoting. */
+.md-quote {
+  font-size: %FONT_PT%pt;
+  color: @m3_on_surface_variant;
+  border-left: 3px solid @m3_primary;
+  padding: 4px 0 4px 12px;
+  margin: 6px 0;
+}
+
+.md-code {
+  background: @m3_surface_container;
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+.md-rule {
+  background: @m3_outline_variant;
+  margin: 14px 0;
+}
+
+.md-table {
+  margin: 8px 0;
+}
+
+.md-cell {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface;
+  padding: 6px 12px 6px 0;
+}
+
+.md-cell-head {
+  color: @m3_on_surface_variant;
+}
+
+.pdf-pages {
+  padding: 8px;
+}
+
+.pdf-page {
+  background: #ffffff;
+  border-radius: 6px;
+}

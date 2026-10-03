@@ -1,0 +1,500 @@
+"""The in-panel viewer: show a file where it already is.
+
+Opening a file from a fence used to hand it to the desktop and lose it behind
+whatever application claimed it. For the things you open a fence to check — is
+this the right screenshot, what does this note say, what is in this config —
+that is a window you then have to find, raise and close for two seconds of
+looking.
+
+So the fence shows it. The grid slides out, the file slides in, Escape brings
+the grid back. Nothing new appears in the window list.
+
+Renderers are chosen by `palisade.preview.classify` and built lazily; a kind
+whose library is missing degrades to the description view rather than failing,
+which is why the module imports nothing optional at the top level.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
+
+from .. import markdown as md
+from .. import preview, toolchains
+
+#: Refuse to render a text file larger than this. A fence is not an editor for
+#: a 200MB log, and the honest failure is "too large to preview, open it
+#: properly" rather than a frozen compositor while Pango lays out a million
+#: lines on the main thread.
+MAX_TEXT_BYTES = 4 * 1024 * 1024
+
+#: How much of an over-large text file to show, so the answer is never just a
+#: refusal — the head of a log is usually what you wanted anyway.
+HEAD_BYTES = 256 * 1024
+
+#: Cap on run output kept in memory, for the same reason.
+MAX_OUTPUT_CHARS = 200_000
+
+
+def _human(n: float) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024.0
+    return f"{n:.1f} TB"
+
+
+class Viewer(Gtk.Box):
+    """One file, shown inside the fence.
+
+    Owns its own small header — back, title, and whatever actions the file
+    supports — because the fence's header belongs to the fence and swapping its
+    contents in and out would leave two components fighting over one widget.
+    """
+
+    __gtype_name__ = "PalisadeViewer"
+
+    def __init__(self, on_close, on_notify=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.add_css_class("viewer")
+        # A Box is not focusable by default, and the fence calls grab_focus on
+        # this when a file opens so the keyboard lands somewhere sensible.
+        self.set_focusable(True)
+        self._on_close = on_close
+        self._notify = on_notify or (lambda _msg: None)
+        self.path: Path | None = None
+        self.kind: str = ""
+        self._mode = "preview"     #: markdown only: "preview" or "source"
+        self._proc: Gio.Subprocess | None = None
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        header.add_css_class("viewer-header")
+
+        back = Gtk.Button()
+        back.add_css_class("viewer-back")
+        back.set_child(Gtk.Image.new_from_icon_name("go-previous-symbolic"))
+        back.set_tooltip_text("Back to the panel  ·  Esc")
+        back.connect("clicked", lambda *_: self.close())
+        header.append(back)
+
+        self._title = Gtk.Label(xalign=0.0)
+        self._title.add_css_class("viewer-title")
+        self._title.set_ellipsize(3)
+        header.append(self._title)
+
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        header.append(spacer)
+
+        #: Per-file actions live here and are rebuilt on every load, so a
+        #: stale Run button can never survive onto a file that cannot run.
+        self._actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        header.append(self._actions)
+
+        self.append(header)
+
+        self._body = Gtk.ScrolledWindow()
+        self._body.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self._body.set_vexpand(True)
+        self._body.add_css_class("viewer-body")
+        self.append(self._body)
+
+    # ------------------------------------------------------------------ open
+
+    def show_file(self, path: Path) -> bool:
+        """Load `path`. False if there is nothing this viewer can do with it."""
+        self.path = path
+        self.kind = preview.classify(path)
+        self._mode = "preview"
+        self._title.set_text(path.name)
+        self._title.set_tooltip_text(str(path))
+        self._render()
+        return True
+
+    def close(self) -> None:
+        self._stop_process()
+        self._on_close()
+
+    # ---------------------------------------------------------------- render
+
+    def _render(self) -> None:
+        path, kind = self.path, self.kind
+        if path is None:
+            return
+        while child := self._actions.get_first_child():
+            self._actions.remove(child)
+
+        builder = {
+            preview.IMAGE: self._build_image,
+            preview.VIDEO: self._build_video,
+            preview.AUDIO: self._build_video,
+            preview.MARKDOWN: self._build_markdown,
+            preview.TEXT: self._build_text,
+            preview.PDF: self._build_pdf,
+        }.get(kind, self._build_unsupported)
+
+        try:
+            child = builder(path)
+        except Exception as exc:  # noqa: BLE001 - a bad file must not kill the daemon
+            child = self._describe(path, f"Could not show this file: {exc}")
+        self._body.set_child(child)
+        self._add_common_actions(path)
+
+    # --- renderers
+
+    def _build_image(self, path: Path) -> Gtk.Widget:
+        picture = Gtk.Picture.new_for_filename(str(path))
+        picture.set_can_shrink(True)
+        picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        picture.set_vexpand(True)
+        picture.add_css_class("viewer-image")
+        # new_for_filename does not raise on an unloadable file, it just holds
+        # no paintable — which would render as a blank panel with no
+        # explanation, the worst of both outcomes.
+        if picture.get_paintable() is None:
+            return self._describe(path, "This image could not be decoded")
+        return picture
+
+    def _build_video(self, path: Path) -> Gtk.Widget:
+        video = Gtk.Video.new_for_filename(str(path))
+        video.set_vexpand(True)
+        video.set_autoplay(False)
+        video.add_css_class("viewer-video")
+        return video
+
+    def _build_markdown(self, path: Path) -> Gtk.Widget:
+        text = self._read_text(path)
+        if text is None:
+            return self._describe(path, "This file is too large to preview")
+
+        toggle = Gtk.Button(label="Source" if self._mode == "preview" else "Preview")
+        toggle.add_css_class("viewer-action")
+        toggle.set_tooltip_text("Switch between the rendered document and its source  ·  Ctrl+E")
+        toggle.connect("clicked", lambda *_: self._toggle_markdown_mode())
+        self._actions.append(toggle)
+
+        if self._mode == "source":
+            return self._code_view(text)
+        return self._markdown_view(text)
+
+    def _markdown_view(self, text: str) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.add_css_class("markdown")
+        for block in md.parse(text):
+            widget = self._markdown_block(block)
+            if widget is not None:
+                box.append(widget)
+        return box
+
+    def _markdown_block(self, block: md.Block) -> Gtk.Widget | None:
+        if block.kind == md.RULE:
+            rule = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            rule.add_css_class("md-rule")
+            return rule
+
+        if block.kind == md.CODE:
+            view = self._code_view(block.text, compact=True)
+            view.add_css_class("md-code")
+            return view
+
+        if block.kind == md.TABLE:
+            grid = Gtk.Grid()
+            grid.add_css_class("md-table")
+            for r, row in enumerate(block.rows):
+                for c, cell in enumerate(row):
+                    label = Gtk.Label(xalign=0.0)
+                    label.set_markup(f"<b>{cell}</b>" if r == 0 else cell)
+                    label.set_wrap(True)
+                    label.add_css_class("md-cell")
+                    if r == 0:
+                        label.add_css_class("md-cell-head")
+                    grid.attach(label, c, r, 1, 1)
+            return grid
+
+        if block.kind == md.LIST_ITEM:
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            row.add_css_class("md-list-item")
+            row.set_margin_start(block.level * 18)
+            marker = Gtk.Label(label=block.marker, xalign=1.0)
+            marker.add_css_class("md-marker")
+            row.append(marker)
+            row.append(self._markup_label(block.text, "md-para"))
+            return row
+
+        css = {
+            md.HEADING: f"md-h{min(block.level, 6)}",
+            md.QUOTE: "md-quote",
+        }.get(block.kind, "md-para")
+        return self._markup_label(block.text, css)
+
+    def _markup_label(self, markup: str, css: str) -> Gtk.Label:
+        label = Gtk.Label(xalign=0.0)
+        label.set_wrap(True)
+        label.set_wrap_mode(2)  # PANGO_WRAP_WORD_CHAR
+        label.set_hexpand(True)
+        # Not selectable. Activation is a double-click, and the second click
+        # lands on whatever the viewer just put under the pointer — which
+        # selected a line of the document every single time a file was opened.
+        # Code blocks are TextViews and stay selectable, which is where
+        # copying out of a preview actually matters.
+        label.add_css_class(css)
+        # Pango rejects markup it cannot parse and set_markup leaves the label
+        # empty, so a single malformed run would silently erase a paragraph.
+        # Falling back to the plain text keeps the words on screen.
+        try:
+            label.set_markup(markup)
+        except GLib.Error:
+            label.set_text(_strip_markup(markup))
+        return label
+
+    def _code_view(self, text: str, *, compact: bool = False) -> Gtk.Widget:
+        """Monospaced, selectable, read-only.
+
+        GtkSourceView would bring syntax highlighting, but it is not installed
+        here and making it a hard dependency would mean no preview at all on a
+        machine without it. The text is shown either way; see README.
+        """
+        view = Gtk.TextView()
+        view.set_editable(False)
+        view.set_cursor_visible(False)
+        view.set_monospace(True)
+        view.set_wrap_mode(Gtk.WrapMode.NONE if compact else Gtk.WrapMode.NONE)
+        view.get_buffer().set_text(text)
+        view.add_css_class("code-view")
+        if compact:
+            return view
+        view.set_vexpand(True)
+        return view
+
+    def _build_text(self, path: Path) -> Gtk.Widget:
+        text = self._read_text(path)
+        if text is None:
+            return self._describe(path, "This file is too large to preview")
+        runner = toolchains.runner_for(path)
+        if runner is not None:
+            run = Gtk.Button(label="Run")
+            run.add_css_class("viewer-action")
+            run.add_css_class("viewer-run")
+            run.set_tooltip_text(f"{runner.label}  ·  Ctrl+R")
+            run.connect("clicked", lambda *_: self.run_file())
+            self._actions.append(run)
+        elif toolchains.is_runnable_kind(path):
+            hint = Gtk.Label(label=toolchains.missing_tool_hint(path))
+            hint.add_css_class("viewer-hint")
+            hint.set_tooltip_text(
+                "Palisade runs what is already on your PATH. It does not "
+                "install toolchains."
+            )
+            self._actions.append(hint)
+        return self._code_view(text)
+
+    def _build_pdf(self, path: Path) -> Gtk.Widget:
+        try:
+            gi.require_version("Poppler", "0.18")
+            from gi.repository import Poppler
+        except (ImportError, ValueError):
+            return self._describe(
+                path,
+                "PDF preview needs poppler-glib, which is not installed.\n"
+                "Install it and reload, or open the file externally.",
+            )
+        doc = Poppler.Document.new_from_file(Gio.File.new_for_path(str(path)).get_uri())
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.add_css_class("pdf-pages")
+        for i in range(doc.get_n_pages()):
+            page = doc.get_page(i)
+            width, height = page.get_size()
+            surface = Gtk.DrawingArea()
+            surface.set_content_width(int(width))
+            surface.set_content_height(int(height))
+            surface.add_css_class("pdf-page")
+            surface.set_draw_func(
+                lambda _a, cr, _w, _h, p=page: p.render(cr)
+            )
+            box.append(surface)
+        return box
+
+    def _build_unsupported(self, path: Path) -> Gtk.Widget:
+        return self._describe(path, "No preview for this kind of file")
+
+    def _describe(self, path: Path, why: str) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.add_css_class("viewer-describe")
+        box.set_valign(Gtk.Align.CENTER)
+
+        icon = Gtk.Image.new_from_icon_name("text-x-generic")
+        icon.set_pixel_size(48)
+        box.append(icon)
+
+        headline = Gtk.Label(label=why)
+        headline.add_css_class("viewer-describe-why")
+        headline.set_wrap(True)
+        headline.set_justify(Gtk.Justification.CENTER)
+        box.append(headline)
+
+        try:
+            stat = path.stat()
+            detail = f"{_human(stat.st_size)}  ·  {path.suffix or 'no extension'}"
+        except OSError:
+            detail = "unreadable"
+        box.append(self._markup_label(md.escape(detail), "viewer-describe-detail"))
+
+        open_btn = Gtk.Button(label="Open externally")
+        open_btn.add_css_class("viewer-action")
+        open_btn.set_halign(Gtk.Align.CENTER)
+        open_btn.connect("clicked", lambda *_: self.open_externally())
+        box.append(open_btn)
+        return box
+
+    # --- shared actions
+
+    def _add_common_actions(self, path: Path) -> None:
+        out = Gtk.Button()
+        out.add_css_class("viewer-action")
+        out.add_css_class("viewer-icon-action")
+        out.set_child(Gtk.Image.new_from_icon_name("external-link-symbolic"))
+        out.set_tooltip_text("Open in the default application  ·  Ctrl+O")
+        out.connect("clicked", lambda *_: self.open_externally())
+        self._actions.append(out)
+
+    def _read_text(self, path: Path) -> str | None:
+        """Decode a text file, or None when it is too big to lay out.
+
+        Over the limit it returns the head with a banner rather than nothing:
+        the top of a log is usually the answer, and a flat refusal would make
+        the viewer useless for exactly the files people check most often.
+        """
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return None
+        try:
+            if size > MAX_TEXT_BYTES:
+                with path.open("rb") as fh:
+                    head = fh.read(HEAD_BYTES)
+                body = head.decode("utf-8", errors="replace")
+                return (
+                    f"# showing the first {_human(len(head))} of "
+                    f"{_human(size)}\n\n{body}"
+                )
+            return path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+
+    def _toggle_markdown_mode(self) -> None:
+        if self.kind != preview.MARKDOWN:
+            return
+        self._mode = "source" if self._mode == "preview" else "preview"
+        self._render()
+
+    def open_externally(self) -> None:
+        if self.path is None:
+            return
+        launcher = Gtk.FileLauncher.new(Gio.File.new_for_path(str(self.path)))
+        launcher.launch(None, None, None)
+
+    # ------------------------------------------------------------------- run
+
+    def run_file(self) -> None:
+        """Run the open file and show its output below, not in a terminal.
+
+        Output is streamed into the viewer because the point of running from
+        here is to stay in the panel. Anything interactive wants a real
+        terminal, and that is what Open externally is for.
+        """
+        if self.path is None:
+            return
+        runner = toolchains.runner_for(self.path)
+        if runner is None:
+            return
+        self._stop_process()
+
+        view = self._code_view("")
+        buf = view.get_buffer()
+        buf.set_text(f"$ {' '.join(runner.argv)}\n\n")
+        self._body.set_child(view)
+
+        # Launched through a launcher rather than Gio.Subprocess.new so the
+        # working directory can be set to the file's own: a script that opens
+        # a sibling by relative path is the normal case, and running it from
+        # wherever the daemon happens to live would break it for no reason.
+        launcher = Gio.SubprocessLauncher.new(
+            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE
+        )
+        launcher.set_cwd(str(self.path.parent))
+        try:
+            self._proc = launcher.spawnv(list(runner.argv))
+        except GLib.Error as exc:
+            buf.insert(buf.get_end_iter(), f"could not start: {exc.message}\n")
+            return
+        self._pump(self._proc.get_stdout_pipe(), buf)
+
+    def _pump(self, stream: Gio.InputStream, buf: Gtk.TextBuffer) -> None:
+        def on_chunk(src, result):
+            try:
+                data = src.read_bytes_finish(result).get_data()
+            except GLib.Error:
+                return
+            if not data:
+                buf.insert(buf.get_end_iter(), "\n[finished]\n")
+                return
+            text = data.decode("utf-8", errors="replace")
+            if buf.get_char_count() < MAX_OUTPUT_CHARS:
+                buf.insert(buf.get_end_iter(), text)
+            src.read_bytes_async(8192, GLib.PRIORITY_DEFAULT, None, on_chunk)
+
+        stream.read_bytes_async(8192, GLib.PRIORITY_DEFAULT, None, on_chunk)
+
+    def _stop_process(self) -> None:
+        if self._proc is not None:
+            self._proc.force_exit()
+            self._proc = None
+
+    # -------------------------------------------------------------- keyboard
+
+    def handle_key(self, keyval: int, state: Gdk.ModifierType) -> bool:
+        """Viewer shortcuts. True when the key was consumed."""
+        ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        if keyval == Gdk.KEY_Escape:
+            self.close()
+            return True
+        if ctrl and keyval in (Gdk.KEY_e, Gdk.KEY_E):
+            self._toggle_markdown_mode()
+            return True
+        if ctrl and keyval in (Gdk.KEY_r, Gdk.KEY_R):
+            self.run_file()
+            return True
+        if ctrl and keyval in (Gdk.KEY_o, Gdk.KEY_O):
+            self.open_externally()
+            return True
+        return False
+
+
+def _strip_markup(markup: str) -> str:
+    """Plain text from Pango markup, for the fallback path above."""
+    import re
+
+    text = re.sub(r"<[^>]+>", "", markup)
+    return (
+        text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    )
+
+
+def open_externally(path: Path) -> None:
+    """Hand a path to the desktop. Used by the fence's own menu."""
+    launcher = Gtk.FileLauncher.new(Gio.File.new_for_path(str(path)))
+    launcher.launch(None, None, None)
+
+
+def run_detached(argv: tuple[str, ...], cwd: Path) -> None:
+    """Start something and forget about it, for the fence's Run in terminal."""
+    try:
+        subprocess.Popen(argv, cwd=str(cwd), start_new_session=True)
+    except OSError:
+        pass

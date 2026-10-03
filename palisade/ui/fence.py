@@ -22,9 +22,11 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
 from .. import windows as hwindows
 from ..config import Fence, Settings
+from .. import create, preview
 from ..sources import Item, resolve, sort_items
 from ..theme import CSS_PRIORITY
 from .manipulate import Manipulator, make_resize_grip
+from .viewer import Viewer
 
 REFRESH_DEBOUNCE_MS = 180
 TYPEAHEAD_RESET_S = 1.2
@@ -320,7 +322,6 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._scroller.set_vexpand(True)
         self._scroller.set_child(self._view)
         self._scroller.add_css_class("fence-body")
-        root.append(self._scroller)
 
         if not self._is_windows:
             empty_text = "Nothing here yet"
@@ -345,7 +346,24 @@ class FenceWindow(Gtk.ApplicationWindow):
         # are looking after opening it.
         self._empty.set_yalign(0.0)
         self._empty.set_visible(False)
-        root.append(self._empty)
+
+        # The list and the viewer are siblings in a stack, not a swap of the
+        # body's child: the list keeps its scroll position and selection while
+        # a file is open, so Escape puts you back exactly where you were
+        # instead of at the top of the folder.
+        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        panel.set_vexpand(True)
+        panel.append(self._scroller)
+        panel.append(self._empty)
+
+        self._viewer = Viewer(self._close_viewer, self.controller.notify)
+        self._stack = Gtk.Stack()
+        self._stack.set_vexpand(True)
+        self._stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self._stack.set_transition_duration(110)
+        self._stack.add_named(panel, "panel")
+        self._stack.add_named(self._viewer, "viewer")
+        root.append(self._stack)
 
         # The grip rides in an overlay so it sits over the bottom-right
         # corner without stealing a row from the layout.
@@ -680,6 +698,9 @@ class FenceWindow(Gtk.ApplicationWindow):
         else:
             content = (
                 ("open", lambda *_: self._open_selected()),
+                ("open-external", lambda *_: self._open_selected_externally()),
+                ("new-file", lambda *_: self._new_entry("file")),
+                ("new-folder", lambda *_: self._new_entry("folder")),
                 ("open-folder", lambda *_: self._reveal_selected()),
                 ("copy-path", lambda *_: self._copy_paths()),
                 ("rename", lambda *_: self._rename_selected()),
@@ -729,11 +750,100 @@ class FenceWindow(Gtk.ApplicationWindow):
         if item.window is not None:
             self._restore(item.window)
             return
+        # Show it here. The whole reason to open something from a fence is
+        # usually to check it, and handing it to the desktop turns a
+        # two-second look into a window you have to find, raise and close.
+        #
+        # Including kinds with no renderer: the viewer's description — what it
+        # is, how big, and a button to open it properly — is a better answer
+        # than silently launching whatever claims .bin, which may be nothing
+        # at all. "Open in default app" is one keystroke away either way.
+        #
+        # A folder is the exception. The fence shows one directory, and
+        # following a subfolder is navigation, not preview; that goes to the
+        # file manager until the fence can navigate (see TODO.md).
+        if preview.classify(item.path) != preview.DIRECTORY:
+            self.open_viewer(item.path)
+            return
+        self._open_externally(item)
+
+    def _open_externally(self, item: Item) -> None:
         uri = Gio.File.new_for_path(str(item.path)).get_uri()
         try:
             Gio.AppInfo.launch_default_for_uri(uri, None)
         except GLib.Error as exc:
             self.controller.notify(f"Could not open {item.name}: {exc.message}")
+
+    # ---------------------------------------------------------------- viewer
+
+    def open_viewer(self, path: Path) -> None:
+        """Swap the list out for the file, keeping the panel's place."""
+        self._viewer.show_file(path)
+        self._stack.set_visible_child_name("viewer")
+        # The header's count belongs to the list, and leaving it over an open
+        # file reads as "this document has 4 of something".
+        self._count.set_visible(False)
+        self._viewer.grab_focus()
+
+    def _close_viewer(self) -> None:
+        self._stack.set_visible_child_name("panel")
+        self._count.set_visible(self.settings.show_item_count)
+        self._view.grab_focus()
+
+    @property
+    def viewing(self) -> bool:
+        return self._stack.get_visible_child_name() == "viewer"
+
+    # -------------------------------------------------------------- creating
+
+    def _folder_root(self) -> Path | None:
+        """The directory new things go into, or None if there isn't one.
+
+        A fence over a live query or a hand-picked collection has no single
+        folder behind it, so there is nowhere for "New file" to mean anything.
+        Saying so is better than picking one of the paths and surprising
+        somebody.
+        """
+        source = self.fence.source
+        if source.kind == "folder" and source.path is not None:
+            return Path(source.path).expanduser()
+        return None
+
+    def _new_entry(self, kind: str) -> None:
+        """Create a folder or an empty file, then put the rename box on it.
+
+        Named automatically and then renamed in place rather than asking for a
+        name in a dialog first: a layer-shell panel cannot host a modal, and
+        the in-place rename already exists and is the gesture people expect
+        from a file manager anyway.
+        """
+        root = self._folder_root()
+        if root is None:
+            self.controller.notify(
+                f"{self.fence.title} is not a single folder, so there is "
+                "nowhere to create a file"
+            )
+            return
+        try:
+            if kind == "folder":
+                made = create.new_folder(root, create.unique_name(root, "New folder"))
+            else:
+                made = create.new_file(
+                    root, create.unique_name(root, "Untitled", ".md")
+                )
+        except create.CreateError as exc:
+            self.controller.notify(str(exc))
+            return
+        self.refresh()
+        self._rename_path(made)
+
+    def _rename_path(self, path: Path) -> None:
+        """Put the rename entry on a freshly created row, if it is showing."""
+        for i in range(self._store.get_n_items()):
+            if self._store.get_item(i).item.path == path:
+                self._selection.select_item(i, True)
+                GLib.idle_add(self._rename_selected)
+                return
 
     # ---------------------------------------------------------------- windows
 
@@ -785,6 +895,16 @@ class FenceWindow(Gtk.ApplicationWindow):
     def _open_selected(self) -> None:
         for item in self._selected_items():
             self._launch(item)
+
+    def _open_selected_externally(self) -> None:
+        """Hand it to the desktop instead of showing it here.
+
+        Kept as its own verb now that activation previews: the preview is the
+        right default for a look, and the real application is still the right
+        answer for anything you intend to work on.
+        """
+        for item in self._selected_files():
+            self._open_externally(item)
 
     def _reveal_selected(self) -> None:
         for item in self._selected_files()[:1]:
@@ -856,6 +976,7 @@ class FenceWindow(Gtk.ApplicationWindow):
         else:
             primary = Gio.Menu()
             primary.append("Open", "win.open")
+            primary.append("Open in default app", "win.open-external")
             primary.append("Open containing folder", "win.open-folder")
             menu.append_section(None, primary)
 
@@ -886,6 +1007,18 @@ class FenceWindow(Gtk.ApplicationWindow):
 
     def _on_key(self, _ctrl, keyval: int, _code: int, state: Gdk.ModifierType) -> bool:
         ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+
+        # While a file is open the viewer owns the keyboard: Escape belongs to
+        # it (back to the list, not dismiss the fence), and so do its own
+        # shortcuts. Checked first so nothing below can shadow them.
+        if self.viewing and self._viewer.handle_key(keyval, state):
+            return True
+
+        if ctrl and not self._is_windows and keyval in (Gdk.KEY_n, Gdk.KEY_N):
+            self._new_entry("folder" if shift else "file")
+            return True
+
         # Tab flips the taskbar between minimized windows and hidden panels,
         # so the switch is reachable from the keybind that opened it.
         if self._is_windows and keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
@@ -1017,8 +1150,18 @@ class FenceWindow(Gtk.ApplicationWindow):
         )
 
     def _open_fence_menu(self, _gesture, _n, x: float, y: float) -> None:
-        """Fence-level menu: layer, lock, collapse, hide."""
+        """Fence-level menu: create, layer, lock, collapse, hide."""
         menu = Gio.Menu()
+
+        # Only where "here" is a real directory. On a live query or a
+        # collection there is no folder for a new file to land in, and an
+        # entry that explains itself only after you click it is worse than
+        # one that is not there.
+        if not self._is_windows and self._folder_root() is not None:
+            making = Gio.Menu()
+            making.append("New folder", "win.new-folder")
+            making.append("New file", "win.new-file")
+            menu.append_section(None, making)
 
         place = Gio.Menu()
         place.append("On the desktop", "win.layer-bottom")
