@@ -18,7 +18,8 @@
  * of approximating one:
  *
  *   rounding   verysmall 8 · small 12 · normal 17 · large 23 · window 18
- *   spacing    panel padding 10 · card inset 5 · row 12 vertical
+ *   spacing    panel padding 10 · card inset 5
+ *              list row 12 vertical · grid cell 6 (separate tokens)
  *   layers     0 background · 1 surface_container_low · 2 surface_container
  *              each step up is a raised surface, not a border
  *   states     hover = mix(layer, on_layer, 0.10)
@@ -90,7 +91,7 @@ window.palisade {
  * labels below, which are inset by the card's own 5px. */
 
 .fence-header {
-  padding: 2px 4px 10px 4px;
+  padding: 2px 4px 8px 4px;
 }
 
 .fence-title {
@@ -168,15 +169,27 @@ listview > row:selected {
 }
 
 /* --- items ---------------------------------------------------------------
- * One rule set drives both the icon grid and the list view; only the internal
- * orientation differs, which keeps hover/selection behaviour identical. */
+ * Hover, selection and focus are shared so the two views behave identically;
+ * only the padding differs, and it has to.
+ *
+ * A grid cell and a list row do not share a padding on this desktop, and
+ * treating them as one control is what made the icon grid read as
+ * over-spaced. A row is 12 vertical (DialogListItem); a grid cell is 6 with
+ * an 8 margin (wallpaperSelectorItemPadding / ItemMargins) — a cell is mostly
+ * icon and already carries its own whitespace. */
 
 .item {
   border-radius: 12px;
-  /* 12 vertical is the desktop's row height rule. The old 8 is what made
-   * dense lists feel cramped against the panel edge. */
-  padding: 12px 8px;
   transition: background 110ms ease-out;
+}
+
+gridview > child .item {
+  padding: 6px;
+  margin: 2px;
+}
+
+listview > row .item {
+  padding: 12px 8px;
 }
 
 .item:hover {
@@ -240,7 +253,7 @@ row:selected .item-key,
 .fence-empty {
   font-size: %FONT_SM_PT%pt;
   color: @m3_on_surface_variant;
-  padding: 28px 16px;
+  padding: 20px 16px;
 }
 
 /* --- scrolling -----------------------------------------------------------
@@ -370,7 +383,7 @@ window.palisade-picker .fence-root {
  * of near-miss that reads as a different application. */
 
 .mode-switch {
-  margin: 0 0 10px 0;
+  margin: 0 0 8px 0;
   padding: 3px;
   border-radius: 999px;
   background: @m3_surface_container_low;
