@@ -1,0 +1,197 @@
+# Architecture
+
+Palisade ships as **four** Python distributions: one shared core and three
+feature modules. Three of them are the things you install on purpose; the
+fourth is the thing they all stand on.
+
+```
+                    ┌───────────────────┐
+                    │  palisade-core    │   the panel, and nothing else
+                    │  layer-shell      │   visible on screen by itself
+                    │  cards · theme    │
+                    │  config · IPC     │
+                    │  module registry  │
+                    └─────────┬─────────┘
+                              │  every module depends on core
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+┌─────────┴────────┐ ┌────────┴─────────┐ ┌───────┴──────────┐
+│ palisade-dock    │ │ palisade-files   │ │ palisade-apps    │
+│ minimized apps   │ │ folders & files  │ │ installed apps   │
+│ · minimize engine│ │ · folder sources │ │ · .desktop scan  │
+│ · window source  │ │ · the viewer     │ │ · launch · pin   │
+│ · docked taskbar │ │ · markdown, run  │ │                  │
+└──────────────────┘ └──────────────────┘ └──────────────────┘
+       no arrows between these three — that is the point
+```
+
+## Why a core at all
+
+Two requirements pull in opposite directions:
+
+* **No duplicated code when all three are installed.** Each module draws the
+  same panel: the same layer-shell surface, the same header, the same raised
+  card, the same rows, the same theme read from the same Material You palette.
+  Three copies of that is three places to fix one bug.
+* **Any one module works alone.** Installing the file manager must not drag in
+  a taskbar you did not ask for.
+
+A module that imports another satisfies the first and breaks the second.
+Vendored copies satisfy the second and break the first. A shared core is the
+only arrangement that satisfies both, so `palisade-core` exists and is a
+dependency of each module and of nothing else. The three modules never import
+one another.
+
+## The contract
+
+Core never imports a module. It discovers them through Python entry points,
+which means installation *is* registration — there is no plugin directory to
+copy files into and no config to edit.
+
+```toml
+# in each module's pyproject.toml
+[project.entry-points."palisade.modules"]
+files = "palisade_files:MODULE"
+```
+
+A module is one `Module` object. Every field is optional; a module declares
+the subset it needs and core asks for the rest and gets nothing.
+
+| Field | What it adds | Example |
+| --- | --- | --- |
+| `sources` | `kind` strings a `[group]` may use | `files` adds `folder`, `query`, `paths`, `directory` |
+| `open_file` | `(path, on_close, notify) -> widget \| None` | `files` returns the viewer; `None` means "not mine" |
+| `activate` | `(fence, item) -> bool` — claim a row | `dock` claims a window row and restores it |
+| `status` | `() -> str \| None` — explain an empty panel | `dock` says the minimize engine is not loaded |
+| `commands` | IPC verbs, and therefore CLI verbs | none yet; the hook is wired |
+| `actions` | menu entries and their handlers | `files` adds New file/New folder; `dock` adds Restore |
+
+`open_file` is one callable rather than a content-kind table because deciding
+*what* a file is belongs to whoever can render it. A table would have forced
+core to classify first, and core has no opinion about file types — that is the
+module's whole job. Openers are tried in module-id order and the first to
+return a widget wins; when none does, core hands the file to the desktop.
+
+`activate` works the same way, and is why core does not know what "restore a
+window" or "launch an application" means. A module that declines returns
+`False` and the next gets its turn; core's own file handling is the fallback.
+
+Collisions in the keyed tables are resolved first-wins and reported, not
+silently shadowed — two packages claiming one source kind is a packaging bug
+and should be visible the first time it happens.
+
+Core resolves a `[group]` by asking the registry which module owns its `kind`.
+If none does, the error names the package to install. Core deliberately does
+**not** whitelist source kinds in config validation either: a whitelist would
+have to be edited in core every time a module is written, which is exactly the
+coupling the registry exists to remove.
+
+### What a module may touch on a fence
+
+A module's verbs receive the `FenceWindow` they were invoked on, and are
+limited to its public surface: `selected_items()`, `folder_root()`,
+`rename_path()`, `notify()`, `refresh()`, `schedule_refresh()`,
+`dismiss_if_summoned()`, `restore_at()`, and the `fence` config object.
+Everything else is private and may be renamed without breaking a package core
+does not import.
+
+Core registers a module's verbs on *every* fence — it cannot ask "does this
+apply to a taskbar?" without learning what a taskbar is — so each verb guards
+itself. `restore` on a fence full of files does nothing, by test.
+
+### Running from a checkout
+
+A clone has no `.dist-info`, so entry-point discovery finds nothing. The
+`PALISADE_MODULES` environment variable names `package:attr` specs to load in
+addition to whatever is installed, and an installed module does not shadow one
+named there. `bin/palisade` sets it from the sibling package directories, so
+the monorepo and an installed system both work with no extra step.
+
+## What each module owns
+
+### palisade-core
+
+The layer-shell window and everything that is true of every panel: geometry
+and docking, the exclusive-zone reflow, layers and hiding, the theme bridge to
+the desktop's Material You palette, `palisade.toml` and `state.json`, the
+daemon, the Unix-socket IPC, the group picker, and the registry above.
+
+Installing only core gives you a working `palisade` command and an empty
+desktop. That is correct: core has no opinion about what a panel should show.
+
+### palisade-dock — minimized applications
+
+The Hyprland minimize engine (`custom/minimize.lua` and the window tags it
+writes), the `windows` source kind, the docked taskbar with its
+Minimized/Hidden switch, and the restore verbs.
+
+Hyprland-specific by nature. It degrades to "engine not loaded" on other
+compositors rather than pretending.
+
+### palisade-files — grouping folders and rendering files
+
+Folder, query and collection source kinds; the in-panel viewer; the Markdown
+parser; content classification; file creation; and runner detection for source
+files. The file-manager integration (KIO service menus) ships here too.
+
+### palisade-apps — installed applications
+
+A catalogue of installed `.desktop` entries you can group and launch like any
+other panel content.
+
+**What this module cannot do, stated plainly:** it cannot draw another
+application *inside* a Palisade panel. Wayland has no XEmbed — a client cannot
+host another client's surface, and only the compositor composites windows.
+Anything claiming otherwise on Wayland is either an Electron webview or a
+compositor plugin. What is achievable, and what this module does, is launch
+apps and — on Hyprland — *pin* a chosen window to sit exactly over a panel's
+rectangle, which looks embedded and is still a separate toplevel. See
+`DECISIONS.md`.
+
+## Repository layout
+
+The monorepo here is the development tree; each package directory is a
+complete, publishable repository.
+
+```
+packages/
+  palisade-core/   pyproject.toml  install.sh  README  LICENSE
+                   bin/palisade  src/palisade/{,data/}  docs/  tests/
+  palisade-dock/   pyproject.toml  install.sh  README  LICENSE
+                   src/palisade_dock/{,hypr/minimize.lua}  tests/
+  palisade-files/  pyproject.toml  install.sh  README  LICENSE
+                   src/palisade_files/  tests/
+  palisade-apps/   pyproject.toml  install.sh  README  LICENSE
+                   src/palisade_apps/  tests/
+```
+
+Each directory is a complete, publishable repository: its own README, LICENSE
+and installer, and a test suite that runs from its own root with no
+`PYTHONPATH` incantation. Data files live *inside* the package
+(`src/palisade/data/`) so one path works from a checkout and from
+site-packages alike.
+
+`tools/split-repos.sh` turns each directory into a standalone branch with
+`git subtree split`, so per-package history follows it out rather than
+producing four "initial commit" dumps. `tools/gen-installers.py` writes the
+three module installers from one template — they become three repositories and
+cannot share a script, so generating them is how they stay in step.
+
+## Installing
+
+One command per module. Core comes with whichever you install first, and is
+never installed twice.
+
+```bash
+curl -fsSL .../palisade-files/main/install.sh | bash
+```
+
+The installer adds the system packages it needs (PyGObject and
+gtk4-layer-shell are system libraries, not wheels), installs the package, does
+whatever only it can do — palisade-dock places `custom/minimize.lua`,
+palisade-files adds the file-manager menu entries — and restarts a running
+daemon, because the module list is built once at startup and a module
+installed underneath a running daemon is otherwise invisible.
+
+`palisade doctor` reports which modules are installed, what each missing one
+would add, and the command to install it.

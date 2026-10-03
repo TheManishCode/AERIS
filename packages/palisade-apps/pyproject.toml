@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "palisade-apps"
+version = "0.3.0"
+description = "Installed applications as Palisade panel content: catalogue, search and launch."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["palisade-core>=0.3"]
+
+[project.entry-points."palisade.modules"]
+apps = "palisade_apps:MODULE"
+
+[project.urls]
+Homepage = "https://github.com/PALISADE_OWNER/palisade-apps"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/palisade_apps"]

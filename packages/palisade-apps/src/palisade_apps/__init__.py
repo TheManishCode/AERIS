@@ -1,0 +1,77 @@
+"""Installed applications as panel content.
+
+**What this module cannot do, stated plainly.** It cannot draw another
+application *inside* a Palisade panel. Wayland has no XEmbed: a client cannot
+host another client's surface, and only the compositor composites windows.
+Anything that appears to do this on Wayland is either rendering the other
+program itself (an Electron webview, a terminal emulator) or is a compositor
+plugin rather than a client. Palisade is a client.
+
+What is achievable is here: every installed application as rows you can group,
+search and launch like any other panel content — and, on Hyprland, *pinning* a
+window so the compositor parks it exactly over a panel's rectangle. That looks
+embedded and is still a separate toplevel; see DECISIONS.md.
+
+Imports `palisade` (core) and nothing from the other two modules.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+from palisade.registry import Module
+from palisade.sources import Item
+
+from . import catalogue
+
+
+def resolve_apps(src) -> list[Item]:
+    """Installed applications as panel rows.
+
+    `path` carries the desktop entry's ID rather than a filesystem path, the
+    same way the dock module puts a window address there — so core's file
+    actions must not touch these rows. `is_file_row` is false for them because
+    the launch target is set, which is the check every action already makes.
+    """
+    needle = getattr(src, "match", "") or ""
+    out = []
+    for app in catalogue.load():
+        if len(out) >= src.limit:
+            break
+        if not catalogue.matches(app, needle):
+            continue
+        out.append(Item(
+            path=Path(app.id),
+            name=app.name,
+            is_dir=False,
+            size=0,
+            mtime=0.0,
+            icon_name=app.icon,
+            launch=tuple(app.argv),
+        ))
+    return out
+
+
+def launch(app: catalogue.App) -> bool:
+    """Start an application, detached from the daemon.
+
+    `start_new_session` matters: without it every launched program is a child
+    of the Palisade daemon, and restarting the daemon would take your editor
+    with it.
+    """
+    argv = app.argv
+    if not argv:
+        return False
+    try:
+        subprocess.Popen(argv, start_new_session=True)
+    except OSError:
+        return False
+    return True
+
+
+MODULE = Module(
+    id="apps",
+    title="Installed applications",
+    sources={"apps": resolve_apps},
+)

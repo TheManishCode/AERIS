@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "palisade-files"
+version = "0.3.0"
+description = "Group folders on your desktop and render what is in them — images, video, Markdown, code — inside the panel."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["palisade-core>=0.3"]
+
+[project.entry-points."palisade.modules"]
+files = "palisade_files:MODULE"
+
+[project.urls]
+Homepage = "https://github.com/PALISADE_OWNER/palisade-files"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/palisade_files"]
