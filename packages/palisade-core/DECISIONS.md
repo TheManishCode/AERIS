@@ -200,7 +200,7 @@ tuesday". A `query` source does that job declaratively instead.
 ## 8. Shapeshift's layout, not its palette
 
 **Decision.** Adopt shapeshift's *geometry* — the concentric radius ladder, its
-8/4 insets, one easing and one duration, pill-shaped controls — and keep
+insets, one easing and one duration, pill-shaped controls — and keep
 colour entirely on the desktop's Material You tokens. Panels stay dark and
 re-theme with the wallpaper as they always have.
 
@@ -221,15 +221,29 @@ rather than deliberately so. Deriving each rung from the one outside it fixes
 that by construction, at every `corner_radius`, instead of by three numbers
 that happened to look acceptable at one.
 
-**Why the insets changed too, 10/5 to 8/4.** The ladder has to fit inside the
-shell radius. `corner_radius` is 18 here *because Hyprland's
-`decoration.rounding` is 18*, and that match should hold — so the padding is
-the only free variable. At 10/5 an 18px shell descends to a 3px item:
-arithmetically correct, and it reads as a missing radius rather than a chosen
-one. At 8/4 it is 18 → 10 → 6. shapeshift uses a 28px shell with 8/4 insets,
-which is the same relationship at a larger scale.
+**The insets, which moved twice.** The ladder has to fit inside the shell
+radius. `corner_radius` is 18 here *because Hyprland's `decoration.rounding` is
+18*, and that match should hold — so the padding is the only free variable. At
+the rice's own 10/5 an 18px shell descends to a 3px item: arithmetically
+correct, and it reads as a missing radius rather than a chosen one. That was
+the argument for moving to shapeshift's 8/4, which gives 18 → 10 → 6;
+shapeshift itself uses a 28px shell with those insets, the same relationship at
+a larger scale.
 
-**What we lose.** The rice's own 10/5 spacing, which the sheet had been
-matching deliberately. A panel is now 2px tighter at the shell and 1px at the
-card than the quickshell panels beside it. That is a real inconsistency and a
-smaller one than corners that do not nest.
+It cost something real, though. Panels then sat 2px tighter at the shell and
+1px at the card than the quickshell panels beside them, which the sheet had
+been matching deliberately. Trading desktop-wide consistency for one rung of a
+ladder is a poor trade, and a 3px item radius is the wrong problem to solve
+with padding anyway — `MIN_ITEM_RADIUS` solves it directly, flooring the last
+rung at 6 wherever the arithmetic lands below it.
+
+So both are kept and neither is hardcoded. `[settings] spacing` picks between
+`desktop` (10/5, the default, matching the rice) and `compact` (8/4, which
+suits a smaller `corner_radius`, where the shell has less room to descend
+through). A docked panel insets by 6 under either: it is furniture in a narrow
+column, and more costs width the window titles need.
+
+**What we lose.** One more setting, and a ladder whose last step is a floor
+rather than arithmetic at the default radius. The floor is asserted not to
+invert the ladder at any radius 0–48 under either rhythm, because an item
+rounder than the card holding it would be worse than either number alone.

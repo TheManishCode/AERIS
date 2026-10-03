@@ -24,13 +24,20 @@ use_real_gi()
 
 from palisade import theme as theme_mod  # noqa: E402
 
-#: The insets the ladder descends through. Shell padding, then card padding.
-SHELL_INSET, CARD_INSET, DOCK_INSET = 8, 4, 6
+#: The default rhythm: `spacing = "desktop"`, the quickshell rice's own 10/5.
+#: A dock insets by 6 whatever the rhythm. See theme.SPACING.
+SHELL_INSET, CARD_INSET, DOCK_INSET = 10, 5, 6
 
 
-def sheet(radius=18, font_scale=1.0):
+def sheet(radius=18, font_scale=1.0, spacing="desktop"):
     return theme_mod.stylesheet(theme_mod.Theme.load(), radius=radius,
-                                font_scale=font_scale)
+                                font_scale=font_scale, spacing=spacing)
+
+
+def padding_of(css, selector):
+    """The padding of the first rule whose block follows `selector`."""
+    at = css.index(selector)
+    return int(re.search(r"padding: (\d+)px", css[at:at + 400]).group(1))
 
 
 def radius_of(css, selector):
@@ -53,8 +60,12 @@ class LadderTests(unittest.TestCase):
                          18 - SHELL_INSET)
 
     def test_the_item_is_the_card_less_the_card_padding(self):
+        """...floored at MIN_ITEM_RADIUS. At the default rhythm the raw
+        arithmetic gives 3, which reads as a missing radius rather than a
+        chosen one."""
         self.assertEqual(radius_of(sheet(radius=18), "\n.item {"),
-                         18 - SHELL_INSET - CARD_INSET)
+                         max(18 - SHELL_INSET - CARD_INSET,
+                             theme_mod.MIN_ITEM_RADIUS))
 
     def test_a_dock_starts_its_ladder_higher(self):
         """It insets its card by 6 rather than 8, so everything inside it is
@@ -78,6 +89,16 @@ class LadderTests(unittest.TestCase):
         self.assertEqual(radius_of(css, ".fence-empty {"), 0)
         self.assertEqual(radius_of(css, "\n.item {"), 0)
 
+    def test_the_ladder_never_inverts_at_any_radius(self):
+        """An item rounder than the card holding it is worse than either
+        number on its own, and the floor is what could cause it."""
+        for name, (shell, card_pad, dock) in theme_mod.SPACING.items():
+            for radius in range(0, 49):
+                for pad in (shell, dock):
+                    card, item = theme_mod.ladder(radius, pad, card_pad)
+                    self.assertLessEqual(item, card, f"{name} r={radius}")
+                    self.assertGreaterEqual(item, 0)
+
     def test_the_field_sits_at_the_item_rung(self):
         """It is a control inside the panel, not a surface of its own."""
         css = sheet(radius=18)
@@ -89,11 +110,60 @@ class LadderTests(unittest.TestCase):
         self.assertEqual(radius_of(sheet(radius=-5), "\n.fence-root {"), 0)
 
 
+class SpacingTests(unittest.TestCase):
+    """`[settings] spacing` picks the padding rhythm, and the ladder follows."""
+
+    def test_desktop_is_the_rices_own_ten_five(self):
+        """So a panel sits in the same rhythm as the shell panels beside it."""
+        css = sheet(spacing="desktop")
+        self.assertEqual(padding_of(css, "\n.fence-root {"), 10)
+        self.assertEqual(padding_of(css, ".fence-body {"), 5)
+
+    def test_compact_is_shapeshifts_eight_four(self):
+        css = sheet(spacing="compact")
+        self.assertEqual(padding_of(css, "\n.fence-root {"), 8)
+        self.assertEqual(padding_of(css, ".fence-body {"), 4)
+
+    def test_the_rhythm_moves_the_card_radius_with_it(self):
+        self.assertEqual(radius_of(sheet(spacing="desktop"), ".fence-empty {"), 8)
+        self.assertEqual(radius_of(sheet(spacing="compact"), ".fence-empty {"), 10)
+
+    def test_a_dock_insets_by_six_whatever_the_rhythm(self):
+        """It is furniture in a narrow column; the panel inset there costs
+        width the window titles need."""
+        for name in theme_mod.SPACING:
+            css = sheet(spacing=name)
+            self.assertEqual(padding_of(css, ".fence-root.dock-left,"), 6, name)
+
+    def test_an_unknown_rhythm_falls_back_rather_than_raising(self):
+        """Config validation already rejects one, so reaching here means a
+        caller passed it directly — and a stylesheet is a bad place to take
+        the daemon down."""
+        self.assertEqual(padding_of(sheet(spacing="enormous"),
+                                    "\n.fence-root {"), 10)
+
+    def test_the_viewer_wears_the_same_card_as_the_list(self):
+        """It replaces the list in the same panel; a different radius there
+        would change the panel's shape when you opened a file."""
+        css = sheet()
+        self.assertEqual(radius_of(css, ".viewer-body {"),
+                         radius_of(css, ".fence-empty {"))
+        self.assertEqual(padding_of(css, ".viewer-body {"),
+                         padding_of(css, ".fence-body {"))
+
+
 class SubstitutionTests(unittest.TestCase):
     def test_no_placeholder_survives(self):
-        """A missed %TOKEN% is a parse error GTK swallows one rule at a time —
-        the panel renders, slightly wrong, with nothing in the log."""
-        self.assertNotIn("%", sheet())
+        """A missed placeholder is a parse error GTK swallows one rule at a
+        time — the panel renders, slightly wrong, with nothing in the log.
+
+        Matched as %NAME% rather than any `%`, because CSS uses percent for
+        real lengths and a comment may legitimately name a token."""
+        left = re.search(r"%[A-Z][A-Z_]*%", sheet())
+        self.assertIsNone(left, left.group(0) if left else "")
+
+    def test_it_would_notice_an_unsubstituted_token(self):
+        self.assertIsNotNone(re.search(r"%[A-Z][A-Z_]*%", "a { b: %NOPE%; }"))
 
     def test_the_font_scale_reaches_the_sheet(self):
         self.assertIn("21.0pt", sheet(font_scale=2.0))

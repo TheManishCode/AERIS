@@ -179,6 +179,7 @@ class Controller:
             self.theme,
             radius=self.config.settings.corner_radius,
             font_scale=self.config.settings.font_scale,
+            spacing=self.config.settings.spacing,
         )
         display = Gdk.Display.get_default()
         Gtk.StyleContext.remove_provider_for_display(display, self._css)

@@ -109,9 +109,51 @@ class Theme:
         return "\n".join(lines)
 
 
-def stylesheet(theme: Theme, *, radius: int, font_scale: float) -> str:
+#: Padding rhythm, as (shell, card, dock shell).
+#:
+#: "desktop" is the quickshell rice's own spacing — 10 at the panel, 5 at the
+#: card — so a Palisade panel sits in the same rhythm as the shell's panels
+#: beside it. "compact" is shapeshift's 8/4, which is tighter and suits a
+#: smaller `corner_radius`.
+#:
+#: The dock keeps 6 either way: it is furniture in a narrow column, and the
+#: panel inset there costs width the window titles need.
+SPACING: dict[str, tuple[int, int, int]] = {
+    "desktop": (10, 5, 6),
+    "compact": (8, 4, 6),
+}
+
+#: Below this an item radius stops reading as a radius and starts reading as
+#: a mistake. The ladder floors here rather than going arithmetically correct
+#: all the way to 0 — at 10/5 an 18px shell would otherwise descend to 3.
+MIN_ITEM_RADIUS = 6
+
+
+def ladder(radius: int, shell_pad: int, card_pad: int) -> tuple[int, int]:
+    """(card, item) radii for a shell of `radius`.
+
+    shapeshift's rule (MIT): each step is the one outside it minus the padding
+    between. Curves that do not nest are why a rounded UI reads as
+    approximately rounded — a 12px item inside a 17px card with 5px between
+    them leaves no crescent of card in the corner, so the two arcs fight.
+
+    The item is floored at MIN_ITEM_RADIUS and then clamped back to the card,
+    so the ladder can flatten but never inverts: an item rounder than the card
+    holding it is worse than either number on its own.
+    """
+    card = max(0, radius - shell_pad)
+    item = min(card, max(card - card_pad, MIN_ITEM_RADIUS))
+    return card, item
+
+
+def stylesheet(theme: Theme, *, radius: int, font_scale: float,
+               spacing: str = "desktop") -> str:
     """Full stylesheet: dynamic tokens + the static component sheet."""
     radius = max(0, min(48, int(radius)))
+    # An unknown value falls back rather than raising: config validation
+    # already rejects one, so reaching here means a caller passed it directly,
+    # and a stylesheet is a bad place to take the daemon down.
+    shell_pad, card_pad, dock_pad = SPACING.get(spacing, SPACING["desktop"])
     font_scale = max(0.6, min(2.0, float(font_scale)))
     static = (Path(__file__).parent / "data" / "palisade.css").read_text(
         encoding="utf-8"
@@ -123,23 +165,16 @@ def stylesheet(theme: Theme, *, radius: int, font_scale: float) -> str:
     # cannot do arithmetic on @define-color values.
     static = static.replace("%RADIUS%", str(radius))
     static = static.replace("%RADIUS_SM%", str(max(0, radius - 8)))
-    # The concentric ladder, from shapeshift (MIT): "each step is the one
-    # outside it minus the padding between". Not its *numbers* — its rule,
-    # applied to our own insets, so the shell radius stays the user's
-    # `corner_radius` (which exists to match Hyprland's own rounding) and
-    # everything inside it follows.
-    #
-    # Floating panel: 8px shell padding, then 4px card padding.
-    # Dock: 6px shell padding, then the same 4px card padding.
-    #
-    # Curves that do not nest are why a rounded UI reads as approximately
-    # rounded: a 12px item inside a 17px card with 5px between them leaves no
-    # crescent of card in the corner, so the two arcs fight instead of
-    # sitting inside one another.
-    for name, inset in (("", 8), ("_DOCK", 6)):
-        card = max(0, radius - inset)
+    static = static.replace("%PAD_SHELL%", str(shell_pad))
+    static = static.replace("%PAD_CARD%", str(card_pad))
+    static = static.replace("%PAD_DOCK%", str(dock_pad))
+    # The ladder, once per rhythm: a floating panel insets by `shell_pad`, a
+    # dock by the narrower `dock_pad`, and both then inset the card by
+    # `card_pad`.
+    for name, pad in (("", shell_pad), ("_DOCK", dock_pad)):
+        card, item = ladder(radius, pad, card_pad)
         static = static.replace(f"%RADIUS{name}_CARD%", str(card))
-        static = static.replace(f"%RADIUS{name}_ITEM%", str(max(0, card - 4)))
+        static = static.replace(f"%RADIUS{name}_ITEM%", str(item))
     static = static.replace("%FONT_PT%", f"{10.5 * font_scale:.1f}")
     static = static.replace("%FONT_SM_PT%", f"{9.0 * font_scale:.1f}")
     return dynamic + "\n" + static

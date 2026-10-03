@@ -3,8 +3,13 @@
  * Colour comes entirely from @m3_* tokens emitted by palisade/theme.py, so this
  * sheet never hard-codes a hue and re-themes with the wallpaper.
  *
- * %RADIUS% / %RADIUS_SM% / %FONT_PT% / %FONT_SM_PT% are substituted at load
- * time because GTK CSS cannot compute on @define-color values.
+ * Placeholders — RADIUS, RADIUS_CARD, RADIUS_ITEM, PAD_SHELL, PAD_CARD,
+ * FONT_PT and friends — are substituted at load time, because GTK CSS cannot
+ * compute on @define-color values and has no arithmetic of its own.
+ *
+ * Named here without their percent delimiters on purpose: substitution is a
+ * plain string replace and rewrites a token name inside a comment just as
+ * readily as inside a rule. It did exactly that to this paragraph.
  *
  * The blur behind a fence is drawn by the compositor (Hyprland `layerrule =
  * blur`), not here. This sheet only supplies the translucent tint that sits on
@@ -18,27 +23,35 @@
  * of approximating one:
  *
  *   rounding   verysmall 8 · small 12 · normal 17 · large 23 · window 18
- *   spacing    panel padding 10 · card inset 5   (superseded, see below)
- *
- * The *ladder* is not the rice's — it is shapeshift's (MIT), whose rule is
- * "each step is the one outside it minus the padding between". The rice's
- * flat 17/12 pair left a 12px item inside a 17px card with 5px between them,
- * where the two arcs fight instead of nesting, which is what made the corners
- * read as approximately rounded.
- *
- * %RADIUS% stays the user's corner_radius — it exists to match Hyprland's own
- * `decoration.rounding` and that match should hold — and the card and item
- * radii are derived from it by subtracting the padding at each step (see
- * theme.stylesheet).
- *
- * That forces the *insets* to be shapeshift's too, 8 and 4 rather than the
- * rice's 10 and 5. At 10/5 an 18px shell descends to a 3px item: arithmetically
- * correct, and it reads as a missing radius rather than a chosen one. The whole
- * ladder has to fit inside the shell radius, so with a small shell the padding
- * has to be small as well. 18 -> 10 -> 6.
+ *   spacing    panel padding 10 · card inset 5
  *              list row 12 vertical · grid cell 6 (separate tokens)
  *   layers     0 background · 1 surface_container_low · 2 surface_container
+ *              each step up is a raised surface, not a border
+ *   states     hover = mix(layer, on_layer, 0.10)
+ *              active = mix(layer, on_layer, 0.20)
+ *   border     mix(outline_variant, layer0, 0.4) — muted, not accented
+ *   scrollbar  4px visible, fully rounded, on_surface_variant
+ *   type       450 body · 550 title
  *
+ * ---------------------------------------------------------------------------
+ * The *rounding ladder* is not the rice's. The rice's flat 17/12 pair left a
+ * 12px item inside a 17px card with 5px between them, where the two arcs fight
+ * instead of nesting — which is what made the corners read as approximately
+ * rounded rather than deliberately so.
+ *
+ * It is shapeshift's rule instead (MIT): each step is the one outside it minus
+ * the padding between. %RADIUS% stays the user's `corner_radius` — it exists to
+ * match Hyprland's own `decoration.rounding` and that match should hold — and
+ * the card and item radii are derived from it (see theme.ladder).
+ *
+ * The insets are `[settings] spacing`: "desktop" is the rice's 10/5 above, so a
+ * panel shares the rhythm of the shell panels beside it; "compact" is
+ * shapeshift's 8/4. At 10/5 an 18px shell would descend to a 3px item, which
+ * reads as a missing radius rather than a chosen one — so the ladder floors the
+ * item at 6 and clamps it back to the card, flattening rather than inverting.
+ * desktop: 18 -> 8 -> 6.   compact: 18 -> 10 -> 6.
+ *
+ * ---------------------------------------------------------------------------
  * The desktop's layers are absolute colours because its panels are opaque.
  * Ours are not: the shell is alpha(@m3_background, opacity) over the
  * wallpaper, so its *effective* luminance moves with whatever is behind it.
@@ -52,12 +65,6 @@
  * values over an opaque dark shell — 0.055 ≈ surface_container_low,
  * 0.085 ≈ surface_container — so a docked panel on a dark wallpaper looks
  * exactly as it did, and a panel on a bright one now looks right too.
- *              each step up is a raised surface, not a border
- *   states     hover = mix(layer, on_layer, 0.10)
- *              active = mix(layer, on_layer, 0.20)
- *   border     mix(outline_variant, layer0, 0.4) — muted, not accented
- *   scrollbar  4px visible, fully rounded, on_surface_variant
- *   type       450 body · 550 title
  *
  * The layer model is the part that was missing. Content used to sit directly
  * on the panel with nothing between them, which is what made it read as flat
@@ -80,7 +87,7 @@ window.palisade {
  * the edge by the same 10px, which is the one measurement the old sheet was
  * missing — each child was padding itself by a different amount. */
 .fence-root {
-  padding: 8px;
+  padding: %PAD_SHELL%px;
   border-radius: %RADIUS%px;
   /* Muted, mixed toward the surface rather than drawn in the accent. An
    * accented border reads as a focus state, and every fence would look
@@ -89,16 +96,16 @@ window.palisade {
   box-shadow: 0 2px 20px alpha(@m3_shadow, 0.22);
 }
 
-/* A dock is tighter than a floating panel. 10px is right for something you
- * read; a taskbar is furniture you scan down a narrow column, and the same
- * inset there eats width that the window titles need and leaves the card
- * swimming in its shell. 6px, and the gaps between its parts come in to
- * match. */
+/* A dock is tighter than a floating panel whatever the rhythm. The panel inset
+ * is right for something you read; a taskbar is furniture you scan down a
+ * narrow column, and the same inset there eats width that the window titles
+ * need and leaves the card swimming in its shell. The gaps between its parts
+ * come in to match. */
 .fence-root.dock-left,
 .fence-root.dock-right,
 .fence-root.dock-top,
 .fence-root.dock-bottom {
-  padding: 6px;
+  padding: %PAD_DOCK%px;
 }
 
 .dock-left .fence-header,
@@ -299,7 +306,7 @@ window.palisade {
 }
 
 .fence-body {
-  padding: 4px;
+  padding: %PAD_CARD%px;
 }
 
 /* The scroller and the view each paint their own surface by default, which
@@ -696,10 +703,12 @@ window.palisade-picker .fence-root {
   padding: 0 8px;
 }
 
+/* The viewer wears the same card as the list it replaces — same rung of the
+ * ladder, same inset — so opening a file does not change the panel's shape. */
 .viewer-body {
   background: alpha(@m3_on_surface, 0.055);
-  border-radius: 17px;
-  padding: 5px;
+  border-radius: %RADIUS_CARD%px;
+  padding: %PAD_CARD%px;
 }
 
 .viewer-image,

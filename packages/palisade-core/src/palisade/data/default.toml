@@ -19,6 +19,18 @@ layer = "bottom"
 blur = true
 
 corner_radius = 18   # matches Hyprland decoration.rounding
+
+# Padding rhythm.
+#   desktop = 10 at the panel, 5 at the card — the quickshell rice's own
+#             spacing, so a panel sits in the same rhythm as the shell panels
+#             beside it
+#   compact = 8 and 4, tighter; suits a smaller corner_radius
+#
+# Everything inside the panel is derived from corner_radius by subtracting
+# this padding at each step, so the curves nest. A docked panel always insets
+# by 6: it is furniture in a narrow column, and more would cost width the
+# window titles need.
+spacing = "desktop"
 font_scale = 1.0
 show_item_count = true
 

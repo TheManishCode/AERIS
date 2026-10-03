@@ -354,9 +354,14 @@ class Group:
         return Fence(**fields)
 
 
+#: Padding rhythm. See theme.SPACING for the numbers and why the dock differs.
+SPACINGS = ("desktop", "compact")
+
+
 @dataclass(frozen=True)
 class Settings:
     layer: str = "bottom"
+    spacing: str = "desktop"
     blur: bool = True
     corner_radius: int = 18
     font_scale: float = 1.0
@@ -368,8 +373,12 @@ class Settings:
         layer = str(raw.get("layer", "bottom"))
         if layer not in LAYERS:
             raise ConfigError(f"[settings]: layer must be one of {LAYERS}")
+        spacing = str(raw.get("spacing", "desktop"))
+        if spacing not in SPACINGS:
+            raise ConfigError(f"[settings]: spacing must be one of {SPACINGS}")
         return Settings(
             layer=layer,
+            spacing=spacing,
             blur=bool(raw.get("blur", True)),
             corner_radius=int(raw.get("corner_radius", 18)),
             font_scale=float(raw.get("font_scale", 1.0)),

@@ -139,13 +139,25 @@ none of which have "term" in their name.
 | `layer` | `"bottom"` | `background`, `bottom`, `top`, `overlay` |
 | `blur` | `true` | Ask the compositor to blur behind panels |
 | `corner_radius` | `18` | 0–48. Drives the whole radius ladder — see below |
+| `spacing` | `"desktop"` | `desktop` (10/5), `compact` (8/4) |
 | `font_scale` | `1.0` | 0.6–2.0 |
 | `show_item_count` | `true` | The number beside the title |
 | `follow_material_you` | `true` | Re-colour when the wallpaper changes |
 
 `corner_radius` is the shell. Everything inside it is derived by subtracting
-the padding at each step — card = shell − 8, item = card − 4 — so the curves
-nest instead of fighting. At the default: 18 → 10 → 6.
+`spacing`'s padding at each step, so the curves nest instead of fighting:
+
+| `spacing` | Padding | At `corner_radius = 18` |
+| --- | --- | --- |
+| `desktop` | 10 at the panel, 5 at the card | 18 → 8 → 6 |
+| `compact` | 8 and 4 | 18 → 10 → 6 |
+
+`desktop` matches the quickshell rice's own spacing. `compact` is tighter and
+suits a smaller `corner_radius`, where the shell has less room to descend
+through. The last rung never goes below 6 under either — below that a corner
+reads as unrounded rather than deliberately slight. A docked panel insets by 6
+whatever the setting, since width in a narrow column is what the window titles
+need.
 
 ### `[[group]]` — the catalogue of things a panel can show
 

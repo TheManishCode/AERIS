@@ -88,3 +88,12 @@ of it.
 would have to be per-mode or it is noise: a path you visited is not a useful
 suggestion in the launcher.
 
+
+## The core README's config example is stale
+
+`packages/palisade-core/README.md:117` shows `opacity = 0.55` under
+`[settings]`, where it is not a key — it is per-group and per-tab
+(`config.py:175`, `config.py:293`). Line 119's `[[fence]]` block predates the
+group/tab split and is commented "a fence is always on screen", which docking
+superseded. Replace the block with the groups-and-tabs model REFERENCE.md
+already documents.

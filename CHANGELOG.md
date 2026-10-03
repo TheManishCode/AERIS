@@ -1,5 +1,65 @@
 # Changelog
 
+## 2026-10-04 — Make the padding rhythm a setting, default back to 10/5
+
+Role: Senior Product Designer + Frontend Engineer + QA Engineer
+
+Status: Added, Changed
+
+Reason:
+Adopting shapeshift's geometry moved the insets from the rice's own 10/5 to
+its 8/4, because at 10/5 an 18px shell radius descends to a 3px item — a
+number that reads as a missing radius rather than a chosen one. That fixed
+the ladder by breaking the match with the quickshell panels beside it, which
+the sheet had been keeping deliberately. Both halves are worth having, so
+neither is hardcoded now.
+
+Changes:
+- `[settings] spacing` picks between `desktop` (10 at the panel, 5 at the
+  card) and `compact` (8 and 4). Default `desktop`. Validated in
+  `Settings.parse` against `config.SPACINGS`; an unknown value is a config
+  error naming the allowed set.
+- `theme.SPACING` holds the two rhythms, each also carrying the dock's inset
+  (6 under either — a dock is furniture in a narrow column, and more costs
+  width the window titles need).
+- `theme.ladder(radius, shell_pad, card_pad)` derives the card and item radii.
+  `MIN_ITEM_RADIUS = 6` floors the last rung, which is what makes 10/5 viable
+  without raising `corner_radius`: it solves the 3px item directly rather than
+  through the padding.
+- `palisade.css` grew `%PAD_SHELL%`, `%PAD_CARD%` and `%PAD_DOCK%`;
+  `.viewer-body` now takes the card radius and card padding rather than its
+  own hardcoded pair, so opening a file does not change the panel's shape.
+- `app.apply_theme` passes the setting through. `default.toml` and
+  REFERENCE.md document both rhythms and the derived radii.
+
+Removed/Reverted:
+- The 8/4 default from the previous entry. It survives as `compact`, which
+  suits a smaller `corner_radius` where the shell has less room to descend.
+- The hardcoded radius and padding on `.viewer-body`.
+
+Verification:
+- 313 core tests pass (`python3 -m pytest tests -q`), 601 across all four
+  packages. New: both rhythms' panel and card padding, the dock's inset under
+  each, the viewer matching the list, an unknown rhythm falling back rather
+  than raising, and the ladder never inverting for any radius 0-48 under
+  either rhythm.
+- `test_no_placeholder_survives` was matching any `%`, which a CSS percentage
+  length or a comment naming a token would trip. Narrowed to `%[A-Z][A-Z_]*%`
+  and paired with a test proving it still catches an unsubstituted one.
+- Verified live, not by eye: with the daemon restarted under each setting and
+  the panel geometry confirmed unchanged between captures, the selection ring
+  sits at x=18 under `desktop` and x=15 under `compact` — 3px, being 2 at the
+  shell and 1 at the card, exactly what the ladder predicts.
+
+Result:
+The default rhythm matches the desktop around it again, and the ladder still
+nests at every radius because the floor, not the padding, now guarantees it.
+
+Known Issues:
+- `palisade list` reports `{"fences": []}` while a tab is on screen. Found
+  during this verification; unrelated to the spacing change and not yet
+  diagnosed.
+
 ## 2026-10-03 — Tab completion, and the right half of shapeshift
 
 Role: Senior Product Designer + Frontend Engineer + QA Engineer
