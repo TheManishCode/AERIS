@@ -240,7 +240,9 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._collapse_btn.set_child(
             Gtk.Image.new_from_icon_name("pan-up-symbolic")
         )
-        self._collapse_btn.set_tooltip_text("Collapse / expand")
+        self._collapse_btn.set_tooltip_text(
+            "Collapse to the title strip\nRight-click the header for layer, lock and close"
+        )
         self._collapse_btn.connect("clicked", lambda *_: self.toggle_collapsed())
         header.append(self._collapse_btn)
         root.append(header)
@@ -317,6 +319,8 @@ class FenceWindow(Gtk.ApplicationWindow):
             # Without the Lua module nothing ever gets tagged, so this fence
             # would sit permanently empty with no clue why.
             empty_text = "Minimize engine not loaded\n(see custom/minimize.lua)"
+        #: Kept so the taskbar can put it back after showing the hidden list.
+        self._empty_base = empty_text
         self._empty = Gtk.Label(label=empty_text)
         self._empty.set_justify(Gtk.Justification.CENTER)
         self._empty.add_css_class("fence-empty")
@@ -469,7 +473,11 @@ class FenceWindow(Gtk.ApplicationWindow):
             # across a reload, but a stale badge would outlive the item it
             # described, so clear it explicitly rather than by omission.
             list_item._key.set_visible(False)
-            list_item._label.set_tooltip_text(str(item.path))
+            list_item._label.set_tooltip_text(
+                f"{item.path}\n"
+                "Double-click or Enter to open · F2 rename · Delete to trash\n"
+                "Ctrl+C copy path · Ctrl+A select all · F5 rescan"
+            )
             if list_item._sub.get_visible():
                 list_item._sub.set_text(
                     "" if item.is_dir else _human_size(item.size)
@@ -547,9 +555,19 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._count.set_text(str(len(items)))
         if self._is_windows:
             self._sync_mode_switch()
+            # Both of these say what list you are looking at, so both have to
+            # change with it — and change *back*. Setting them only on the way
+            # into the hidden list left a panel headed "Minimized 1" over a
+            # list of hidden panels, and "Nothing is hidden" over an empty
+            # list of minimized windows.
+            hidden_mode = self._mode == "hidden"
+            self._title.set_label(
+                "Hidden panels" if hidden_mode else self.fence.title
+            )
+            self._empty.set_label(
+                "Nothing is hidden" if hidden_mode else self._empty_base
+            )
         has_items = bool(items)
-        if self._mode == "hidden":
-            self._empty.set_label("Nothing is hidden")
         self._scroller.set_visible(has_items and not self._collapsed)
         self._empty.set_visible(not has_items and not self._collapsed)
         # A refresh that empties the fence would otherwise shrink the surface.
@@ -587,6 +605,14 @@ class FenceWindow(Gtk.ApplicationWindow):
         hidden = len(self.controller.hidden_fences())
         self._mode_tabs["hidden"].set_label(
             f"Hidden {hidden}" if hidden else "Hidden"
+        )
+        self._mode_tabs["windows"].set_tooltip_text(
+            "Windows you have minimized\nTab to switch · 1-9 to restore"
+        )
+        self._mode_tabs["hidden"].set_tooltip_text(
+            f"Panels you have hidden ({hidden})\nTab to switch · 1-9 to bring back"
+            if hidden else
+            "Panels you have hidden — none right now\nTab to switch"
         )
         for mode, btn in self._mode_tabs.items():
             btn.set_css_classes(
@@ -1107,9 +1133,27 @@ class FenceWindow(Gtk.ApplicationWindow):
         set_visible(False) destroys the layer surface, so the fence stops
         occupying the screen and stops taking input; showing it again maps a
         fresh surface with the margins we already hold.
+
+        Tells the controller on the way, because a panel going into hiding is
+        the one event that changes what the taskbar's Hidden list should show
+        and is not a compositor window event — without this the taskbar would
+        keep reporting "none right now" over a panel that just vanished.
         """
+        was = self._hidden
         self._hidden = bool(hidden)
         self._sync_visible()
+        if self._hidden != was:
+            self.controller.hidden_set_changed()
+
+    @property
+    def shows_hidden(self) -> bool:
+        """Whether this panel reports on the hidden set and must be told it moved.
+
+        True for the whole taskbar, not just while its Hidden list is showing —
+        the count on the segment is visible from the Minimized side too, and a
+        stale count is the thing that made hidden panels look unreachable.
+        """
+        return self._is_windows
 
     def set_on_workspace(self, on_workspace: bool) -> None:
         """The other visibility axis: the fence's `workspaces` filter."""

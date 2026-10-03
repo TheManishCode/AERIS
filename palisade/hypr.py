@@ -182,6 +182,27 @@ def active_workspace() -> int | None:
         return None
 
 
+def active_workspace_is_busy() -> bool | None:
+    """Whether anything is open on the workspace you are looking at.
+
+    Used to decide where a panel should reappear: in front when there are
+    windows that would otherwise bury it, on the desktop layer when the screen
+    is clear. None when the compositor cannot be asked, so callers can fall
+    back rather than guess.
+
+    Counts only real windows — a special workspace (the minimize drawer) is
+    excluded, since a window parked there is not covering anything.
+    """
+    raw = _hyprctl("activeworkspace", "-j")
+    try:
+        data = json.loads(raw)
+        if str(data.get("name", "")).startswith("special"):
+            return None
+        return int(data.get("windows", 0)) > 0
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return None
+
+
 # Events that can change which windows are minimized, or what they are called.
 # `movewindow` covers the minimize/restore itself (a move to or from the
 # special workspace); the rest cover a window appearing, going away, or being

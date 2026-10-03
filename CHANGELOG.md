@@ -1,5 +1,65 @@
 # Changelog
 
+## 2026-10-03 — Hover hints, and a panel comes back where you can see it
+
+Role: Frontend Engineer + UX + QA Engineer
+Status: Added, Fixed
+
+Reason:
+Two asks. The taskbar's controls do not say what key does the same thing, so
+the keyboard routes went undiscovered. And a hidden panel whose layer is the
+desktop came back *underneath* whatever was covering it — from where you sit,
+pressing unhide did nothing.
+
+Added:
+- `hypr.active_workspace_is_busy()`: whether the workspace you are looking at
+  has windows on it. Excludes the special workspace, since a window parked in
+  the minimize drawer is not covering anything. Returns None when the
+  compositor cannot be asked, so callers fall back rather than guess.
+- `Controller.unhide` uses it to choose the layer: overlay when there are
+  windows to clear, `bottom` when the screen is empty. Applied to the live
+  window and deliberately **not** persisted — it answers this moment, and the
+  panel's own setting has to survive for the next one.
+- Tooltips naming the keyboard route on the mode segments, the collapse
+  button, and file rows.
+
+Fixed:
+- The Hidden segment read "none right now" over a panel that had just been
+  hidden. The taskbar refreshes on compositor window events, and a Palisade
+  panel going into hiding is not one — nothing told it. `set_hidden` now
+  announces the change and `Controller.hidden_set_changed` refreshes only the
+  panels that list hidden ones; a folder fence has no reason to re-read a
+  directory because something else hid.
+- The header read "Minimized 1" over a list of hidden panels, and "Nothing is
+  hidden" over an empty list of minimized windows. Both strings were set on
+  the way into the hidden list and never set back.
+
+Verification:
+- All four tooltips captured on screen under a real pointer hover.
+- Hidden count and tooltip confirmed updating live, with no re-hover, the
+  moment a panel was hidden — the exact sequence that was stale before.
+- Full path driven by real clicks on a busy workspace (1 window): switch to
+  Hidden, click the row, panel returned on `layer=overlay` and drew over the
+  window; hidden list emptied; the dock closed itself as designed.
+- Header and empty-label confirmed switching in both directions.
+- 94 tests (14 new). Each new test proven to catch its bug by reintroducing
+  it and restoring the source byte-identical. The first version of the
+  hidden-set tests did **not** catch the removal — it covered the notifier
+  without the call site — which is why `SetHiddenWiringTests` exists.
+
+Removed/Reverted:
+- None.
+
+Result:
+Unhide puts the panel where you will see it, and the taskbar tells you what it
+can do without being clicked.
+
+Known Issues:
+- The empty-workspace branch of `unhide` (settle onto `bottom`) is unit-tested
+  only. It could not be driven live: this machine's Hyprland config wraps
+  `dispatch` in Lua, so `hyprctl dispatch workspace empty` is a parse error,
+  and all three existing workspaces hold a window.
+
 ## 2026-10-03 — The docked taskbar stops vanishing
 
 Role: Frontend Engineer + UX + QA Engineer

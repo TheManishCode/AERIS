@@ -526,6 +526,17 @@ class Controller:
         spawned = self.spawn_tab(group_id)
         return {"group": group_id, "open": True, "id": spawned["id"]}
 
+    def hidden_set_changed(self) -> None:
+        """A panel was hidden or brought back — tell whoever is listing them.
+
+        Only panels showing the hidden list care, and only they are touched: a
+        folder fence has no reason to re-read its directory because something
+        else went into hiding.
+        """
+        for win in list(self.windows.values()):
+            if getattr(win, "shows_hidden", False):
+                win.refresh()
+
     def hidden_fences(self) -> list[tuple[str, str]]:
         """Every panel currently hidden, as (id, title).
 
@@ -540,12 +551,30 @@ class Controller:
         )
 
     def unhide(self, fence_id: str) -> dict:
+        """Bring a hidden panel back, and put it where it can be seen.
+
+        Its stored layer is ignored on the way back in. A panel on the desktop
+        layer reappearing underneath a maximised window has not really come
+        back — you asked for it and nothing happened. So it returns in front
+        when the workspace has windows on it, and settles onto the desktop when
+        the screen is clear, which is where a panel belongs once nothing is
+        covering it.
+
+        Deliberate, not sticky: the layer is applied to the live window but not
+        persisted, so the panel's own setting survives for next time.
+        """
         win = self.windows.get(fence_id)
         if win is None:
             raise KeyError(fence_id)
         win.set_hidden(False)
         self.persist_fence(fence_id, hidden=False)
-        return {"id": fence_id, "hidden": False}
+
+        busy = hypr.active_workspace_is_busy()
+        layer = win.layer_name
+        if busy is not None:
+            layer = NEW_TAB_LAYER if busy else "bottom"
+            win.set_layer_name(layer)
+        return {"id": fence_id, "hidden": False, "layer": layer}
 
     def is_tab(self, fence_id: str) -> bool:
         """True for a runtime tab, false for a fence placed in the config."""

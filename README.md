@@ -303,6 +303,15 @@ with a count on the second so you can see there is something over there.
 Clicking a hidden row brings that panel back. <kbd>Tab</kbd> flips the switch
 from the keyboard. From a script: `palisade hidden` and `palisade unhide <id>`.
 
+A panel coming back out of hiding **ignores its own layer** and goes wherever
+it can actually be seen: in front when there are windows on the workspace that
+would bury it, down on the desktop when the screen is clear. A panel that
+returns underneath a maximised window has not really come back. This is a
+response to the moment and is not saved, so a panel that normally lives on the
+desktop still lives there next time.
+
+Hover anything on the taskbar for the key that does it.
+
 A **docked** panel does not close when you click elsewhere. It reserves a
 column and sits beside the windows you are working in, so focus leaves it
 constantly; closing on that made it feel broken rather than tidy. It closes
