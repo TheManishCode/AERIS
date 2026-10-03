@@ -185,34 +185,39 @@ tuesday". A `query` source does that job declaratively instead.
 
 ---
 
-## 8. A group panel does not follow the wallpaper; the taskbar does
+## 8. Shapeshift's layout, not its palette
 
-**Decision.** `theme = "paper"` by default, which is shapeshift's palette,
-radius scale and shadow tiers (MIT). Fixed, not derived from Material You.
-Every fence except the taskbar wears it; the taskbar is always `system`.
+**Decision.** Adopt shapeshift's *geometry* — the concentric radius ladder, its
+8/4 insets, one easing and one duration, pill-shaped controls — and keep
+colour entirely on the desktop's Material You tokens. Panels stay dark and
+re-theme with the wallpaper as they always have.
 
-**Why.** These are two different kinds of object and the Material You question
-has two different answers.
+**What was tried and reverted.** The first pass took shapeshift's palette as
+well: a fixed warm-paper surface with white cards and an indigo accent, opaque,
+on every fence except the taskbar, behind a `theme = "paper" | "system"`
+setting. It was built, measured and verified working — and it was the wrong
+half of the reference. The instruction was to refer to the layout. The palette,
+the `@ss_*` token namespace, the `theme` setting and the ~90 lines of `.paper`
+overrides are all gone.
 
-The taskbar is *furniture*. It stands in a row with the rice's own bar and
-panels, built from the same tokens at the same opacity. One that did not match
-would read as a foreign window someone left open, not as part of the shell. It
-follows the wallpaper, and should.
+**Why the layout half is worth keeping.** The ladder is the real idea in it:
+*each step is the one outside it minus the padding between*. The sheet had a
+flat 17px card holding 12px items with 5px between them — two arcs of nearly
+the same curvature, 5px apart, which is precisely the arrangement where they
+fight instead of nesting. It is why the corners read as approximately rounded
+rather than deliberately so. Deriving each rung from the one outside it fixes
+that by construction, at every `corner_radius`, instead of by three numbers
+that happened to look acceptable at one.
 
-A group is *a surface you put things on*. Its job is to read as an object
-sitting on the desktop. A translucent panel tinted to match whatever is behind
-it reads as a hole in the desktop instead — and it changes identity every time
-the wallpaper does, so the thing you built and arranged is never quite the same
-thing twice. A fixed, opaque surface with its own shadow is what makes it an
-object.
+**Why the insets changed too, 10/5 to 8/4.** The ladder has to fit inside the
+shell radius. `corner_radius` is 18 here *because Hyprland's
+`decoration.rounding` is 18*, and that match should hold — so the padding is
+the only free variable. At 10/5 an 18px shell descends to a 3px item:
+arithmetically correct, and it reads as a missing radius rather than a chosen
+one. At 8/4 it is 18 → 10 → 6. shapeshift uses a 28px shell with 8/4 insets,
+which is the same relationship at a larger scale.
 
-Paper is opaque for the same reason: the design has no translucency in it, and
-at the default 0.55 the warm white composited with a dark wallpaper into a flat
-grey with the white card sitting on it as a hard, muddy step. Measured, not
-guessed.
-
-**What we lose.** A paper panel no longer re-themes with the wallpaper, and
-`corner_radius` does not apply to it — the concentric scale (shell 28 → card 18
-→ item 13, each step the one outside it minus the padding between) is part of
-the design being adopted rather than a free parameter. `theme = "system"`
-restores both.
+**What we lose.** The rice's own 10/5 spacing, which the sheet had been
+matching deliberately. A panel is now 2px tighter at the shell and 1px at the
+card than the quickshell panels beside it. That is a real inconsistency and a
+smaller one than corners that do not nest.

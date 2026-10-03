@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from palisade.omnibox import Mode, rank
+from palisade.omnibox import Mode, complete_from, rank
 from palisade.sources import Item
 
 #: How many entries a listing will produce. A path mode pointed at /nix/store
@@ -108,11 +108,41 @@ def run_path(fence, query: str) -> list[Item]:
     return listing(directory, prefix)
 
 
+def complete_path(fence, query: str) -> str | None:
+    """Tab in a path: complete the last segment, and open a folder's door.
+
+    Only the segment after the last separator is replaced — `~/Doc` becomes
+    `~/Documents`, with the `~` left unexpanded, because the text you are
+    editing should stay the text you typed.
+
+    A single folder match gets its trailing `/` for free, which is the whole
+    ergonomic point: Tab, Tab, Tab walks you down a tree without ever typing
+    a separator or a capital letter.
+    """
+    base = fence.folder_root() if hasattr(fence, "folder_root") else None
+    directory, prefix = split(query, base)
+    items = listing(directory, prefix)
+    if len(items) == 1 and items[0].is_dir:
+        # Handled before `complete_from`, which returns None for a name that
+        # is already complete — correct for a file, wrong for a folder, where
+        # the separator is still something to add. Typing `Documents` and
+        # pressing Tab should open it, not do nothing.
+        done = items[0].name + "/"
+    else:
+        done = complete_from([i.name for i in items], prefix)
+        if done is None:
+            return None
+    # Everything the prefix is not: `~/`, `/etc/`, or nothing at all.
+    completed = query[: len(query) - len(prefix)] + done
+    return completed if completed != query else None
+
+
 PATH = Mode(
     id="path",
     title="Go to",
     score=score_path,
     run=run_path,
+    complete=complete_path,
     placeholder="~/Documents",
     empty="No such folder",
 )

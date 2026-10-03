@@ -37,7 +37,8 @@ do anything at all.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import os.path
+from dataclasses import dataclass
 from typing import Callable
 
 #: A challenger must beat the sitting mode by this much to count as winning a
@@ -81,6 +82,11 @@ class Mode:
     score: Callable[[str], float]
     #: (fence, query) -> list[Item]. The results. Only the winner is run.
     run: Callable
+    #: (fence, query) -> str | None. What Tab should make the query, or None
+    #: if there is nothing unambiguous to add. Optional: a mode with nothing
+    #: to complete simply omits it, and Tab keeps its other meaning (move
+    #: into the list). See `complete_from`.
+    complete: Callable | None = None
     #: Leading character that names this mode outright, if it has one.
     #: Stripped from the query before `score` and `run` see it.
     sigil: str = ""
@@ -249,6 +255,28 @@ class Registry:
             return None
         return self.stabiliser.offer(classify(query, self.modes))
 
+    def complete(self, fence, query: str) -> str | None:
+        """What Tab should make the query, or None if nothing is unambiguous.
+
+        Completes against the mode that is *showing*, not a fresh
+        classification: the panel in front of you is the one you are
+        completing in, and a mode the stabiliser has not switched to yet has
+        no business rewriting your text.
+        """
+        current = self.stabiliser.current
+        if current is None or current.mode.complete is None:
+            return None
+        try:
+            done = current.mode.complete(fence, current.query)
+        except Exception:  # noqa: BLE001 - a bad mode must not eat the key
+            return None
+        if not done or done == current.query:
+            return None
+        # Put the sigil back: `complete` works in the mode's own terms and
+        # never sees one, so returning its answer bare would delete the `>`
+        # that selected the mode in the first place.
+        return current.mode.sigil + done
+
     def hints(self) -> list[tuple[str, str]]:
         """`(sigil or '', title)` for every mode, for the help line."""
         return [(m.sigil, m.title) for m in self.modes]
@@ -301,6 +329,10 @@ def _filter_rows(fence, query: str) -> list:
     return rank(fence.rows(), query)
 
 
+def _complete_filter(fence, query: str) -> str | None:
+    return complete_from([i.name for i in rank(fence.rows(), query)], query)
+
+
 #: Narrow what is already on screen. The fallback mode: it scores low enough
 #: that anything with a real opinion about the query outranks it, and high
 #: enough to stay above FLOOR so the field is never empty-handed.
@@ -309,6 +341,7 @@ FILTER = Mode(
     title="Filter",
     score=lambda query: 0.3,
     run=_filter_rows,
+    complete=_complete_filter,
     placeholder="Filter this panel",
     empty="Nothing here matches",
 )
@@ -317,3 +350,29 @@ FILTER = Mode(
 def core_modes() -> tuple:
     """What the field can do with no feature package installed."""
     return (FILTER,)
+
+
+def complete_from(names, prefix: str) -> str | None:
+    """What Tab should extend `prefix` to, given the things it matches.
+
+    The shell rule, because it is the one fingers already know: extend to the
+    longest prefix every match shares, and stop there. `~/Do` with Documents
+    and Downloads both present becomes `~/Do` — nothing is added, because
+    anything added would be a guess about which one you meant.
+
+    A single match completes outright, which is also how it case-corrects:
+    you typed `doc` and the only thing it matches is `Documents`.
+
+    Returns None when there is nothing to add, so the caller can let Tab keep
+    whatever other meaning it has.
+    """
+    names = list(names)
+    if not names:
+        return None
+    if len(names) == 1:
+        return names[0] if names[0] != prefix else None
+    # Case-sensitive on purpose: `Documents` and `downloads` share no prefix
+    # that is true of both, and inventing one would mean Tab producing a
+    # string that matches neither.
+    common = os.path.commonprefix(names)
+    return common if len(common) > len(prefix) else None

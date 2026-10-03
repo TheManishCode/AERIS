@@ -96,6 +96,7 @@ class Panel:
     """Enough of a FenceWindow to exercise the field."""
 
     _omni_items = FenceWindow._omni_items
+    _omni_complete = FenceWindow._omni_complete
     open_omnibox = FenceWindow.open_omnibox
     close_omnibox = FenceWindow.close_omnibox
     omnibox_open = FenceWindow.omnibox_open
@@ -332,6 +333,50 @@ class ActivateTests(unittest.TestCase):
         p = self.panel("note")
         p._on_activate(p._view, 9)
         self.assertEqual(p.launched, [])
+
+
+class TabTests(unittest.TestCase):
+    """Tab completes while there is something unambiguous to add."""
+
+    def panel(self, query, names=None):
+        p = Panel([file_item(n) for n in (names or
+                                          ["notes.md", "note-2.md", "image.png"])])
+        p.open_omnibox(query)
+        p._omni_items()          # settle the stabiliser on a mode
+        return p
+
+    def test_it_extends_to_what_the_matches_share(self):
+        p = self.panel("not")
+        self.assertTrue(p._omni_complete())
+        self.assertEqual(p._omni_entry.get_text(), "note")
+
+    def test_a_single_match_completes_outright(self):
+        p = self.panel("im")
+        self.assertTrue(p._omni_complete())
+        self.assertEqual(p._omni_entry.get_text(), "image.png")
+
+    def test_the_caret_lands_at_the_end(self):
+        """Otherwise the next keystroke goes into the middle of the word that
+        was just completed for you."""
+        p = self.panel("im")
+        p._omni_complete()
+        end = len(p._omni_entry.get_text())
+        self.assertEqual(p._omni_entry.selection, (end, end))
+
+    def test_nothing_to_add_is_false_so_tab_keeps_its_other_meaning(self):
+        p = self.panel("image.png")
+        self.assertFalse(p._omni_complete())
+
+    def test_a_query_matching_nothing_completes_to_nothing(self):
+        p = self.panel("zzzz")
+        self.assertFalse(p._omni_complete())
+
+    def test_completing_twice_is_idempotent(self):
+        """The second Tab has nothing left to add, and must say so rather
+        than re-applying the same text and looking like it worked."""
+        p = self.panel("im")
+        p._omni_complete()
+        self.assertFalse(p._omni_complete())
 
 
 class FailingModeTests(unittest.TestCase):

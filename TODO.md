@@ -82,26 +82,9 @@ of it.
 - Whether the glass reads well against a bright wallpaper at `opacity = 0.55`.
 - Multi-monitor placement. `_screen_size` reads monitor 0 only.
 
-## The field has no completion and no history
+## The field has no completion history
 
-<kbd>Tab</kbd> moves focus into the list rather than completing a path, and
-there is no recall of what you typed last time. Both are things a launcher is
-expected to do; neither is built. `palisade/omnibox.py` is where completion
-would live (a `Mode.complete(query) -> str | None`, run on Tab), and history
-would have to be per-mode or it is noise.
-
-## `corner_radius` does nothing under the paper theme
-
-Deliberate — the concentric radius scale is part of the design adopted from
-shapeshift, not a free parameter (DECISIONS.md §8) — but the setting is still
-accepted and silently ignored, which is the kind of thing that reads as a bug.
-Either scale the whole ladder from it, or say so in `palisade check`.
-
-## The paper sheet duplicates colour rules rather than factoring them
-
-`packages/palisade-core/src/palisade/data/palisade.css` carries the Material
-You rules and then ~90 lines of `.paper` overrides of the same properties.
-That is fine for two themes and wrong for three: structure (padding, layout)
-and colour want separating so a palette is a block rather than a second copy
-of the sheet. Not worth doing until a third theme exists.
+<kbd>Tab</kbd> completes, but nothing recalls what you typed last time. History
+would have to be per-mode or it is noise: a path you visited is not a useful
+suggestion in the launcher.
 

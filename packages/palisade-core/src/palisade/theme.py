@@ -69,60 +69,6 @@ _NAME = re.compile(r"^[a-z0-9_]+$")
 CSS_PRIORITY = 801
 
 
-#: The paper palette, from **shapeshift** (github.com/anishfn/shapeshift, MIT)
-#: — its `src/app/globals.css`. Taken verbatim rather than approximated,
-#: including the contrast corrections its own comments record: `muted` is
-#: #706e68 and not the lighter #8f8d86 it started as, because that failed
-#: against the card at 3.0:1.
-#:
-#: Why a fixed palette at all, when everything else here follows the
-#: wallpaper: the Material You tokens make a panel *match the desktop*, which
-#: is right for the taskbar — furniture standing among the rice's own panels.
-#: A group is not furniture. It is a surface you put things on, and giving it
-#: one consistent identity is what makes it read as an object on the desktop
-#: rather than a hole in it. Both are available; see Settings.theme.
-#:
-#: Emitted as @ss_* alongside @m3_*, because GTK's @define-color is per
-#: display rather than per widget — two palettes have to be two namespaces,
-#: not one name bound twice.
-PAPER: dict[str, str] = {
-    "background": "#fafaf9",   # warm paper, the shell
-    "card": "#ffffff",         # raised above it
-    "foreground": "#1a1a19",   # warm near-black ink
-    "muted": "#f4f4f2",        # hover, inactive fills
-    "muted_fg": "#706e68",     # secondary text, >=4.6:1 on card and page
-    "ink_2": "#57564f",        # label-weight text
-    "border": "#e8e7e4",
-    "line_strong": "#d6d4cf",
-    "brand": "#3b5bdb",
-    "brand_soft": "#eef1fd",
-    "positive": "#2f9e44",
-    "caution": "#e8590c",
-    "destructive": "#e03131",
-}
-
-
-def uses_paper(theme_name: str, source_kind: str) -> bool:
-    """Whether this fence wears the paper theme.
-
-    The taskbar never does, whatever the setting says. It is furniture
-    standing among the desktop's own panels — a bar that does not match them
-    reads as a foreign window someone left open rather than part of the
-    shell. A group is the opposite: a surface you put things on, which is
-    better off with an identity of its own.
-    """
-    return theme_name == "paper" and source_kind != "windows"
-
-
-def paper_defines() -> str:
-    """`@define-color ss_*` for the paper palette."""
-    return "\n".join(
-        f"@define-color ss_{name} {value};"
-        for name, value in sorted(PAPER.items())
-        if _NAME.match(name) and _HEX.match(value)
-    )
-
-
 @dataclass(frozen=True)
 class Theme:
     tokens: dict[str, str]
@@ -172,11 +118,28 @@ def stylesheet(theme: Theme, *, radius: int, font_scale: float) -> str:
     )
     # Only colours go through @define-color — GTK rejects a length there, and a
     # single bad define makes it discard the rest of the declaration block.
-    dynamic = theme.defines() + "\n" + paper_defines() + "\n"
+    dynamic = theme.defines() + "\n"
     # The static sheet carries %RADIUS% / %FONT_PT% placeholders because GTK CSS
     # cannot do arithmetic on @define-color values.
     static = static.replace("%RADIUS%", str(radius))
     static = static.replace("%RADIUS_SM%", str(max(0, radius - 8)))
+    # The concentric ladder, from shapeshift (MIT): "each step is the one
+    # outside it minus the padding between". Not its *numbers* — its rule,
+    # applied to our own insets, so the shell radius stays the user's
+    # `corner_radius` (which exists to match Hyprland's own rounding) and
+    # everything inside it follows.
+    #
+    # Floating panel: 8px shell padding, then 4px card padding.
+    # Dock: 6px shell padding, then the same 4px card padding.
+    #
+    # Curves that do not nest are why a rounded UI reads as approximately
+    # rounded: a 12px item inside a 17px card with 5px between them leaves no
+    # crescent of card in the corner, so the two arcs fight instead of
+    # sitting inside one another.
+    for name, inset in (("", 8), ("_DOCK", 6)):
+        card = max(0, radius - inset)
+        static = static.replace(f"%RADIUS{name}_CARD%", str(card))
+        static = static.replace(f"%RADIUS{name}_ITEM%", str(max(0, card - 4)))
     static = static.replace("%FONT_PT%", f"{10.5 * font_scale:.1f}")
     static = static.replace("%FONT_SM_PT%", f"{9.0 * font_scale:.1f}")
     return dynamic + "\n" + static

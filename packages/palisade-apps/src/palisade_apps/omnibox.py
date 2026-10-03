@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from palisade.omnibox import Mode, rank
+from palisade.omnibox import Mode, complete_from, rank
 from palisade.sources import Item
 
 from . import catalogue
@@ -55,6 +55,11 @@ def run_apps(fence, query: str) -> list[Item]:
     ]
 
 
+def complete_apps(fence, query: str) -> str | None:
+    """Tab in the launcher: extend to what every match shares."""
+    return complete_from([i.name for i in run_apps(fence, query)], query)
+
+
 APPS = Mode(
     id="apps",
     title="Applications",
@@ -63,6 +68,7 @@ APPS = Mode(
     # sigil modes from scoring regardless.
     score=lambda query: 0.0,
     run=run_apps,
+    complete=complete_apps,
     sigil=">",
     placeholder="Run an application",
     empty="No application matches",

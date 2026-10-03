@@ -16,8 +16,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from palisade.omnibox import (  # noqa: E402
-    FILTER, Candidate, Mode, Registry, Stabiliser, classify, core_modes,
-    match, rank, strip_sigil,
+    FILTER, Candidate, Mode, Registry, Stabiliser, classify, complete_from,
+    core_modes, match, rank, strip_sigil,
 )
 
 
@@ -346,6 +346,96 @@ class FilterModeTests(unittest.TestCase):
 
     def test_it_has_no_sigil_because_it_is_what_you_get_by_default(self):
         self.assertEqual(FILTER.sigil, "")
+
+
+class CompleteFromTests(unittest.TestCase):
+    """The shell's bargain: extend while something is unambiguous, then stop."""
+
+    def test_a_single_match_completes_outright(self):
+        self.assertEqual(complete_from(["Documents"], "Doc"), "Documents")
+
+    def test_a_single_match_case_corrects(self):
+        """You typed `doc`; the only thing it matches is `Documents`. Leaving
+        the case alone would mean Tab producing text that does not name the
+        thing it just completed to."""
+        self.assertEqual(complete_from(["Documents"], "doc"), "Documents")
+
+    def test_several_matches_stop_at_what_they_share(self):
+        self.assertEqual(complete_from(["Documents", "Downloads"], "D"), "Do")
+
+    def test_matches_sharing_nothing_more_complete_to_nothing(self):
+        self.assertIsNone(complete_from(["Documents", "Desktop"], "D"))
+
+    def test_a_case_split_is_not_a_shared_prefix(self):
+        """`Documents` and `downloads` share no prefix true of both, and
+        inventing one would produce a string matching neither."""
+        self.assertIsNone(complete_from(["Documents", "downloads"], "d"))
+
+    def test_nothing_matching_completes_to_nothing(self):
+        self.assertIsNone(complete_from([], "x"))
+
+    def test_an_exact_single_match_adds_nothing(self):
+        """So Tab can fall through to its other meaning instead of appearing
+        to do nothing."""
+        self.assertIsNone(complete_from(["notes.md"], "notes.md"))
+
+    def test_an_empty_prefix_still_finds_a_shared_run(self):
+        self.assertEqual(complete_from(["abc", "abd"], ""), "ab")
+
+
+class FieldCompletionTests(unittest.TestCase):
+    class Fence:
+        def __init__(self, names):
+            self._rows = [Row(n) for n in names]
+
+        def rows(self):
+            return self._rows
+
+    def field(self, names, query, modes=None):
+        reg = Registry(list(modes) if modes else list(core_modes()))
+        fence = self.Fence(names)
+        reg.update(query)
+        return reg, fence
+
+    def test_it_completes_in_the_showing_mode(self):
+        reg, fence = self.field(["notes.md", "image.png"], "not")
+        self.assertEqual(reg.complete(fence, "not"), "notes.md")
+
+    def test_nothing_showing_completes_to_nothing(self):
+        """An empty field has no mode, so Tab has nothing to ask."""
+        reg = Registry(list(core_modes()))
+        self.assertIsNone(reg.complete(self.Fence([]), ""))
+
+    def test_a_mode_with_no_completion_is_not_an_error(self):
+        """`complete` is optional; a mode that omits it leaves Tab alone."""
+        plain = mode("plain", lambda q: 0.9)
+        reg, fence = self.field(["a"], "x", modes=[plain])
+        self.assertIsNone(reg.complete(fence, "x"))
+
+    def test_the_sigil_is_put_back(self):
+        """`complete` works in the mode's own terms and never sees the sigil,
+        so returning its answer bare would delete the `>` that chose the
+        mode."""
+        launcher = Mode(id="apps", title="Apps", score=lambda q: 0.0,
+                        run=lambda f, q: [], sigil=">",
+                        complete=lambda f, q: "Firefox")
+        reg = Registry([launcher])
+        reg.update(">fire")
+        self.assertEqual(reg.complete(self.Fence([]), ">fire"), ">Firefox")
+
+    def test_a_completion_that_changes_nothing_is_none(self):
+        reg, fence = self.field(["notes.md"], "notes.md")
+        self.assertIsNone(reg.complete(fence, "notes.md"))
+
+    def test_a_mode_that_raises_does_not_eat_the_key(self):
+        """Tab must still fall through to moving into the list."""
+        def boom(_fence, _query):
+            raise RuntimeError("broken")
+
+        bad = Mode(id="bad", title="Bad", score=lambda q: 0.9,
+                   run=lambda f, q: [], complete=boom)
+        reg, fence = self.field(["a"], "x", modes=[bad])
+        self.assertIsNone(reg.complete(fence, "x"))
 
 
 class RegistryTests(unittest.TestCase):

@@ -70,6 +70,32 @@ class Run(unittest.TestCase):
         self.assertEqual(len(self.names("App", many)), omnibox.LIMIT)
 
 
+class CompleteTests(Run):
+    def complete(self, query, entries=CATALOGUE):
+        from palisade_apps import omnibox as ob
+
+        with mock.patch.object(catalogue, "load", return_value=entries):
+            return ob.complete_apps(None, query)
+
+    def test_a_single_match_completes_outright(self):
+        self.assertEqual(self.complete("fire"), "Firefox")
+
+    def test_several_matches_stop_at_what_they_share(self):
+        entries = [app("a.desktop", "Slack"), app("b.desktop", "Slade")]
+        self.assertEqual(self.complete("Sl", entries), "Sla")
+
+    def test_nothing_matching_completes_to_nothing(self):
+        self.assertIsNone(self.complete("zzzz"))
+
+    def test_an_exact_name_adds_nothing(self):
+        self.assertIsNone(self.complete("Firefox"))
+
+    def test_the_mode_offers_it(self):
+        from palisade_apps import omnibox as ob
+
+        self.assertIs(ob.APPS.complete, ob.complete_apps)
+
+
 class ModeTests(unittest.TestCase):
     def test_it_is_reachable_only_by_its_sigil(self):
         """An application name is an ordinary word — "code", "files", "notes"

@@ -22,7 +22,7 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
 from ..config import Fence, Settings, Source
 from ..sources import Item, UnknownSource, resolve, sort_items
-from ..theme import CSS_PRIORITY, uses_paper
+from ..theme import CSS_PRIORITY
 from .manipulate import Manipulator, make_resize_grip
 
 REFRESH_DEBOUNCE_MS = 180
@@ -232,28 +232,15 @@ class FenceWindow(Gtk.ApplicationWindow):
         # with surface_container instead put it above its own content, which
         # is why the panel read as one flat slab however the paddings were
         # tuned. See the token header in data/palisade.css.
-        self._paper = uses_paper(self.settings.theme, self.fence.source.kind)
-        tint = self.fence.tint or (
-            "@ss_background" if self._paper else "@m3_background"
-        )
+        tint = self.fence.tint or "@m3_background"
         # Per-fence opacity cannot live in the static sheet, so it is the one
         # inline style we set.
         provider = Gtk.CssProvider()
-        if self._paper and not self.fence.tint:
-            # Paper is opaque on purpose. The design it comes from has no
-            # translucency in it at all — depth is three tiers of warm shadow
-            # over a solid surface — and at the default 0.55 the warm white
-            # composited with a dark wallpaper into a flat grey, with the
-            # white card sitting on it as a hard, muddy step. `opacity`
-            # applies to the system theme, and to a paper fence that names
-            # its own `tint`.
-            colour = tint
-        else:
-            colour = (
-                f"alpha({tint}, {self.fence.opacity:.3f})"
-                if tint.startswith("@")
-                else f"alpha(\"{tint}\", {self.fence.opacity:.3f})"
-            )
+        colour = (
+            f"alpha({tint}, {self.fence.opacity:.3f})"
+            if tint.startswith("@")
+            else f"alpha(\"{tint}\", {self.fence.opacity:.3f})"
+        )
         provider.load_from_string(
             f".fence-root.f-{self.fence.id} {{ background: {colour}; }}"
         )
@@ -261,8 +248,6 @@ class FenceWindow(Gtk.ApplicationWindow):
             Gdk.Display.get_default(), provider, CSS_PRIORITY
         )
         root.add_css_class(f"f-{self.fence.id}")
-        if self._paper:
-            root.add_css_class("paper")
         if self.fence.dock:
             # Squares the corners that sit on the screen edge — see the
             # .dock-* rules. Set here rather than in _apply_dock because the
@@ -453,10 +438,6 @@ class FenceWindow(Gtk.ApplicationWindow):
         # The grip rides in an overlay so it sits over the bottom-right
         # corner without stealing a row from the layout.
         self._grip = make_resize_grip()
-        if self._paper:
-            # The grip is an overlay sibling of the root, not a child, so the
-            # descendant rules do not reach it.
-            self._grip.add_css_class("paper")
         self._grip.set_visible(not self.locked)
         overlay = Gtk.Overlay()
         overlay.set_child(root)
@@ -895,15 +876,37 @@ class FenceWindow(Gtk.ApplicationWindow):
         if keyval == Gdk.KEY_Escape:
             self.close_omnibox()
             return True
+        if keyval == Gdk.KEY_Tab and self._omni_complete():
+            return True
         if keyval in (Gdk.KEY_Down, Gdk.KEY_Tab):
             # Into the list, keeping the query. The field stays open: it says
             # what you searched for, and losing that on arrow-down would make
             # the results look unexplained.
+            #
+            # Tab only reaches here with nothing to complete, which is the
+            # shell's bargain too: Tab completes while there is something
+            # unambiguous to add, and once there is not, it does the other
+            # thing.
             if self._store.get_n_items():
                 self._selection.select_item(0, True)
                 self._view.grab_focus()
             return True
         return False
+
+    def _omni_complete(self) -> bool:
+        """Extend the query to whatever the showing mode is sure of.
+
+        True if the text changed, so the caller knows Tab was spent.
+        """
+        done = self._omni.complete(self, self._omni_entry.get_text())
+        if done is None or done == self._omni_entry.get_text():
+            return False
+        self._omni_entry.set_text(done)
+        # To the end, or the next keystroke lands in the middle of the word
+        # that was just completed for you.
+        self._omni_entry.set_position(-1)
+        self._omni_entry.select_region(len(done), len(done))
+        return True
 
     def _hidden_items(self) -> list[Item]:
         """Hidden panels as rows. `path` holds a fence id, not a real path.

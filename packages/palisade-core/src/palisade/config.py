@@ -354,23 +354,9 @@ class Group:
         return Fence(**fields)
 
 
-#: What a panel looks like.
-#:
-#: "paper"  — the shapeshift palette: warm paper, white cards, indigo accent,
-#:            a fixed identity that does not follow the wallpaper.
-#: "system" — the Material You tokens, so a panel matches the rest of the
-#:            desktop and re-themes with it.
-#:
-#: The taskbar is always "system" whatever this says: it is furniture standing
-#: among the desktop's own panels, and a panel that does not match them there
-#: reads as a foreign window rather than part of the shell.
-THEMES = ("paper", "system")
-
-
 @dataclass(frozen=True)
 class Settings:
     layer: str = "bottom"
-    theme: str = "paper"
     blur: bool = True
     corner_radius: int = 18
     font_scale: float = 1.0
@@ -382,12 +368,8 @@ class Settings:
         layer = str(raw.get("layer", "bottom"))
         if layer not in LAYERS:
             raise ConfigError(f"[settings]: layer must be one of {LAYERS}")
-        theme = str(raw.get("theme", "paper"))
-        if theme not in THEMES:
-            raise ConfigError(f"[settings]: theme must be one of {THEMES}")
         return Settings(
             layer=layer,
-            theme=theme,
             blur=bool(raw.get("blur", True)),
             corner_radius=int(raw.get("corner_radius", 18)),
             font_scale=float(raw.get("font_scale", 1.0)),

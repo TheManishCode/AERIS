@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from palisade_files.omnibox import (  # noqa: E402
-    LIMIT, PATH, listing, run_path, score_path, split,
+    LIMIT, PATH, complete_path, listing, run_path, score_path, split,
 )
 
 
@@ -140,6 +140,71 @@ class ListingTests(Tree):
         for n in range(LIMIT + 25):
             (big / f"f{n:05}").write_text("x", encoding="utf-8")
         self.assertEqual(len(listing(big, "")), LIMIT)
+
+
+class CompleteTests(Tree):
+    class Fence:
+        def __init__(self, root):
+            self._root = root
+
+        def folder_root(self):
+            return self._root
+
+    def complete(self, query):
+        return complete_path(self.Fence(self.root), query)
+
+    def test_a_single_folder_gets_its_separator(self):
+        """Tab, Tab, Tab walks a tree without ever typing `/` or a capital."""
+        self.assertEqual(self.complete("Doc"), "Documents/")
+
+    def test_a_single_file_does_not(self):
+        self.assertEqual(self.complete("note"), "notes.md")
+
+    def test_the_head_of_the_query_is_kept_verbatim(self):
+        """`~` stays `~`. Expanding it would rewrite the text you typed into
+        a different, longer string that means the same thing."""
+        got = complete_path(self.Fence(None), "~/")
+        self.assertTrue(got is None or got.startswith("~/"))
+
+    def test_only_the_last_segment_is_replaced(self):
+        (self.root / "Documents" / "invoices").mkdir()
+        self.assertEqual(self.complete("Documents/inv"), "Documents/invoices/")
+
+    def test_it_case_corrects(self):
+        self.assertEqual(self.complete("doc"), "Documents/")
+
+    def test_two_matches_sharing_only_what_you_typed_add_nothing(self):
+        """`Documents` and `Doxx` share exactly `Do`, which is already there.
+        None, so Tab falls through to moving into the list rather than
+        appearing to do nothing."""
+        (self.root / "Doxx").mkdir()
+        self.assertIsNone(self.complete("Do"))
+
+    def test_two_matches_stop_at_what_they_share(self):
+        (self.root / "Documental").mkdir()
+        self.assertEqual(self.complete("Docu"), "Document")
+
+    def test_nothing_matching_completes_to_nothing(self):
+        self.assertIsNone(self.complete("zzzz"))
+
+    def test_an_already_complete_folder_adds_only_the_separator(self):
+        """Tab on a folder you have finished typing should open it. Deferring
+        to the shared rule returned None here, because the *name* was already
+        complete — but the separator was not."""
+        self.assertEqual(self.complete("Documents"), "Documents/")
+
+    def test_an_already_complete_file_adds_nothing(self):
+        self.assertIsNone(self.complete("notes.md"))
+
+    def test_a_trailing_slash_with_one_entry_inside_descends(self):
+        (self.root / "Documents" / "only").mkdir()
+        self.assertEqual(self.complete("Documents/"), "Documents/only/")
+
+    def test_a_folder_that_cannot_be_read_completes_to_nothing(self):
+        self.assertIsNone(self.complete("nope/x"))
+
+    def test_the_mode_offers_it(self):
+        self.assertIs(PATH.complete, complete_path)
 
 
 class RunTests(Tree):

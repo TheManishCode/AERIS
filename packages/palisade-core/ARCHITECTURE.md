@@ -112,7 +112,9 @@ is tested without a display. Three pieces:
 - **`Mode`** is what a module contributes: `score(query)` decides whether the
   query is its business, `run(fence, query)` produces the rows. The same
   decides/computes split shapeshift makes between its model and its parsers,
-  and neither half knows about the other's job.
+  and neither half knows about the other's job. `complete(fence, query)` is
+  optional and backs Tab; `complete_from` in core is the one implementation
+  all four modes defer to, so Tab means the same thing in every mode.
 
 A `Registry` is built per panel, not shared: two open fields are two separate
 pieces of typing and must not share a streak.
@@ -155,9 +157,9 @@ the monorepo and an installed system both work with no extra step.
 ### palisade-core
 
 The layer-shell window and everything that is true of every panel: geometry
-and docking, the exclusive-zone reflow, layers and hiding, the two themes (the Material You
-bridge, and the fixed paper palette — DECISIONS.md §8), the omnibox decision
-layer, `palisade.toml` and `state.json`, the
+and docking, the exclusive-zone reflow, layers and hiding, the theme bridge to the
+desktop's Material You palette and the radius ladder derived from it
+(DECISIONS.md §8), the omnibox decision layer, `palisade.toml` and `state.json`, the
 daemon, the Unix-socket IPC, the group picker, and the registry above.
 
 Installing only core gives you a working `palisade` command and an empty

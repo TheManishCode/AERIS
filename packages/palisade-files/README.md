@@ -27,8 +27,10 @@ modules.
 panel and it becomes a listing of that folder, anywhere on disk — folders
 first, dotfiles only once you type the dot. A trailing `/` lists the folder
 whole; without one the last segment filters it, the way shell completion
-behaves. <kbd>Enter</kbd> navigates the panel there, and the panel's own source
-is untouched: <kbd>Alt</kbd>+<kbd>Home</kbd> comes back.
+behaves — and <kbd>Tab</kbd> completes that segment, adding the separator when
+it lands on a single folder, so Tab/Tab/Tab walks a tree without typing a `/`
+or a capital. <kbd>Enter</kbd> navigates the panel there, and the panel's own
+source is untouched: <kbd>Alt</kbd>+<kbd>Home</kbd> comes back.
 
 ```toml
 [[group]]
@@ -149,6 +151,7 @@ away — and that is the right tool for that job.
 | <kbd>F2</kbd> | Rename in place |
 | <kbd>Delete</kbd> | Move to trash |
 | Type | Open the field (filter, or `~/…` to go somewhere) |
+| <kbd>Tab</kbd> | Complete in the field; then move into the list |
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Open the field empty |
 
 ---

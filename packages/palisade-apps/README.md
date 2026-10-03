@@ -22,6 +22,7 @@ competed on score would take the field away exactly when you wanted it.
 
 Name matches rank first; a match on an entry's comment or category follows, so
 `>browser` finds Firefox when you have forgotten what it is called.
+<kbd>Tab</kbd> completes to what the matches share.
 
 And one source kind:
 

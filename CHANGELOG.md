@@ -1,5 +1,80 @@
 # Changelog
 
+## 2026-10-03 — Tab completion, and the right half of shapeshift
+
+Role: Senior Product Designer + Frontend Engineer + QA Engineer
+
+Status: Added, Reverted, Removed
+
+Reason:
+*"now add tab completion in the field and also i said to refer the layout not
+color keep it dark"*.
+
+Two things: a feature that was missing, and a correction. The earlier entry
+took shapeshift's palette as well as its geometry and themed every group panel
+warm-paper-on-white. That was the wrong half of the reference.
+
+Changes:
+- **Tab completion.** `Mode.complete` is a new optional half of the mode
+  contract: `(fence, query) -> str | None`. `complete_from(names, prefix)` in
+  core is the one implementation behind all four modes — extend to the longest
+  prefix every match shares, stop there, and return None when there is nothing
+  unambiguous to add.
+- `Registry.complete` completes against the mode that is *showing* rather than
+  a fresh classification, and re-attaches the sigil, which `complete` never
+  sees.
+- Path completion replaces only the segment after the last separator, so `~`
+  stays `~`, and gives a single folder match its trailing `/` — Tab, Tab, Tab
+  walks a tree without typing a separator or a capital.
+- Tab completes while there is something to add and otherwise keeps its other
+  meaning (move into the list). The shell's bargain.
+- **The radius ladder.** `%RADIUS_CARD%` and `%RADIUS_ITEM%` (and dock
+  variants) are derived in `theme.stylesheet` by subtracting the padding at
+  each step from the rung above, instead of the hardcoded 17 and 12.
+- Shell and card insets 10/5 -> 8/4, because the ladder has to fit inside the
+  shell radius and `corner_radius` is pinned to Hyprland's rounding. 18 -> 10
+  -> 6. See DECISIONS.md §8.
+- One easing and one duration throughout: `cubic-bezier(0.23, 1, 0.32, 1)` at
+  150ms, replacing `110ms ease-out`.
+- Header controls are pills (`9999px`), as every button in the reference is.
+
+Removed/Reverted:
+- **The entire paper theme.** The `PAPER` palette and `paper_defines()` in
+  theme.py, `uses_paper()`, the `@ss_*` token namespace, `Settings.theme` and
+  `THEMES`, the `_paper` flag and the opaque-tint branch in fence.py, the
+  `theme` block in default.toml, and ~90 lines of `.paper` rules in the sheet.
+  It worked and was verified; it was the wrong half of the reference. Panels
+  are dark and wallpaper-themed again.
+- `test_theme.py` rewritten: the palette assertions are gone and the ladder
+  derivation is tested in their place, including that it never descends below
+  zero (`border-radius: -2px` is a parse error GTK swallows, so the corner
+  would be square *and* unexplained).
+- One dead assignment in `test_omnibox.py` that built a mode and immediately
+  replaced it.
+
+Verification:
+- 591 tests pass (core 303, files 180, dock 48, apps 60), whole and per-file.
+- The sheet is asserted to parse clean at radius 0, 2, 8, 18 and 48 — the
+  ladder floors differently at each, and a negative radius would be silently
+  discarded rather than raised.
+- Live on Hyprland: `~/dow` + Tab became `~/Downloads/` — case corrected,
+  separator added, listing descended in one keystroke. `coo` + Tab extended to
+  `cookie-shop-website`, the longest prefix its three matches share, and
+  stopped rather than guessing. A third Tab, with nothing left to add, moved
+  focus into the list and selected the first row.
+- Panels confirmed dark and translucent again, with the ladder nesting.
+
+Result:
+Tab behaves the way a shell does. The panels look like they did, with corners
+that nest.
+
+Known Issues:
+- Panels are now inset 8/4 against the rice's 10/5, so a Palisade panel is 2px
+  tighter at the shell than the quickshell panels beside it.
+- No completion history; Tab is stateless.
+- Window-title completion rarely adds anything, because a title is a sentence
+  rather than a name. It is wired for consistency.
+
 ## 2026-10-03 — One field that changes what it is, and the paper theme
 
 Role: Senior Product Designer + Frontend Engineer + QA Engineer

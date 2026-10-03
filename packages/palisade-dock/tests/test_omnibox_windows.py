@@ -54,6 +54,24 @@ class Run(unittest.TestCase):
         self.assertFalse(row.is_file_row)
 
 
+class CompleteTests(unittest.TestCase):
+    def complete(self, query, windows=WINDOWS):
+        with mock.patch.object(engine, "list_minimized", return_value=windows):
+            return omnibox.complete_windows(None, query)
+
+    def test_a_single_match_completes_outright(self):
+        self.assertEqual(self.complete("kit"), "kitty")
+
+    def test_nothing_matching_completes_to_nothing(self):
+        self.assertIsNone(self.complete("zzzz"))
+
+    def test_no_engine_completes_to_nothing_rather_than_raising(self):
+        self.assertIsNone(self.complete("x", []))
+
+    def test_the_mode_offers_it(self):
+        self.assertIs(omnibox.WINDOWS.complete, omnibox.complete_windows)
+
+
 class ModeTests(unittest.TestCase):
     def test_it_is_reachable_only_by_its_sigil(self):
         self.assertEqual(omnibox.WINDOWS.sigil, "@")

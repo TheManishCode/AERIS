@@ -1,42 +1,39 @@
-# Session State — updated 2026-10-03 20:45
+# Session State — updated 2026-10-03 21:10
 
 Status: COMPLETE
-Task: Build the omnibox (one field that changes what it is as you type) and
-the paper theme, both adapted from shapeshift (MIT).
-Branch / worktree: master   Recovery point: 6616021 (the commit before this)
+Task: Add Tab completion to the field, and correct the shapeshift adoption —
+layout only, colour stays the desktop's.
+Branch / worktree: master   Recovery point: 8077dec
 
 Done:
-- `palisade/omnibox.py` + 52 tests. Stabiliser ported from shapeshift;
-  `CERTAIN` corrected from 0.9 to 1.0 after a hostile-sequence test caught it
-  strobing on all ten keystrokes.
-- `Module.omnibox` on the registry; `Registry.omnibox()` per panel.
-- Four modes: core `filter`, files `path`, apps `>`, dock `@`.
-- `refresh`/`_render` split so a keystroke does not re-walk the folder.
-- Type-to-jump removed and replaced by the field.
-- Paper theme: shapeshift palette as `@ss_*`, `.paper` sheet section,
-  `Settings.theme`, taskbar always `system`.
-- `tests/_realgi.py` + `conftest.py` replace seven copies of the GI preamble.
-- 543 tests pass (core 286, files 167, dock 44, apps 46), whole, per-file, and
+- `Mode.complete` + `complete_from` in core, one implementation behind all
+  four modes. Tab completes while something is unambiguous, then falls through
+  to moving into the list.
+- Path completion replaces only the last segment and adds a folder's `/`.
+- The paper theme reverted in full — palette, `@ss_*` namespace, `theme`
+  setting, `uses_paper`, the `_paper` flag, the opaque-tint branch, the
+  `.paper` sheet section and the default.toml block.
+- The radius ladder kept and generalised: card and item radii derived from
+  `corner_radius` by subtracting the padding at each step; insets 10/5 -> 8/4
+  so the ladder survives an 18px shell. One easing, pill controls.
+- 591 tests pass (core 303, files 180, dock 48, apps 60), whole, per-file, and
   under `unittest discover`.
-- Live-verified on Hyprland with screenshots and pixel measurements — see the
-  CHANGELOG entry for what was checked.
-- Docs updated: CHANGELOG, DECISIONS §7 and §8, ARCHITECTURE, four READMEs,
-  default.toml, TODO.
+- Live-verified: `~/dow` + Tab -> `~/Downloads/`; `coo` + Tab -> the shared
+  prefix; a third Tab moved into the list. Panels dark and translucent again.
+- Docs updated: CHANGELOG, DECISIONS §8 rewritten to record the reversal,
+  ARCHITECTURE, three READMEs, default.toml, TODO.
 
 In flight:
 - Nothing.
 
 Not started:
-- The TODO items added this session: field completion/history, `corner_radius`
-  being silently ignored under paper, factoring colour out of the sheet.
+- Completion history (per-mode, or it is noise).
 
 Blocked on:
 - Nothing.
 
 Danger:
-- Nothing. The temporary `navtest` group was removed from
-  `~/.config/palisade/palisade.toml` (backup at the session scratchpad) and its
-  scratch tree deleted; `palisade check` passes and no tabs are open.
+- Nothing. No tabs open, `palisade check` passes, tree committed.
 
 Resume by:
-- Nothing pending. Next useful piece of work is Tab-completion in the field.
+- Nothing pending.

@@ -87,10 +87,15 @@ an empty folder.
 | `>firefox` | an application launcher | palisade-apps |
 | `@kitty` | find a minimized window | palisade-dock |
 
-<kbd>Enter</kbd> opens the first row. <kbd>Down</kbd> or <kbd>Tab</kbd> moves
-into the list. <kbd>Esc</kbd> closes the field, then backs out of a folder,
-then dismisses the panel — one step at a time. <kbd>Ctrl</kbd>+<kbd>F</kbd>
-opens it empty.
+<kbd>Tab</kbd> completes, the way a shell does: it extends to the longest
+prefix every match shares and stops there, so it never guesses which one you
+meant. A folder gets its trailing `/` for free — `~/dow`, Tab, and you are
+looking at Downloads. Once there is nothing unambiguous left to add, Tab does
+the other thing and moves you into the list.
+
+<kbd>Enter</kbd> opens the first row. <kbd>Down</kbd> also moves into the list.
+<kbd>Esc</kbd> closes the field, then backs out of a folder, then dismisses the
+panel — one step at a time. <kbd>Ctrl</kbd>+<kbd>F</kbd> opens it empty.
 
 It will not flicker while you type. A mode has to be better than the one
 showing for two keystrokes running before the panel changes shape — borrowed
@@ -111,7 +116,6 @@ alone it filters; each package adds its own modes.
 ```toml
 [settings]
 layer = "bottom"        # background | bottom | top | overlay
-theme = "paper"         # paper | system
 blur = true
 opacity = 0.55
 corner_radius = 18
@@ -129,20 +133,6 @@ path = "~/Documents/notes"
 ```
 
 `palisade check` validates it and previews what every fence would show.
-
-### Themes
-
-`paper` — warm paper, white cards, an indigo accent, and a concentric radius
-scale, from [shapeshift](https://github.com/anishfn/shapeshift) (MIT). A fixed
-identity that does not follow the wallpaper, so a panel reads as an object on
-the desktop rather than a hole in it. Opaque by design: `opacity` and
-`corner_radius` do not apply to it.
-
-`system` — the desktop's Material You palette, re-coloured from the wallpaper
-whenever it changes.
-
-The taskbar is always `system`. It stands in a row with your shell's own
-panels and one that did not match them would read as a foreign window.
 
 ---
 

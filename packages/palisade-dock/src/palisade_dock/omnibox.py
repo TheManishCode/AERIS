@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from palisade.omnibox import Mode, rank
+from palisade.omnibox import Mode, complete_from, rank
 from palisade.sources import Item
 
 from . import engine
@@ -43,11 +43,19 @@ def run_windows(fence, query: str) -> list[Item]:
     return rank(items, query)
 
 
+def complete_windows(fence, query: str) -> str | None:
+    """Tab over window titles. Rarely adds much — a title is a sentence, not
+    a name — but Tab doing nothing in one mode and something in the others
+    is worse than Tab occasionally having nothing to say."""
+    return complete_from([i.name for i in run_windows(fence, query)], query)
+
+
 WINDOWS = Mode(
     id="windows",
     title="Minimized windows",
     score=lambda query: 0.0,
     run=run_windows,
+    complete=complete_windows,
     sigil="@",
     placeholder="Find a minimized window",
     empty="Nothing minimized matches",

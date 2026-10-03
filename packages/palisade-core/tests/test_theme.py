@@ -1,11 +1,17 @@
-"""Two palettes, and which fence gets which.
+"""The stylesheet, and the radius ladder it derives.
 
-The Material You tokens follow the wallpaper; the paper palette does not. Both
-are emitted into every stylesheet, because GTK's `@define-color` is per display
-rather than per widget — two palettes have to be two namespaces, and the choice
-between them is made with a CSS class on the panel.
+Colour comes from the wallpaper's Material You tokens and always has. What is
+new here is the *ladder*: the card and item radii are no longer hardcoded, they
+are computed from the user's `corner_radius` by subtracting the padding at each
+step — shapeshift's rule, applied to our own insets.
+
+A stylesheet is the easiest thing in this codebase to get silently wrong. GTK
+does not raise on a bad rule; it emits `parsing-error`, discards the
+declaration, and carries on, so a typo costs one rule and the panel merely
+looks a little off. That is asserted here rather than eyeballed.
 """
 
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -17,97 +23,89 @@ from _realgi import use_real_gi  # noqa: E402
 use_real_gi()
 
 from palisade import theme as theme_mod  # noqa: E402
-from palisade.config import THEMES, ConfigError, Settings  # noqa: E402
+
+#: The insets the ladder descends through. Shell padding, then card padding.
+SHELL_INSET, CARD_INSET, DOCK_INSET = 8, 4, 6
 
 
-class SettingTests(unittest.TestCase):
-    def test_paper_is_the_default(self):
-        self.assertEqual(Settings().theme, "paper")
-
-    def test_system_can_be_asked_for(self):
-        self.assertEqual(Settings.parse({"theme": "system"}).theme, "system")
-
-    def test_an_unknown_theme_is_refused_rather_than_ignored(self):
-        """Silently falling back would mean a typo in the config looked like
-        the setting not working."""
-        with self.assertRaises(ConfigError):
-            Settings.parse({"theme": "shapeshift"})
-
-    def test_the_error_names_the_valid_themes(self):
-        try:
-            Settings.parse({"theme": "nope"})
-        except ConfigError as exc:
-            for name in THEMES:
-                self.assertIn(name, str(exc))
+def sheet(radius=18, font_scale=1.0):
+    return theme_mod.stylesheet(theme_mod.Theme.load(), radius=radius,
+                                font_scale=font_scale)
 
 
-class WhichFenceTests(unittest.TestCase):
-    def test_a_folder_fence_wears_paper(self):
-        self.assertTrue(theme_mod.uses_paper("paper", "directory"))
-
-    def test_a_query_fence_wears_paper(self):
-        self.assertTrue(theme_mod.uses_paper("paper", "query"))
-
-    def test_the_taskbar_never_does(self):
-        """Whatever the setting says. It stands among the desktop's own
-        panels, and one that does not match them reads as a foreign window."""
-        self.assertFalse(theme_mod.uses_paper("paper", "windows"))
-
-    def test_the_system_theme_turns_it_off_everywhere(self):
-        self.assertFalse(theme_mod.uses_paper("system", "directory"))
-        self.assertFalse(theme_mod.uses_paper("system", "windows"))
+def radius_of(css, selector):
+    """The border-radius of the first rule whose block follows `selector`."""
+    at = css.index(selector)
+    found = re.search(r"border-radius: (\d+)px", css[at:at + 400])
+    return int(found.group(1))
 
 
-class PaletteTests(unittest.TestCase):
-    def test_every_paper_colour_is_emitted(self):
-        got = theme_mod.paper_defines()
-        for name in theme_mod.PAPER:
-            self.assertIn(f"@define-color ss_{name}", got)
+class LadderTests(unittest.TestCase):
+    """Each step is the one outside it minus the padding between."""
 
-    def test_the_namespaces_do_not_collide(self):
-        """@define-color is per display, so a paper token sharing a name with
-        a Material You one would silently replace it for every panel."""
-        sheet = theme_mod.stylesheet(theme_mod.Theme.load(), radius=18,
-                                     font_scale=1.0)
-        names = [line.split()[1] for line in sheet.splitlines()
-                 if line.startswith("@define-color")]
-        self.assertEqual(len(names), len(set(names)))
+    def test_the_shell_is_the_users_corner_radius(self):
+        """It exists to match Hyprland's own `decoration.rounding`; the ladder
+        hangs off it rather than replacing it."""
+        self.assertEqual(radius_of(sheet(radius=18), "\n.fence-root {"), 18)
 
-    def test_both_palettes_reach_the_sheet(self):
-        sheet = theme_mod.stylesheet(theme_mod.Theme.load(), radius=18,
-                                     font_scale=1.0)
-        self.assertIn("@define-color ss_background", sheet)
-        self.assertIn("@define-color m3_background", sheet)
+    def test_the_card_is_the_shell_less_the_shell_padding(self):
+        self.assertEqual(radius_of(sheet(radius=18), ".fence-empty {"),
+                         18 - SHELL_INSET)
 
-    def test_the_paper_rules_come_after_the_defines_they_use(self):
-        """GTK resolves @define-color in document order; a rule above its own
-        define silently falls back to a parse error for that declaration."""
-        sheet = theme_mod.stylesheet(theme_mod.Theme.load(), radius=18,
-                                     font_scale=1.0)
-        self.assertLess(sheet.index("@define-color ss_background"),
-                        sheet.index(".paper.fence-root"))
+    def test_the_item_is_the_card_less_the_card_padding(self):
+        self.assertEqual(radius_of(sheet(radius=18), "\n.item {"),
+                         18 - SHELL_INSET - CARD_INSET)
 
-    def test_the_contrast_corrected_muted_is_the_one_used(self):
-        """shapeshift's own comment records that #8f8d86 failed at 3.0:1 and
-        was replaced. Taking the palette means taking that fix too."""
-        self.assertEqual(theme_mod.PAPER["muted_fg"], "#706e68")
+    def test_a_dock_starts_its_ladder_higher(self):
+        """It insets its card by 6 rather than 8, so everything inside it is
+        one step less reduced."""
+        self.assertEqual(radius_of(sheet(radius=18), ".dock-bottom .fence-empty"),
+                         18 - DOCK_INSET)
 
-    def test_the_palette_is_all_hex(self):
-        """`paper_defines` re-validates before interpolating into CSS; a value
-        that fails is dropped silently, so a typo here would be invisible."""
-        for name, value in theme_mod.PAPER.items():
-            self.assertRegex(value, r"^#[0-9a-fA-F]{6}$", name)
+    def test_the_ladder_always_descends(self):
+        for radius in (0, 4, 12, 18, 28, 48):
+            css = sheet(radius=radius)
+            shell = radius_of(css, "\n.fence-root {")
+            card = radius_of(css, ".fence-empty {")
+            item = radius_of(css, "\n.item {")
+            self.assertGreaterEqual(shell, card, radius)
+            self.assertGreaterEqual(card, item, radius)
+
+    def test_a_small_radius_floors_at_zero_rather_than_going_negative(self):
+        """`border-radius: -2px` is a parse error GTK swallows, so the rule
+        would vanish and the corner would be square *and* unexplained."""
+        css = sheet(radius=2)
+        self.assertEqual(radius_of(css, ".fence-empty {"), 0)
+        self.assertEqual(radius_of(css, "\n.item {"), 0)
+
+    def test_the_field_sits_at_the_item_rung(self):
+        """It is a control inside the panel, not a surface of its own."""
+        css = sheet(radius=18)
+        self.assertEqual(radius_of(css, ".omni-entry {"),
+                         radius_of(css, "\n.item {"))
+
+    def test_the_radius_is_clamped_to_a_sane_range(self):
+        self.assertEqual(radius_of(sheet(radius=9999), "\n.fence-root {"), 48)
+        self.assertEqual(radius_of(sheet(radius=-5), "\n.fence-root {"), 0)
+
+
+class SubstitutionTests(unittest.TestCase):
+    def test_no_placeholder_survives(self):
+        """A missed %TOKEN% is a parse error GTK swallows one rule at a time —
+        the panel renders, slightly wrong, with nothing in the log."""
+        self.assertNotIn("%", sheet())
+
+    def test_the_font_scale_reaches_the_sheet(self):
+        self.assertIn("21.0pt", sheet(font_scale=2.0))
+
+    def test_colour_still_comes_from_the_wallpaper(self):
+        """The palette is the desktop's, not a fixed one. A brief experiment
+        with a fixed light palette was reverted — see CHANGELOG."""
+        self.assertIn("@define-color m3_background", sheet())
+        self.assertNotIn("@define-color ss_", sheet())
 
 
 class ParseTests(unittest.TestCase):
-    """GTK does not raise on a bad stylesheet.
-
-    It emits `parsing-error`, discards the declaration that failed, and
-    carries on — so a typo costs you one rule, silently, and the panel just
-    looks slightly wrong. That is exactly the failure a reviewer cannot see,
-    which is why it is asserted here rather than eyeballed.
-    """
-
     def errors_in(self, css):
         import gi
 
@@ -125,21 +123,16 @@ class ParseTests(unittest.TestCase):
         provider.load_from_string(css)
         return seen
 
-    def sheet(self):
-        return theme_mod.stylesheet(theme_mod.Theme.load(), radius=18,
-                                    font_scale=1.0)
-
     def test_the_stylesheet_parses_clean(self):
-        self.assertEqual(self.errors_in(self.sheet()), [])
+        self.assertEqual(self.errors_in(sheet()), [])
+
+    def test_it_parses_clean_at_every_radius_the_ladder_can_reach(self):
+        for radius in (0, 2, 8, 18, 48):
+            self.assertEqual(self.errors_in(sheet(radius=radius)), [], radius)
 
     def test_the_test_would_notice_a_bad_rule(self):
-        """Proves the assertion above is load-bearing."""
+        """Proves the assertions above are load-bearing."""
         self.assertTrue(self.errors_in(".x { color: not-a-colour; }"))
-
-    def test_no_placeholder_survives_substitution(self):
-        """A missed %TOKEN% is a parse error GTK swallows one rule at a
-        time — the panel renders, slightly wrong, with nothing in the log."""
-        self.assertNotIn("%", self.sheet())
 
 
 if __name__ == "__main__":
