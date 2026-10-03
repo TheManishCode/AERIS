@@ -142,6 +142,14 @@ window borders from. A docked panel squares the two corners on the edge it is
 anchored to, because rounding a corner that sits on the screen boundary cuts a
 notch out of the panel and shows the desktop through the gap.
 
+Palisade's stylesheet is registered one step above `PRIORITY_USER`, so a riced
+`~/.config/gtk-4.0/gtk.css` cannot paint over it. Those themes routinely carry
+a blanket `window { background: <opaque>; }`, which outranks an application
+sheet and fills the corners the rounding cut away — and, less obviously, leaves
+nothing translucent for the compositor to blur through. Providers added with
+`add_provider_for_display` apply only inside this process, so nothing here can
+reach another application's windows.
+
 The glass is **real compositor blur**. Palisade only supplies a translucent tint;
 Hyprland composites the blur of whatever is actually behind the fence, live.
 PecoFence cannot do this — it samples a static wallpaper bitmap and states

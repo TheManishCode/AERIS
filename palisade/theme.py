@@ -52,6 +52,22 @@ FALLBACK = {
 _HEX = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 _NAME = re.compile(r"^[a-z0-9_]+$")
 
+#: Priority every Palisade provider is registered at: one above
+#: ``GTK_STYLE_PROVIDER_PRIORITY_USER`` (800).
+#:
+#: A desktop's own ``~/.config/gtk-4.0/gtk.css`` loads at USER, which outranks
+#: APPLICATION (600). Ricing themes routinely carry a blanket
+#: ``window { background: <opaque>; }``, and that beat our
+#: ``window.palisade { background: transparent; }`` — so every fence painted an
+#: opaque rectangle behind its rounded root. Visible as black corners where the
+#: rounding cut away, and it also quietly killed the compositor blur: there was
+#: nothing translucent left for Hyprland to blur through.
+#:
+#: Raising this is safe because a provider added with
+#: ``add_provider_for_display`` only applies within this process, so none of
+#: these rules can reach another application's windows.
+CSS_PRIORITY = 801
+
 
 @dataclass(frozen=True)
 class Theme:

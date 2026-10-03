@@ -23,6 +23,7 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 from .. import windows as hwindows
 from ..config import Fence, Settings
 from ..sources import Item, resolve, sort_items
+from ..theme import CSS_PRIORITY
 from .manipulate import Manipulator, make_resize_grip
 
 REFRESH_DEBOUNCE_MS = 180
@@ -211,7 +212,7 @@ class FenceWindow(Gtk.ApplicationWindow):
             f".fence-root.f-{self.fence.id} {{ background: {colour}; }}"
         )
         Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            Gdk.Display.get_default(), provider, CSS_PRIORITY
         )
         root.add_css_class(f"f-{self.fence.id}")
         if self.fence.dock:

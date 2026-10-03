@@ -1,5 +1,65 @@
 # Changelog
 
+## 2026-10-03 — The desktop's own GTK theme was painting over the glass
+
+Role: Frontend Engineer + QA Engineer
+Status: Fixed
+
+Reason:
+Reported: the rounded corners were not transparent — there was black outside
+the curve instead of whatever was behind the panel.
+
+Investigated:
+`~/.config/gtk-4.0/gtk.css` on this desktop carries a blanket
+`window { background: @window_bg_color; }`. A desktop's own gtk.css loads at
+`GTK_STYLE_PROVIDER_PRIORITY_USER` (800), which outranks the
+`PRIORITY_APPLICATION` (600) Palisade registered its sheet at — so that rule
+beat `window.palisade { background: transparent; }` and every fence painted an
+opaque `#121412` rectangle behind its rounded root. Visible as black corners
+where the rounding cut away.
+
+The same bug was silently defeating the blur. With an opaque window background
+there was nothing translucent for Hyprland to composite through, so the "real
+compositor blur" the README advertises was doing nothing on this desktop. The
+per-fence `opacity` setting was equally inert.
+
+Fixed:
+- `theme.CSS_PRIORITY` (801), used for both providers — the main sheet in
+  `Controller.apply_theme` and the per-fence tint in `FenceWindow._build_ui`.
+  Safe to raise: `add_provider_for_display` only applies within this process,
+  so none of these rules can reach another application's windows.
+
+Verification:
+- Measured, not eyeballed. Captured bare and with-panel back to back at the
+  same coordinates: the corner cut-out read `(17,19,17)` against a
+  `(240,239,236)` backdrop before, and now tracks the bare desktop to within
+  one level — `(21,21,21)` bare vs `(20,20,20)` with the panel, the remaining
+  difference being the shadow.
+- The dock's interior corner now shows wallpaper green `(38,60,41)` where it
+  previously showed flat near-black.
+- Translucency confirmed by moving one panel over two different backdrops and
+  checking its body colour changed with them.
+- Blur confirmed by magnifying across a panel edge: text outside the panel is
+  sharp, inside it is smooth with the compositor's blur noise.
+- 115 tests pass.
+
+Removed/Reverted:
+- None.
+
+Result:
+The corners show what is behind them, and the glass this project is built
+around actually works on a riced desktop.
+
+Known Issues:
+- A first measurement after the fix read `(32,32,32)` and looked like a
+  partial failure. The "bright" reference pixel was window text that had
+  changed between captures — the backdrop was not static. Re-measuring
+  back-to-back is what settled it. Worth remembering before trusting any
+  screenshot comparison on a live desktop.
+- `opacity` now genuinely takes effect, so the configured `0.55` is doing
+  something it previously was not. Left as-is: it reads well here, and seeing
+  through to the desktop is what was asked for.
+
 ## 2026-10-03 — A dock pushes panels aside, and wears the compositor's shape
 
 Role: Frontend Engineer + Product Designer + QA Engineer

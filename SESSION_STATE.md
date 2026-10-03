@@ -1,4 +1,4 @@
-# Session State — updated 2026-10-03 14:55
+# Session State — updated 2026-10-03 15:20
 
 Status: COMPLETE
 Task: Hover hints and adaptive unhide; then docks pushing panels aside, the
@@ -22,6 +22,13 @@ Done:
   shadow `0 2px 20px` matching its range/offset, hairline border from the
   Material primary. Colour was already read live from the palette.
 - Fixed: `close all` leaked per-fence geometry into `state.json`.
+- Fixed: the desktop's own `~/.config/gtk-4.0/gtk.css` was painting an opaque
+  `#121412` behind every fence (its `window { background: ... }` loads at
+  PRIORITY_USER, above our APPLICATION sheet). That is what made the rounded
+  corners read black, and it had also been silently killing the compositor
+  blur and the `opacity` setting. Palisade's providers now register at 801.
+  Measured back-to-back before and after; translucency and blur both verified
+  live.
 - 115 tests (19 new, `tests/test_workarea.py`), reflow proven against its own
   bug. README, CHANGELOG and a new TODO.md updated.
 

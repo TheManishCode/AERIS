@@ -28,7 +28,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 from . import hypr
 from .config import (CONFIG_PATH, Config, ConfigError, Fence, Source,
                      source_to_raw)
-from .theme import Theme, stylesheet
+from .theme import CSS_PRIORITY, Theme, stylesheet
 from .ui.fence import FenceWindow
 from .ui.picker import GroupPicker
 
@@ -175,7 +175,7 @@ class Controller:
         self._css = Gtk.CssProvider()
         self._css.load_from_string(css)
         Gtk.StyleContext.add_provider_for_display(
-            display, self._css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            display, self._css, CSS_PRIORITY
         )
 
     # --------------------------------------------------------------- windows
