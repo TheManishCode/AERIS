@@ -67,7 +67,11 @@ Changes:
   the Python side; a local change to it is worth not destroying.
 - `tools/split-repos.sh` — `git subtree split` into four standalone branches,
   with a pre-flight check that the generated installers are in step. Optional
-  `--push OWNER`.
+  `--push OWNER`. Run for real: four branches produced, nothing pushed. Each
+  carries one commit, not the pre-split history — subtree split does not
+  follow renames and every package directory was created in this commit. Said
+  so in the script and the README rather than leaving the earlier claim of
+  "real, attributable history" standing.
 - README, LICENSE and install.sh per package; root README is now a monorepo
   index. ARCHITECTURE.md moved into core and rewritten against what was built.
 
@@ -114,9 +118,10 @@ Four publishable repositories. Installing one module installs core and that
 module; installing all three installs core once. No module imports another.
 
 Known Issues:
-- `tools/split-repos.sh` has not been run end to end — the four branches have
-  not been produced, and nothing has been pushed. The repository URLs in the
-  READMEs and installers are `PALISADE_OWNER` placeholders.
+- Nothing has been pushed, and the repository URLs in the four READMEs and
+  four installers are `PALISADE_OWNER` placeholders that 404.
+- The published repos would start from one commit each (see above). Carrying
+  pre-split history across needs `git filter-repo`, which is not installed.
 - No module declares `commands` yet, so the IPC hook is wired but unexercised
   by a real module.
 - palisade-apps has no UI of its own beyond rows: the grid of installed

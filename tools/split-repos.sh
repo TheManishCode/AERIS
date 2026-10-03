@@ -5,9 +5,15 @@
 #   tools/split-repos.sh --push OWNER    # also push to github.com/OWNER/<name>
 #
 # `git subtree split` rewrites history so that each package's directory becomes
-# the root of its own branch, keeping only the commits that touched it. The
-# result is four repositories with real, attributable history rather than four
-# "initial commit" dumps.
+# the root of its own branch, keeping only the commits that touched it.
+#
+# A caveat worth knowing before you publish: subtree split does not follow
+# renames, and every package directory was created in a single restructuring
+# commit. So each branch starts with one commit today, and grows normally from
+# here. The full pre-split history stays in the monorepo, which each README
+# links to. If per-file history in the published repos matters to you, redo
+# this with `git filter-repo --path-rename` instead, which can map the old
+# `palisade/` paths onto the new ones.
 #
 # This is deliberately non-destructive: the monorepo is untouched and remains
 # the place to develop. Re-run it after any change and the branches move

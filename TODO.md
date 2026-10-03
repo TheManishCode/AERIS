@@ -34,10 +34,15 @@ from the taskbar, confirm `palisade tabs` reports `layer: bottom`.
 
 ## The split has not been taken the last step
 
-`tools/split-repos.sh` has never been run end to end: no `split/*` branches
-exist and nothing has been pushed. Before running it, replace the
+`tools/split-repos.sh` has been run and produced `split/palisade-{core,files,
+dock,apps}`, but nothing has been pushed. Before pushing, replace the
 `PALISADE_OWNER` placeholder in the four READMEs and the four installers with
 a real GitHub owner — they are currently URLs that 404.
+
+Each branch carries one commit rather than the pre-split history, because
+subtree split does not follow renames and every package directory was created
+in the restructuring commit. If that matters, redo the split with
+`git filter-repo --path-rename` (not installed) instead.
 
 Found 2026-10-03 when the four packages were created.
 

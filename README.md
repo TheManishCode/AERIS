@@ -53,9 +53,11 @@ tools/split-repos.sh                # four local branches, nothing pushed
 tools/split-repos.sh --push OWNER   # push each to github.com/OWNER/<name>
 ```
 
-`git subtree split` keeps real per-package history rather than producing four
-"initial commit" dumps, and is idempotent — re-run it and the branches move
-forward.
+`git subtree split` is idempotent: re-run it and the branches move forward.
+Note that it does not follow renames, and every package directory was created
+in one restructuring commit — so each branch starts at that commit and grows
+from there. Full history stays here. `git filter-repo --path-rename` is the
+route if you want the pre-split commits carried across.
 
 `CHANGELOG.md`, `SESSION_LOG.md` and `TODO.md` stay at this root and cover all
 four packages; the split repositories carry their own `README.md` and
