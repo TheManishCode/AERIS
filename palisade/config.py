@@ -343,7 +343,7 @@ class Group:
 class Settings:
     layer: str = "bottom"
     blur: bool = True
-    corner_radius: int = 20
+    corner_radius: int = 18
     font_scale: float = 1.0
     show_item_count: bool = True
     follow_material_you: bool = True
@@ -356,7 +356,7 @@ class Settings:
         return Settings(
             layer=layer,
             blur=bool(raw.get("blur", True)),
-            corner_radius=int(raw.get("corner_radius", 20)),
+            corner_radius=int(raw.get("corner_radius", 18)),
             font_scale=float(raw.get("font_scale", 1.0)),
             show_item_count=bool(raw.get("show_item_count", True)),
             follow_material_you=bool(raw.get("follow_material_you", True)),

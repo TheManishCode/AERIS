@@ -90,6 +90,9 @@ class Controller:
         self._peek_saved: dict[str, str] = {}
         self._picker: GroupPicker | None = None
         self._tab_seq = 0
+        #: fence id -> (home_x, home_y, placed_x, placed_y) for panels currently
+        #: shifted out from under a dock. Live only; see reflow_for_docks.
+        self._pushed: dict[str, tuple[int, int, int, int]] = {}
         # group id -> when a picker tab of it last closed itself on
         # click-away. See REOPEN_GUARD_S.
         self._dismissed_groups: dict[str, float] = {}
@@ -278,6 +281,109 @@ class Controller:
                 return rect.width, rect.height
         return 1920, 1080
 
+    def reserved_strips(self) -> dict[str, int]:
+        """Thickness each screen edge has reserved, from docks that are up.
+
+        Only counts docks that are actually on screen: a hidden taskbar has
+        released its column back to the compositor, so it must not go on
+        reserving one here.
+        """
+        strips = {"left": 0, "right": 0, "top": 0, "bottom": 0}
+        for win in self.windows.values():
+            edge = getattr(win.fence, "dock", "")
+            if not edge or win.hidden:
+                continue
+            thickness = win.width if edge in ("left", "right") else win.height
+            strips[edge] = max(strips[edge], thickness)
+        return strips
+
+    def work_area(self) -> tuple[int, int, int, int]:
+        """The screen minus what docks have reserved, as (x, y, w, h)."""
+        screen_w, screen_h = self._screen_size()
+        s = self.reserved_strips()
+        return (
+            s["left"],
+            s["top"],
+            max(1, screen_w - s["left"] - s["right"]),
+            max(1, screen_h - s["top"] - s["bottom"]),
+        )
+
+    @staticmethod
+    def _clamp_into(
+        origin: tuple[int, int],
+        size: tuple[int, int],
+        area: tuple[int, int, int, int],
+    ) -> tuple[int, int]:
+        """Nearest spot inside `area` that fits a panel of `size`.
+
+        Clamps rather than re-cascades on purpose: a panel pushed aside by a
+        dock should end up next to where you left it, not shuffled somewhere
+        new, because you still have to find it afterwards.
+        """
+        ax, ay, aw, ah = area
+        x = min(max(origin[0], ax), max(ax, ax + aw - size[0]))
+        y = min(max(origin[1], ay), max(ay, ay + ah - size[1]))
+        return x, y
+
+    def _dock_inset_area(self) -> tuple[int, int, int, int]:
+        """The work area, pulled in by a gap on each side a dock occupies.
+
+        A panel shoved flush against the taskbar reads as one wider panel —
+        the seam between them disappears — so a pushed panel keeps the same
+        breathing room a new tab gets from the screen edge.
+
+        Only edges a dock actually took are inset. Padding a bare screen edge
+        would drag a panel you deliberately parked near it back inwards every
+        time anything else opened, which is the kind of tidying nobody asked
+        for. The gap is also given up before the panel is: where there is not
+        room for both, it shrinks so the panel still lands on screen.
+        """
+        ax, ay, aw, ah = self.work_area()
+        s = self.reserved_strips()
+        pad_l = MARGIN if s["left"] else 0
+        pad_r = MARGIN if s["right"] else 0
+        pad_t = MARGIN if s["top"] else 0
+        pad_b = MARGIN if s["bottom"] else 0
+        while aw - pad_l - pad_r < 1 and (pad_l or pad_r):
+            pad_l, pad_r = pad_l // 2, pad_r // 2
+        while ah - pad_t - pad_b < 1 and (pad_t or pad_b):
+            pad_t, pad_b = pad_t // 2, pad_b // 2
+        return (ax + pad_l, ay + pad_t, aw - pad_l - pad_r, ah - pad_t - pad_b)
+
+    def reflow_for_docks(self) -> None:
+        """Move floating panels out from under a dock, and back when it goes.
+
+        A dock reserves a column *from the compositor*, which is what pushes
+        your windows aside. Layer surfaces are not subject to that — the
+        protocol's exclusive zone moves toplevels, not other layer surfaces —
+        so a tab sitting where the taskbar opens just disappears underneath it.
+        The compositor will not do this for us, so Palisade does.
+
+        A push is live-only and never persisted: the stored position stays the
+        panel's home, so closing the dock brings it back and so does a restart.
+        Dragging a pushed panel makes wherever you dropped it the new home.
+        """
+        area = self._dock_inset_area()
+        for fid, win in list(self.windows.items()):
+            if getattr(win.fence, "dock", "") or win.hidden:
+                continue
+            record = self._pushed.get(fid)
+            if record is not None and (win.x, win.y) == record[2:]:
+                # Untouched since we moved it, so reconsider from where it
+                # started — otherwise closing the dock would strand it.
+                origin = record[0], record[1]
+            else:
+                # Moved by hand (or never pushed): here is home.
+                self._pushed.pop(fid, None)
+                origin = win.x, win.y
+            want = self._clamp_into(origin, (win.width, win.height), area)
+            if want != (win.x, win.y):
+                win.move_to(*want)
+            if want == origin:
+                self._pushed.pop(fid, None)
+            else:
+                self._pushed[fid] = (origin[0], origin[1], want[0], want[1])
+
     def _cascade_origin(self, size: tuple[int, int]) -> tuple[int, int]:
         """Where to drop a new tab so it does not land exactly on another.
 
@@ -302,10 +408,14 @@ class Controller:
         cannot afford. Cascades down-right, wrapping back to the margin at the
         screen edge so a long run never walks a tab off the display.
         """
-        screen_w, screen_h = self._screen_size()
-        max_x = max(MARGIN, screen_w - size[0] - MARGIN)
-        max_y = max(MARGIN, screen_h - size[1] - MARGIN)
-        x, y = min(start[0], max_x), min(start[1], max_y)
+        # The work area, not the screen: a new tab must not open underneath a
+        # dock either, or the keybind appears to do nothing.
+        ax, ay, aw, ah = self.work_area()
+        lo_x, lo_y = ax + MARGIN, ay + MARGIN
+        max_x = max(lo_x, ax + aw - size[0] - MARGIN)
+        max_y = max(lo_y, ay + ah - size[1] - MARGIN)
+        x = min(max(start[0], ax), max_x)
+        y = min(max(start[1], ay), max_y)
         taken = [(w.x, w.y) for w in self.windows.values()]
 
         def occupied(px: int, py: int) -> bool:
@@ -322,7 +432,7 @@ class Controller:
             x += CASCADE_STEP
             y += CASCADE_STEP
             if x > max_x or y > max_y:
-                x, y = MARGIN, MARGIN
+                x, y = lo_x, lo_y
         return x, y
 
     def open_picker(self) -> dict:
@@ -381,6 +491,8 @@ class Controller:
             "layer": win.layer_name,
         })
         self._save_tabs(tabs)
+        # A dock just claimed its column, or a panel just landed next to one.
+        self.reflow_for_docks()
         return {"id": tab_id, "group": group_id, "x": win.x, "y": win.y}
 
     def spawn_adhoc(self, title: str, source: Source, **over) -> dict:
@@ -536,6 +648,8 @@ class Controller:
         for win in list(self.windows.values()):
             if getattr(win, "shows_hidden", False):
                 win.refresh()
+        # Hiding a dock gives its column back, and unhiding one takes it again.
+        self.reflow_for_docks()
 
     def hidden_fences(self) -> list[tuple[str, str]]:
         """Every panel currently hidden, as (id, title).
@@ -589,7 +703,10 @@ class Controller:
         self._save_tabs([t for t in self._tabs_state() if t.get("id") != tab_id])
         # A closed tab leaves no geometry worth keeping.
         self.state.get("fences", {}).pop(tab_id, None)
+        self._pushed.pop(tab_id, None)
         self._save_state()
+        # If that was a dock, its column is free again — bring everything home.
+        self.reflow_for_docks()
         return {"closed": tab_id}
 
     def close_all_tabs(self) -> dict:
@@ -600,6 +717,14 @@ class Controller:
                 win.shutdown()
                 win.destroy()
         self._save_tabs([])
+        self._pushed.clear()
+        # Same as close_tab: a closed tab leaves no geometry worth keeping.
+        # Dropping it here too stops `close all` accumulating dead entries in
+        # state.json for ids that will never be used again.
+        fences = self.state.get("fences", {})
+        for tab_id in ids:
+            fences.pop(tab_id, None)
+        self._save_state()
         return {"closed": ids}
 
     def restore_tabs(self) -> None:
@@ -649,6 +774,9 @@ class Controller:
         if len(kept) != len(self._tabs_state()):
             self._save_tabs(kept)
             self._save_state()
+        # A dock restored from config reserves its column before anything else
+        # is placed, so settle the rest around it once they all exist.
+        self.reflow_for_docks()
 
     def _restore_adhoc(self, tab: dict) -> bool:
         """Rebuild a tab that carries its own source. True if it was restored.

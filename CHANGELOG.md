@@ -1,5 +1,82 @@
 # Changelog
 
+## 2026-10-03 — A dock pushes panels aside, and wears the compositor's shape
+
+Role: Frontend Engineer + Product Designer + QA Engineer
+Status: Added, Fixed, Changed
+
+Reason:
+Reported: "the groups are there itself not being moved to not go under
+minimized like the tabs", then "correct the curve edges sticking out
+everywhere even on the minimise tabs and when the group moves add padding same
+as the tabs", and a standing ask to match the desktop's theme.
+
+Added:
+- `Controller.reserved_strips` / `work_area` / `reflow_for_docks`. A dock's
+  exclusive zone moves your *windows*; the protocol does not apply it to other
+  layer surfaces, so a panel sitting where the taskbar opened simply vanished
+  underneath it. Palisade now moves them itself, on spawn, close, hide,
+  unhide, restore, a finished drag, and the `move` verb.
+- `_dock_inset_area`: a pushed panel keeps `MARGIN` clear of the dock, the
+  same gap a new tab keeps from the screen edge. Only edges a dock actually
+  took are inset — padding a bare screen edge would drag a panel you parked
+  there on purpose back inwards every time anything opened.
+- A push is live-only and never persisted, so the stored position stays the
+  panel's home: closing the dock returns it, and so does a restart. Dragging a
+  pushed panel makes where you dropped it the new home.
+- `_free_origin` places into the work area rather than the raw screen, so a
+  new tab cannot open under a dock either.
+
+Fixed:
+- A docked panel rounded all four corners, so the two sitting on the screen
+  boundary cut a notch out of the panel and showed the desktop through the
+  gap — the curve appeared to stick out past the edge of the screen. Verified
+  by magnifying the corners before and after, not by eye at 1:1.
+- `close all` left per-fence geometry behind in `state.json` for ids that will
+  never be used again; `close` had always dropped it. Found while chasing a
+  "fresh" tab that came back collapsed at a stale position — which turned out
+  to be my own test error, but the leak behind it was real.
+
+Changed:
+- Theme geometry now follows the compositor instead of approximating it:
+  `corner_radius` 20 -> 18 to match `decoration:rounding`, shadow retuned to
+  the compositor's own range and offset (`0 2px 20px`, was `0 8px 28px`), and
+  the hairline border drawn from the Material primary at low alpha rather than
+  neutral `outline_variant` — the same token Hyprland draws window borders
+  from. Colour was already read live from the Material You palette; this is
+  the shape following suit.
+
+Verification:
+- Live, against the running compositor: a panel at 1452,300 moved to 1032,300
+  when the dock opened (420-wide dock at 1500, so exactly MARGIN clear) and
+  returned to 1452,300 when it closed. `move <id> 1700 300` with the dock up
+  reported back 1032 — the request is kept as the home, the panel goes where
+  it can be seen.
+- Corners captured at 5x before and after: top-right and bottom-right of the
+  dock were rounded cut-outs, now square; the interior top-left keeps its
+  curve. A floating tab's corner was clean throughout, which is what located
+  the fault in docking rather than in the stylesheet.
+- 115 tests (19 new in `tests/test_workarea.py`). The reflow tests were proven
+  against their own bug by making `reflow_for_docks` a no-op: 4 failed, and
+  the source was restored byte-identical.
+
+Removed/Reverted:
+- A first cut of the gap applied `MARGIN` to every edge of the work area. That
+  would have tidied a panel you deliberately parked near a screen edge, so it
+  was replaced with the dock-only inset above before going in.
+
+Result:
+Panels get out of the taskbar's way and come back when it leaves, and Palisade
+now takes its shape from the compositor as well as its colour.
+
+Known Issues:
+- `~/.config/gtk-4.0/gtk.css:312` uses `row:insensitive`, which GTK4 renamed
+  to `:disabled`, so the daemon logs one theme-parser warning on start. That
+  file belongs to the desktop's own theme, not to Palisade.
+- The docked taskbar still shows a resize grip in its corner. A dock's length
+  is the compositor's to decide; only its thickness is meaningful. Not fixed
+  here — logged in TODO.md.
+
 ## 2026-10-03 — Hover hints, and a panel comes back where you can see it
 
 Role: Frontend Engineer + UX + QA Engineer

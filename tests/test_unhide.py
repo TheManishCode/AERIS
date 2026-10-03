@@ -73,6 +73,10 @@ class Notifier:
 
     def __init__(self, windows):
         self.windows = windows
+        self.reflows = 0
+
+    def reflow_for_docks(self):
+        self.reflows += 1
 
 
 class Listening:
@@ -99,6 +103,13 @@ class HiddenSetChangedTests(unittest.TestCase):
         folder = Listening(shows_hidden=False)
         Notifier({"docs": folder}).hidden_set_changed()
         self.assertEqual(folder.refreshes, 0)
+
+    def test_panels_are_settled_around_whatever_is_now_docked(self):
+        """Hiding a dock gives its column back; the panels it pushed aside have
+        to be let home, and nothing else fires on that event."""
+        n = Notifier({"bar": Listening(shows_hidden=True)})
+        n.hidden_set_changed()
+        self.assertEqual(n.reflows, 1)
 
     def test_a_window_that_cannot_answer_is_skipped_not_fatal(self):
         class Older:

@@ -20,8 +20,38 @@ window.palisade {
 
 .fence-root {
   border-radius: %RADIUS%px;
-  border: 1px solid alpha(@m3_outline_variant, 0.55);
-  box-shadow: 0 8px 28px alpha(@m3_shadow, 0.40);
+  /* Tinted with the accent rather than neutral grey: Hyprland draws window
+   * borders from the same Material primary, so a panel reads as part of the
+   * desktop instead of a grey box sitting on it. Low alpha because this is
+   * a resting edge, not a focus indicator. */
+  border: 1px solid alpha(@m3_primary, 0.16);
+  /* Matches the compositor's own shadow geometry (range 20, offset 0 2) so
+   * fences and windows cast the same light. */
+  box-shadow: 0 2px 20px alpha(@m3_shadow, 0.22);
+}
+
+/* A dock is flush against the screen edge it is anchored to, so rounding the
+ * corners on that edge cuts a notch out of the panel and shows whatever is
+ * behind it through the gap — the curve appears to stick out past the screen.
+ * Square those two; the corners facing the desktop stay rounded. */
+.fence-root.dock-left {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.fence-root.dock-right {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.fence-root.dock-top {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.fence-root.dock-bottom {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 /* Opacity is per-fence, so the surface tint is applied inline by fence.py.

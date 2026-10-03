@@ -221,6 +221,10 @@ class Server:
             fid, win = self._fence(req)
             win.move_to(int(req["x"]), int(req["y"]))
             c.persist_fence(fid, x=win.x, y=win.y)
+            # Asked for a spot under a dock: honour it as the panel's home, but
+            # put the panel somewhere it can actually be seen. Reported back as
+            # the live position, not the requested one.
+            c.reflow_for_docks()
             return {"id": fid, "x": win.x, "y": win.y}
         if cmd == "resize":
             fid, win = self._fence(req)

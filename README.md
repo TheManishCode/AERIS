@@ -134,6 +134,14 @@ Material 3 tokens are read live from whatever matugen already generates for your
 desktop, so fences re-colour themselves when the wallpaper changes and sit inside
 your existing rice rather than beside it. No palette is hard-coded anywhere.
 
+The geometry follows the compositor for the same reason: `corner_radius`
+defaults to 18 to match Hyprland's `decoration:rounding`, the shadow uses the
+compositor's own range and offset, and the hairline border is drawn from the
+Material primary rather than a neutral grey — the same colour Hyprland draws
+window borders from. A docked panel squares the two corners on the edge it is
+anchored to, because rounding a corner that sits on the screen boundary cuts a
+notch out of the panel and shows the desktop through the gap.
+
 The glass is **real compositor blur**. Palisade only supplies a translucent tint;
 Hyprland composites the blur of whatever is actually behind the fence, live.
 PecoFence cannot do this — it samples a static wallpaper bitmap and states
@@ -317,6 +325,14 @@ column and sits beside the windows you are working in, so focus leaves it
 constantly; closing on that made it feel broken rather than tidy. It closes
 when you pick from it, press <kbd>Esc</kbd>, or toggle it. A *floating* picker
 still dismisses on click-away, where that is the obvious gesture.
+
+A dock also **pushes your panels aside**, with the same gap a new tab keeps
+from the screen edge. The exclusive zone it reserves moves your *windows* —
+the compositor does not apply it to other layer surfaces — so without this a
+panel sitting where the taskbar opens would simply disappear underneath it.
+The push is live only: the stored position stays the panel's home, so closing
+the dock puts it back, and so does a restart. Drag a pushed panel and wherever
+you drop it becomes the new home.
 
 All of it is scriptable, so it binds to keys too:
 

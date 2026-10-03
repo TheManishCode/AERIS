@@ -46,15 +46,33 @@ except (ImportError, ValueError) as exc:  # pragma: no cover - env without GTK
     raise unittest.SkipTest(f"GTK bindings unavailable: {exc}") from exc
 
 
+SIZE = (420, 460)
+
+
+class FakeFence:
+    dock = ""
+
+
 class FakeTab:
     def __init__(self, x, y):
         self.x, self.y = x, y
+        self.width, self.height = SIZE
+        self.fence = FakeFence()
+        self.hidden = False
 
 
 class Placer:
-    """The two placement methods, lifted off Controller with a fixed screen."""
+    """The two placement methods, lifted off Controller with a fixed screen.
+
+    `work_area` comes along because `_free_origin` places into it rather than
+    the raw screen — a new tab must not open underneath a dock either. With no
+    docked window present it reports the whole screen, so every expectation
+    below is unchanged by that.
+    """
 
     _free_origin = Controller._free_origin
+    reserved_strips = Controller.reserved_strips
+    work_area = Controller.work_area
 
     def __init__(self, tabs=(), screen=(1920, 1080)):
         self.windows = {str(i): FakeTab(*t) for i, t in enumerate(tabs)}
@@ -63,8 +81,6 @@ class Placer:
     def _screen_size(self):
         return self._screen
 
-
-SIZE = (420, 460)
 
 
 class FreeOriginTests(unittest.TestCase):

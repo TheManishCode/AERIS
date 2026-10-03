@@ -18,7 +18,7 @@ layer = "bottom"
 # whatever is actually behind, updated live — not a wallpaper snapshot.
 blur = true
 
-corner_radius = 20
+corner_radius = 18   # matches Hyprland decoration.rounding
 font_scale = 1.0
 show_item_count = true
 

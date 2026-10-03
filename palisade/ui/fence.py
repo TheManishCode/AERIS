@@ -214,6 +214,11 @@ class FenceWindow(Gtk.ApplicationWindow):
             Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
         root.add_css_class(f"f-{self.fence.id}")
+        if self.fence.dock:
+            # Squares the corners that sit on the screen edge — see the
+            # .dock-* rules. Set here rather than in _apply_dock because the
+            # layer surface is configured before this box exists.
+            root.add_css_class(f"dock-{self.fence.dock}")
         self._root = root
 
         # --- header
@@ -1074,6 +1079,10 @@ class FenceWindow(Gtk.ApplicationWindow):
         self.controller.persist_fence(
             self.fence.id, x=x, y=y, width=w, height=h
         )
+        # Dropped under a dock, or resized into one. Settling on release rather
+        # than during the drag: correcting under the pointer would fight the
+        # gesture, and a panel left beneath an opaque taskbar is simply gone.
+        self.controller.reflow_for_docks()
 
     # ------------------------------------------------- move / resize / layer
 
