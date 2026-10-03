@@ -58,6 +58,32 @@ window.palisade {
   box-shadow: 0 2px 20px alpha(@m3_shadow, 0.22);
 }
 
+/* A dock is tighter than a floating panel. 10px is right for something you
+ * read; a taskbar is furniture you scan down a narrow column, and the same
+ * inset there eats width that the window titles need and leaves the card
+ * swimming in its shell. 6px, and the gaps between its parts come in to
+ * match. */
+.fence-root.dock-left,
+.fence-root.dock-right,
+.fence-root.dock-top,
+.fence-root.dock-bottom {
+  padding: 6px;
+}
+
+.dock-left .fence-header,
+.dock-right .fence-header,
+.dock-top .fence-header,
+.dock-bottom .fence-header {
+  padding: 2px 4px 6px 4px;
+}
+
+.dock-left .mode-switch,
+.dock-right .mode-switch,
+.dock-top .mode-switch,
+.dock-bottom .mode-switch {
+  margin: 0 0 6px 0;
+}
+
 /* A dock is flush against the screen edge it is anchored to, so rounding the
  * corners on that edge cuts a notch out of the panel and shows whatever is
  * behind it through the gap — the curve appears to stick out past the screen.
