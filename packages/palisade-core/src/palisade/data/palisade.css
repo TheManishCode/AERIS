@@ -383,11 +383,24 @@ listview > row:selected .item:hover {
   background: mix(@m3_secondary_container, @m3_on_secondary_container, 0.10);
 }
 
-/* Keyboard focus must stay visible against both hover and selection. */
-gridview > child:focus .item,
-listview > row:focus .item {
-  outline: 2px solid @m3_primary;
-  outline-offset: -2px;
+/* Keyboard focus must stay visible against both hover and selection.
+ *
+ * Drawn as an inset shadow rather than an `outline`. GTK's outline is a
+ * rectangle and ignores the radius ladder entirely, so a focused row showed
+ * square corners inside a 6px item inside an 8px card — the one place in the
+ * whole sheet where the rounding broke, and it appeared exactly when the user
+ * was looking at that row.
+ *
+ * `inset` so it never grows the row: an outside ring on a row whose card is
+ * 5px away would collide with its neighbour. */
+listview > row:focus,
+gridview > child:focus {
+  outline: none;
+}
+
+gridview > child:focus-visible .item,
+listview > row:focus-visible .item {
+  box-shadow: inset 0 0 0 2px alpha(@m3_primary, 0.55);
 }
 
 .item-label {
