@@ -19,6 +19,7 @@ the rules for what restoring a pinned or fullscreen window means exist once.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from palisade.hypr import available
@@ -27,6 +28,31 @@ from palisade.hypr import hyprctl as _hyprctl
 SPECIAL = "special:minimized"
 FLAG = "minimized"
 STATE_PREFIX = "minstate:"
+
+#: A window address exactly as hyprctl reports it: `0x` and up to sixteen hex
+#: digits, being a 64-bit pointer.
+#:
+#: Every write below interpolates an address into a Lua expression that
+#: `hyprctl eval` runs inside the compositor. The quoting is single-quoted Lua
+#: string syntax, so an address containing `'` would close the string and the
+#: rest would be *executed* — `0x1') os.execute('…` and the compositor runs it.
+#:
+#: While the only source of addresses was `hyprctl clients -j` that was
+#: theoretical. It stopped being theoretical when these became IPC verbs:
+#: anything that can reach the control socket now chooses the string. So the
+#: address is validated here, at the boundary with Lua, rather than only in
+#: the callers — this is the last place that can refuse, and it must not
+#: depend on every future caller remembering.
+ADDRESS = re.compile(r"0x[0-9a-fA-F]{1,16}")
+
+
+def valid_address(address: object) -> bool:
+    """Whether `address` is safe to interpolate into a Lua expression.
+
+    `fullmatch`, not `match`: `0x1' .. evil` begins with a valid address and a
+    prefix match would wave it through.
+    """
+    return isinstance(address, str) and ADDRESS.fullmatch(address) is not None
 
 
 @dataclass(frozen=True)
@@ -125,11 +151,19 @@ def engine_available() -> bool:
     return available() and _eval("assert(type(Minimize) == 'table')")
 
 
+def restore_address(address: str) -> bool:
+    if not valid_address(address):
+        return False
+    return _eval(f"Minimize.restore_address('{address}')")
+
+
 def restore(win: Window) -> bool:
-    return _eval(f"Minimize.restore_address('{win.address}')")
+    return restore_address(win.address)
 
 
 def minimize(address: str) -> bool:
+    if not valid_address(address):
+        return False
     return _eval(f"Minimize.minimize_address('{address}')")
 
 
@@ -137,7 +171,13 @@ def restore_all() -> bool:
     return _eval("Minimize.restore_all()")
 
 
-def close(win: Window) -> bool:
+def close_address(address: str) -> bool:
+    if not valid_address(address):
+        return False
     return _hyprctl(
-        "dispatch", f"hl.dsp.window.close({{ window = 'address:{win.address}' }})"
+        "dispatch", f"hl.dsp.window.close({{ window = 'address:{address}' }})"
     ).strip().lower() == "ok"
+
+
+def close(win: Window) -> bool:
+    return close_address(win.address)
