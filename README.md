@@ -90,6 +90,16 @@ with a banner saying so.
 A `query` source is a live filtered walk across several roots — by extension,
 category, age, size or name. Nothing is moved to make the panel exist.
 
+### Thumbnails from the desktop's own cache
+
+AERIS reads what GIO has already generated under `~/.cache/thumbnails` and
+never generates one itself: a panel that spawned thumbnailers over a folder
+of RAW files would stall the compositor it is drawn on. A file whose
+thumbnail has not been made yet shows its content-type icon, and gets the
+picture once your file manager has been through that folder.
+
+![An icon-view panel showing image thumbnails](docs/assets/screenshots/gallery.png)
+
 ### One field, several modes
 
 Type in any panel. A plain word filters what is on screen; `~/Projects`

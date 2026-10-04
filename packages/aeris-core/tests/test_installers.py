@@ -330,5 +330,72 @@ class RepositoryUrlTests(unittest.TestCase):
                 self.assertIn(f"packages/aeris-{name}/install.sh", urls)
 
 
+class LegacyDetectionTests(unittest.TestCase):
+    """Core's installer has to notice a Palisade installation to remove it.
+
+    Leaving one is not harmless clutter: `palisade` stays on PATH and an
+    autostart line reading `palisade run` starts a second daemon that maps
+    the same panels over the top of the new one.
+
+    The launcher is very often a *symlink into a checkout* —
+    `aeris install-launcher` makes one deliberately. Rename or move that
+    checkout and the link dangles, at which point `-e` is **false** and the
+    stale command survives the upgrade. Found exactly that way on the
+    machine the rename was done on.
+    """
+
+    #: The installer's own test, lifted out so this runs the real thing
+    #: rather than a paraphrase of it.
+    def detects(self, launcher: Path) -> bool:
+        body = text("core")
+        start = body.index('if [ -e "$PREFIX/bin/palisade" ]')
+        snippet = body[start:body.index("\nfi", start) + 3]
+        script = (f'PREFIX="{launcher.parent.parent}"\nlegacy_found=""\n'
+                  f'{snippet}\n[ -n "$legacy_found" ] && echo yes || echo no')
+        out = subprocess.run(["bash", "-c", script],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout.strip() == "yes"
+
+    def setUp(self):
+        import tempfile
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.prefix = Path(self._tmp.name)
+        (self.prefix / "bin").mkdir()
+        self.launcher = self.prefix / "bin" / "palisade"
+
+    def test_a_real_file_is_detected(self):
+        self.launcher.write_text("#!/bin/sh\n")
+        self.assertTrue(self.detects(self.launcher))
+
+    def test_a_live_symlink_is_detected(self):
+        target = self.prefix / "real"
+        target.write_text("#!/bin/sh\n")
+        self.launcher.symlink_to(target)
+        self.assertTrue(self.detects(self.launcher))
+
+    def test_a_dangling_symlink_is_detected(self):
+        """The case `-e` alone gets wrong, and the likeliest one of the
+        three: the old launcher pointed into a checkout that the rename
+        moved."""
+        self.launcher.symlink_to(self.prefix / "gone")
+        self.assertFalse(self.launcher.exists(), "precondition: it dangles")
+        self.assertTrue(self.detects(self.launcher))
+
+    def test_nothing_there_is_not_detected(self):
+        """The other half. Reporting a removal on a clean machine would be
+        a lie printed at install time."""
+        self.assertFalse(self.detects(self.launcher))
+
+    def test_the_removal_covers_all_four_distributions(self):
+        body = text("core")
+        for dist in ("palisade-core", "palisade-files",
+                     "palisade-dock", "palisade-apps"):
+            with self.subTest(dist=dist):
+                self.assertIn(dist, body)
+
+
 if __name__ == "__main__":
     unittest.main()

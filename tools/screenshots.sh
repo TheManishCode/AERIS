@@ -102,8 +102,6 @@ for c in json.load(sys.stdin):
 for address in $PREMINIMIZED; do
     hyprctl eval "Minimize.restore_address('$address')" >/dev/null
 done
-# Not `[ -n ... ] && sleep`: under `set -e` that whole list failing when
-# nothing was minimized would abort the script.
 if [ -n "$PREMINIMIZED" ]; then sleep 0.5; fi
 
 say "Capturing on empty workspace $SCRATCH (returning to $ORIGINAL after)"

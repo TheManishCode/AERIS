@@ -147,7 +147,13 @@ legacy_found=""
 for dist in palisade-core palisade-files palisade-dock palisade-apps; do
     python3 -m pip show "$dist" >/dev/null 2>&1 && legacy_found="yes"
 done
-[ -e "$PREFIX/bin/palisade" ] && legacy_found="yes"
+# `-L` as well as `-e`: the old launcher is commonly a symlink into a
+# checkout (`aeris install-launcher` makes one), and once that checkout is
+# renamed the link dangles — at which point `-e` is **false** and the stale
+# `palisade` on PATH survives the upgrade. Found exactly that way here.
+if [ -e "$PREFIX/bin/palisade" ] || [ -L "$PREFIX/bin/palisade" ]; then
+    legacy_found="yes"
+fi
 
 if [ -n "$legacy_found" ]; then
     say "Removing the previous Palisade installation"

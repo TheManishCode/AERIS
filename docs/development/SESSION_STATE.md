@@ -1,49 +1,60 @@
-# Session State — updated 2026-10-04 22:40
+# Session State — updated 2026-10-04 22:30
 
-Status: BLOCKED
-Task: Finish the 31-item "AERIS 0.4.0" spec. 25 of 31 items are done and
-committed; the rest are blocked on things I cannot supply or install.
-Branch / worktree: master   Recovery point: b59d357 (clean tree, nothing staged)
+Status: COMPLETE
+Task: Rename the project from Palisade to AERIS, with a migration path for
+existing installations, and rebuild the README and documentation around real
+screenshots of the running application.
+Branch / worktree: `aeris`   Recovery point: `cf14e0d` (last commit as Palisade)
 
 Done:
-- A1-A8 complete. A5 (undo across edit modes) and A8 (omnibox history) landed
-  this session, both driven against a real widget and a real registry.
-- B9-B17 complete: run pane with exit status, GtkSourceView as an optional,
-  shebang runners, the 0px Markdown code block, "0 B" rows, the square focus
-  ring, the pipx hint, the version.
-- C18-C21 complete: four installer bugs fixed and the installers given tests.
-- D22-D24 complete: display gate, root skip, and a live viewer test file.
-- E25, E28, E29, E30, E31 complete: docs corrected, CI workflows and
-  CONTRIBUTING per package, set-owner.sh, verify-hyprland.sh, and a
-  split-repos.sh that keeps history.
-- Suites: core 563, files 301 (+4 skipped), dock 88, apps 67. All four exit 0
-  with no display too. Every shell script parses. Daemon healthy, no errors.
+- Every occurrence renamed: four distributions, the `aeris` import package,
+  the CLI, the layer-shell namespace, the application id, the service menus,
+  the stylesheet, the environment variables. 942 occurrences across 126
+  files, in ordered category passes rather than one blind substitution.
+  Verified: `git grep -ic palisade` is 74, every one of them a deliberate
+  compatibility or history reference.
+- Migration: config and state copied on first run and by `aeris migrate`;
+  `PALISADE_*` env vars still read; the `palisade.modules` entry-point group
+  still discovered; core's installer removes the previous installation.
+  16 tests, each proved by reintroducing its bug.
+- Four repositories became one. Installers clone the monorepo and install a
+  subdirectory; four per-package CI workflows became one root matrix
+  workflow; `split-repos.sh`, `set-owner.sh` and `gen-ci.py` removed with
+  the plan they served.
+- Nine real screenshots under `docs/assets/screenshots/`, captured with grim
+  from the live compositor by `tools/screenshots.sh` against a generated
+  throwaway home, its own backdrop surface, and the user's minimize drawer
+  emptied and restored around the shoot.
+- `docs/`: installation, configuration, usage, architecture (mermaid),
+  troubleshooting, decisions. `REFERENCE.md` and the core package's
+  `INSTALL.md` folded in rather than left to drift.
+- Verified live: all four suites pass with and without a display
+  (582/301/88/67); all four wheels build; installed from the clone; the
+  daemon runs, loads all three modules, reads the migrated config, and maps
+  a panel the compositor reports.
+- `tools/verify-hyprland.sh` now passes all four checks with no skips — two
+  bugs in the script itself, not in the code it checks.
 
 In flight:
-- Nothing. Tree clean, every change committed one concern at a time.
+- Nothing.
 
 Not started:
-- E26, the README redesign with hero images and a screenshot gallery.
-- E27, the sway-headless screenshot harness.
+- Nothing in scope.
 
 Blocked on:
-- **The GitHub owner.** TheManishCode is in 31 files. `tools/set-owner.sh
-  <owner>` rewrites them; `split-repos.sh --push` refuses until it has been.
-- **git-filter-repo** is not installed, so the rewritten split has never
-  produced a repository. `sudo pacman -S git-filter-repo`.
-- **sway** is not installed, so E27's harness cannot be written against
-  anything real. `sudo pacman -S sway`.
-- **E26 needs design decisions** the spec says to ask about: hero image
-  composition, gallery layout, what the screenshots show.
+- Nothing. The tree is ready to push; see "Resume by".
 
 Danger:
-- Nothing half-applied.
-- While testing the *old* split script I triggered a real `git push` to
-  `git@github.com:someone/aeris-core.git`. It failed — no such repository,
-  no credentials — and the four local `split/*` branches it made were
-  deleted. The rewritten script refuses before reaching a push. No remotes are
-  configured on this repository.
+- **The working directory is still named `/home/Fool/palisade`.** Harmless,
+  but renaming it will break `~/.local/bin/aeris` if that is ever pointed
+  back at the checkout, and any Dolphin tab open on it.
+- **`~/.config/hypr/custom/{rules,keybinds,execs}.lua` were edited** to say
+  `aeris` instead of `palisade`, because removing the old launcher broke
+  every keybind and the autostart line. Timestamped `.bak-*` files are
+  beside each. This is outside the repository.
+- **`~/.config/palisade/` and `~/.local/state/palisade/` still exist.** That
+  is deliberate — the migration copies — and they are safe to delete.
 
 Resume by:
-- Give me the GitHub owner, or run `tools/set-owner.sh <owner>` yourself.
-  Everything else for a push follows from that.
+- `git remote add origin https://github.com/TheManishCode/AERIS.git` and
+  `git push -u origin aeris:main`. Nothing has been pushed from here.

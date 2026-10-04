@@ -296,3 +296,57 @@ Next recommended action:
   you can see it next to a quickshell panel. If not, the alternative is
   raising `corner_radius` above 22 and going back to 10/5 — the ladder works
   either way, it just needs the room.
+
+## 2026-10-04 — Session Summary (evening): the AERIS rename
+
+What we did:
+- Renamed the project from Palisade to AERIS in ordered category passes —
+  environment variables, then import packages, then distribution names, then
+  the entry-point group, then prose, then the bare word — rather than one
+  substitution, so a surprising hit was attributable to a rule.
+- Built the compatibility surface the rename needed: `migrate.py` copies the
+  config and state directories on first run, `legacy_env` reads `PALISADE_*`
+  when `AERIS_*` is unset, the registry discovers both entry-point groups,
+  and core's installer removes the previous installation.
+- Collapsed the four-repository plan into one repository, which the install
+  URLs, the CI workflow and the tooling now reflect.
+- Wrote `tools/demo-content.py` and `tools/screenshots.sh` and captured nine
+  screenshots of the running application.
+- Rewrote the README and built `docs/`, folding `REFERENCE.md` and the core
+  package's `INSTALL.md` into it instead of leaving three places to drift.
+
+What worked:
+- All four suites, with a display and without: 582 / 301 / 88 / 67, and exit
+  0 on all four with `DISPLAY=` and `WAYLAND_DISPLAY=` unset.
+- All four wheels build with hatchling; data files, the Lua engine and the
+  `aeris.modules` entry points are all in them.
+- Installed from the clone, started the daemon, `aeris doctor` lists all
+  three modules, the migrated config is byte-identical to the Palisade one,
+  and `hyprctl layers` reports a mapped panel at the expected geometry.
+- `tools/verify-hyprland.sh`: all four checks pass, no skips. It had been
+  skipping the empty-workspace check since it was written, for a reason that
+  was its own (there is no `hl.dsp.workspace`; the dispatcher is
+  `hl.dsp.focus`), and then skipping the minimize check because check 1 left
+  it on the empty workspace it had just created.
+- 53 relative links and 9 image references across 20 markdown files all
+  resolve to tracked files; no orphaned assets.
+- Every new test was proved by reintroducing its bug and restoring:
+  3 migration bugs, 2 architecture-diagram bugs, 1 installer URL bug, 1
+  dangling-symlink bug.
+
+What's still broken / unfinished:
+- Nothing from this session. The open items are in `TODO.md` and the README's
+  known-limitations section, unchanged except for two entries that this
+  session closed and one it added.
+
+Not yet verified:
+- The install URLs are unreachable until the repository is pushed. The test
+  checks that each one names a path that exists *in this tree*, which is the
+  strongest check possible before a push, and is not the same as a 200.
+- No compositor other than Hyprland was driven.
+- The GtkSourceView path still has not executed here; `gtksourceview5` is
+  not installed. Four tests report skips.
+
+Next recommended action:
+- Add the remote and push: `git push -u origin aeris:main`. Then fetch one of
+  the four install URLs to confirm it resolves.
