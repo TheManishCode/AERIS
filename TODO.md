@@ -2,18 +2,6 @@
 
 Open items found in passing, specific enough to act on without rediscovery.
 
-## Docked panel shows a free-resize grip
-
-`packages/palisade-core/src/palisade/ui/fence.py` — `make_resize_grip` is added for every fence, including
-docked ones. A dock's length is the compositor's to decide (it spans the edge);
-only its thickness is meaningful, and `resize_to` already re-reserves the
-exclusive zone when a dock is resized. The corner grip implies two-axis resize
-that cannot work on that axis. Either hide the grip on a dock and expose
-thickness some other way, or constrain the grip to one axis when `fence.dock`
-is set.
-
-Found 2026-10-03 while magnifying the dock's bottom-right corner.
-
 ## Two docks on one edge stack outward with no warning
 
 `dock` is per-fence, so configuring two fences with `dock = "right"` reserves

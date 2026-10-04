@@ -23,7 +23,7 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 from ..config import Fence, Settings, Source
 from ..sources import Item, UnknownSource, resolve, sort_items
 from ..theme import CSS_PRIORITY
-from .manipulate import Manipulator, make_resize_grip
+from .manipulate import Manipulator, make_dock_grip, make_resize_grip
 
 REFRESH_DEBOUNCE_MS = 180
 
@@ -435,9 +435,12 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._stack.add_named(panel, "panel")
         root.append(self._stack)
 
-        # The grip rides in an overlay so it sits over the bottom-right
-        # corner without stealing a row from the layout.
-        self._grip = make_resize_grip()
+        # The grip rides in an overlay so it sits over the panel without
+        # stealing a row from the layout. A dock gets a different one: a pill
+        # on its inner edge rather than a corner wedge, because only its
+        # thickness is resizable and a corner implies both axes.
+        self._grip = (make_dock_grip(self.fence.dock) if self.fence.dock
+                      else make_resize_grip())
         self._grip.set_visible(not self.locked)
         overlay = Gtk.Overlay()
         overlay.set_child(root)

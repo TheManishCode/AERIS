@@ -1,5 +1,61 @@
 # Changelog
 
+## 2026-10-04 — A docked panel gets a grip that matches what it can do
+
+Role: Senior Product Designer + Frontend Engineer + QA Engineer
+
+Status: Added, Fixed
+
+Reason:
+Every panel got the same corner wedge, docked ones included. A dock spans its
+edge: the length is the compositor's to decide and only the thickness is the
+user's. So the corner grip promised a two-axis resize, and the length it
+changed was discarded on the next reflow. It also sat in the corner the dock
+shares with the screen edge, where it reads as decoration.
+
+Changes:
+- A docked panel gets a short pill on its *inner* edge instead: 32px along the
+  edge, 4px across, inset 4px, vertically or horizontally centred. Always
+  visible, unlike the floating grip — a dock has no title bar to grab and no
+  corner to find, so a hover-only handle is one you must already know about.
+- Dragging it changes one axis only. `Manipulator._resized` consults the
+  panel's edge; the length is never touched.
+- The direction is per edge. A right-hand dock is anchored right, so its left
+  edge moves and dragging *left* widens it — the obvious `w0 + dx` narrows it
+  instead, with the grip going one way and the panel the other.
+- Grip geometry lives in `theme.py` beside the other design constants, since
+  it is substituted into the stylesheet and `theme` is deliberately GTK-free.
+
+Removed/Reverted:
+- The corner wedge on docked panels. Floating panels keep it.
+- Two attempts that did not survive measurement, both recorded because each
+  looked right in isolation:
+  * `set_size_request(4, 32)` on the grip. The stylesheet silently overrode
+    it and the node came out **0px wide**, so nothing painted at all — while
+    the identical widget with a one-line stylesheet rendered fine, which is
+    what made it look like a widget bug for several rounds. Size is set in
+    CSS now, like everything else in this sheet.
+  * A transparent border with `background-clip: padding-box`, copied from the
+    scrollbar slider in this same sheet, to make the drag target wider than
+    the pill. GTK painted the whole 12px node anyway — a blob, not a handle.
+    The inset is a plain margin now.
+
+Verification:
+- `tests/test_dock_grip.py` is new (25). Most of it is the sign convention:
+  every edge grows when dragged away from its screen edge and shrinks when
+  dragged toward it, and the length is unchanged for any drag on any edge.
+- Measured on screen, not eyeballed: the pill renders at x=1664-1667 on a
+  dock whose edge is x=1660 — 4px wide, inset 4px — spanning y=546..577, so
+  32px tall, centred at y=561 against a surface centre of y=562.
+- 435 core tests pass; 761 across the four packages.
+
+Result:
+The handle on a dock looks like what it does, and does only what a dock can.
+
+Known Issues:
+- The 4px pill sits in a 12px node, so the drag target is wider than the paint.
+  That is deliberate; it has not been checked against a touchscreen.
+
 ## 2026-10-04 — The single-instance lock could be held by two daemons
 
 Role: Backend Engineer + QA Engineer

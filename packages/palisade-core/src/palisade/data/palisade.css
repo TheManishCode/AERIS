@@ -495,6 +495,40 @@ window.palisade:hover .fence-grip {
   color: @m3_primary;
 }
 
+/* A docked panel's grip. Always visible, unlike the floating one: a dock has
+ * no title bar to grab and no corner to find, so a handle that appears only
+ * on hover is a handle you have to already know about.
+ *
+ * Sized here rather than with `set_size_request`, which this sheet silently
+ * overrode — the node came out 0px wide and painted nothing at all. The
+ * padding is the drag target: it widens the node to 12px without widening
+ * the pill, because 4px is a painful thing to have to hit. */
+.dock-grip {
+  background: alpha(@m3_on_surface_variant, 0.32);
+  border-radius: 999px;
+  transition: background 120ms ease-out;
+}
+
+.dock-grip-upright {
+  min-width: %GRIP_THICKNESS%px;
+  min-height: %GRIP_LENGTH%px;
+  margin: 0 %GRIP_INSET%px;
+}
+
+.dock-grip-flat {
+  min-width: %GRIP_LENGTH%px;
+  min-height: %GRIP_THICKNESS%px;
+  margin: %GRIP_INSET%px 0;
+}
+
+window.palisade:hover .dock-grip {
+  background: alpha(@m3_on_surface_variant, 0.60);
+}
+
+.dock-grip:hover {
+  background: @m3_primary;
+}
+
 /* A locked fence says so quietly on its header rather than in a dialog. */
 .fence-locked-hint {
   font-size: %FONT_SM_PT%pt;

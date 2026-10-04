@@ -36,6 +36,19 @@ KEEP_ON_SCREEN = 72
 
 MIN_W, MIN_H = 180, 90
 
+#: Per dock edge: which dimension the grip changes, which way the cursor must
+#: travel to grow it, where the grip sits, and whether the pill stands upright.
+#:
+#: The sign is the part that is easy to get wrong. A right-hand dock is
+#: anchored to the right edge, so its left edge is the one that moves:
+#: dragging *left* makes it wider, and a naive `w0 + dx` would narrow it.
+DOCKS = {
+    "left":   ("width",  +1, Gtk.Align.END,    Gtk.Align.CENTER, True),
+    "right":  ("width",  -1, Gtk.Align.START,  Gtk.Align.CENTER, True),
+    "top":    ("height", +1, Gtk.Align.CENTER, Gtk.Align.END,    False),
+    "bottom": ("height", -1, Gtk.Align.CENTER, Gtk.Align.START,  False),
+}
+
 
 class Manipulator:
     """Wires move/resize gestures onto one fence window.
@@ -106,8 +119,25 @@ class Manipulator:
         if self._mode == "move":
             self._win.move_to(*self._clamp_move(x0 + dx, y0 + dy))
         else:
-            self._win.resize_to(max(MIN_W, w0 + dx), max(MIN_H, h0 + dy))
+            self._win.resize_to(*self._resized(w0, h0, dx, dy))
         return True
+
+    def _resized(self, w0: int, h0: int, dx: int, dy: int) -> tuple[int, int]:
+        """The size this drag asks for, constrained by the panel's edge.
+
+        A dock spans its edge: the length is the compositor's to decide and
+        only the thickness is the user's. A free corner drag changed both, and
+        the length went back on the next reflow — so the grip was promising
+        something it could not deliver, in the one direction that looked like
+        it should work.
+        """
+        edge = getattr(getattr(self._win, "fence", None), "dock", None)
+        if edge not in DOCKS:
+            return max(MIN_W, w0 + dx), max(MIN_H, h0 + dy)
+        axis, sign, *_ = DOCKS[edge]
+        if axis == "width":
+            return max(MIN_W, w0 + sign * dx), h0
+        return w0, max(MIN_H, h0 + sign * dy)
 
     def _end(self) -> None:
         if self._tick is not None:
@@ -129,6 +159,35 @@ class Manipulator:
         x = max(KEEP_ON_SCREEN - self._win.width, min(x, mw - KEEP_ON_SCREEN))
         y = max(0, min(y, mh - KEEP_ON_SCREEN))
         return x, y
+
+
+def make_dock_grip(edge: str) -> Gtk.Widget:
+    """The handle on a docked panel: a short pill on its inner edge.
+
+    Not the corner wedge a floating panel gets. That one means "drag me in two
+    directions", which is false here, and it sits in a corner the dock shares
+    with the screen edge — so it reads as decoration rather than a control.
+
+    Always visible, unlike the floating grip. A dock has no title bar to grab
+    and no corner to find, so a handle that appears only on hover is a handle
+    you have to already know about.
+    """
+    _axis, _sign, halign, valign, upright = DOCKS[edge]
+    grip = Gtk.Box()
+    grip.add_css_class("dock-grip")
+    grip.add_css_class("dock-grip-upright" if upright else "dock-grip-flat")
+    grip.set_halign(halign)
+    grip.set_valign(valign)
+    # Size comes from the stylesheet, not `set_size_request`: the sheet
+    # overrode the request and left the node 0px across, which paints nothing.
+    try:
+        from gi.repository import Gdk
+
+        grip.set_cursor(Gdk.Cursor.new_from_name(
+            "ew-resize" if upright else "ns-resize", None))
+    except (ImportError, TypeError):
+        pass
+    return grip
 
 
 def make_resize_grip() -> Gtk.Widget:

@@ -55,3 +55,13 @@ Danger:
 
 Resume by:
 - Items 2, 3 and 9, which are decided and self-contained.
+
+<!-- machine-record: written by session-state hook, do not edit -->
+## Machine record — 2026-10-04 08:10:23
+
+Session ended here. Facts at that moment, recorded by hook:
+
+- Branch: `master`  HEAD: `10fc55c`
+- Uncommitted files: 0
+
+If the narrative above disagrees with this, trust this block and the tree.

@@ -128,6 +128,21 @@ SPACING: dict[str, tuple[int, int, int]] = {
 #: all the way to 0 — at 10/5 an 18px shell would otherwise descend to 3.
 MIN_ITEM_RADIUS = 6
 
+#: A docked panel's grip: the painted pill is GRIP_LENGTH along the edge it
+#: sits on and GRIP_THICKNESS across it, inset GRIP_INSET from that edge.
+#:
+#: The inset is a margin, which also separates the pill from the panel edge.
+#:
+#: Here rather than in `ui.manipulate` because these are substituted into the
+#: stylesheet, and this module is deliberately free of GTK so it stays
+#: testable with no display.
+GRIP_LENGTH, GRIP_THICKNESS, GRIP_INSET = 32, 4, 4
+
+#: The node's full size, pill plus the inset on both sides. This is the drag
+#: target, which wants to be bigger than 4px however thin the pill looks.
+GRIP_NODE_LONG = GRIP_LENGTH + 2 * GRIP_INSET
+GRIP_NODE_SHORT = GRIP_THICKNESS + 2 * GRIP_INSET
+
 
 def ladder(radius: int, shell_pad: int, card_pad: int) -> tuple[int, int]:
     """(card, item) radii for a shell of `radius`.
@@ -168,6 +183,9 @@ def stylesheet(theme: Theme, *, radius: int, font_scale: float,
     static = static.replace("%PAD_SHELL%", str(shell_pad))
     static = static.replace("%PAD_CARD%", str(card_pad))
     static = static.replace("%PAD_DOCK%", str(dock_pad))
+    static = static.replace("%GRIP_INSET%", str(GRIP_INSET))
+    static = static.replace("%GRIP_LENGTH%", str(GRIP_LENGTH))
+    static = static.replace("%GRIP_THICKNESS%", str(GRIP_THICKNESS))
     # The ladder, once per rhythm: a floating panel insets by `shell_pad`, a
     # dock by the narrower `dock_pad`, and both then inset the card by
     # `card_pad`.
