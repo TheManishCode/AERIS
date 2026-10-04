@@ -1,67 +1,44 @@
-# Session State — updated 2026-10-04 07:55
+# Session State — updated 2026-10-04 17:35
 
 Status: IN PROGRESS
-Task: Work through the 31-item "finish Palisade 0.4.0" spec, plus a security
-and gap sweep Boss asked for on top of it.
-Branch / worktree: master   Recovery point: 7aab06a (tree clean)
+Task: Working the 31-item "finish Palisade 0.4.0" spec. This stretch covered
+spec items 2 (dock grip), 3 (breadcrumb) and 9 (viewer output pane), plus a
+regression of my own that items 2 found.
+Branch / worktree: master   Recovery point: 8ba460f (clean tree, nothing staged)
 
-Boss's UI decisions, taken 2026-10-04, still not built:
-- Item 2, docked grip: a short centred 32px pill, inset 4px, always visible.
-- Item 3, breadcrumb: last two segments only, `... / invoices / 2026`.
-- Item 9, viewer output pane: below the content, a fixed third of the panel
-  height, scrolling independently.
-Move these into DECISIONS.md as they are built.
-
-Done this session:
-- Item 4 spacing (2f5c0be); `palisade list` could not see a tab (bb0ccd6);
-  A6 apps-pinning docs (4f1cb27).
-- A7 in four commits: Lua address validation (07cc8a4), the dock's five IPC
-  verbs + describe (2286d9d), CLI passthrough (1adc83f), the desktop-entry
-  TypeError (4f62f21). Each verified green in its own worktree.
-- Security and gap sweep, six findings, each fixed with the test that catches
-  it and each reproduced before fixing:
-  * 86177f6 the suite segfaulted with no display — one crash was mine from
-    4f62f21, one pre-existing in palisade-files.
-  * fae6103 the editor temp file was 0644 and symlink-steerable.
-  * dcb6c3a one silent client froze the entire daemon.
-  * 45d4a56 move/resize accepted any integer; 10^9 px was allocated and
-    persisted.
-  * a2910a6 release() unlinked a lock file a successor may hold -> two daemons.
-  * 7aab06a the sweep written up in SECURITY.md, including what was checked
-    and found sound.
-- 745 tests (was 601 at session start). Every package runs headless; exactly
-  one test needs a display and skips visibly.
+Done:
+- Item 2, dock grip. Committed 8abff1b. Verified on screen: 32x4px pill against
+  the panel edge, centred within 1px of the surface centre.
+- Item 3, breadcrumb. Committed 31dfc26. Verified by driving a real
+  FenceWindow three levels down: 'clients', 'clients / invoices',
+  '… / invoices / 2026', tooltip holding the full path, and both the way back
+  up and home restoring the earlier labels.
+- Item 9, viewer output pane. Committed d3a5abe. Verified by driving a real
+  Viewer over a script printing 40 lines at five panel heights; the file stayed
+  in the body with its scroll untouched, the output tailed itself, and the pane
+  tracked each resize.
+- Headless regression fixed. Committed 8ba460f. `test_dock_grip.py` had gone in
+  without a display gate and the no-display run was segfaulting at 15%.
 
 In flight:
-- Nothing. Tree clean at 7aab06a.
+- Nothing. Tree is clean and both runs are green on all four packages:
+  with a display 458/219/79/67, without 451+7skip / 218+1skip / 79 / 67.
 
 Not started:
-- Items 2, 3, 9 (decided, unblocked).
-- A5 (edit undo via one `_doc` buffer), A8 (completion history), B10-B17,
+- Spec A5 (edit undo across modes), A8 (completion history), B10-B17,
   C18-C21, D23-D24, E25-E31.
 
 Blocked on:
-- Nothing.
+- The real GitHub owner for `PALISADE_OWNER`, which appears in 20 files
+  including all four installers and all four READMEs. The spec says not to
+  guess it, so nothing can be pushed until Boss supplies it.
 
 Danger:
-- A module verb is looked up before core's built-in table, so one named
-  `reload` would silently shadow core's. Not detected. The dock is tested not
-  to collide; the next module is unprotected. Needs a decision, not a quiet
-  fix — TODO.md has the options.
-- A daemon runs from the working tree via PYTHONPATH. `palisade reload`
-  re-reads config but NOT Python modules; a source change needs a full restart
-  or you measure the old code.
-- `tab-15` (Downloads) is on screen at 1224,572, layer bottom, as found.
+- Nothing half-applied. The daemon running is the current build.
+- `tools/split-repos.sh` has not been re-run since these four commits, so
+  `split/` does not exist and the four subtree branches are stale.
 
 Resume by:
-- Items 2, 3 and 9, which are decided and self-contained.
-
-<!-- machine-record: written by session-state hook, do not edit -->
-## Machine record — 2026-10-04 08:10:23
-
-Session ended here. Facts at that moment, recorded by hook:
-
-- Branch: `master`  HEAD: `10fc55c`
-- Uncommitted files: 0
-
-If the narrative above disagrees with this, trust this block and the tree.
+- Either supplying the GitHub owner so the split can be regenerated and pushed,
+  or picking up the next spec item (A5 is the largest remaining user-visible
+  gap).
