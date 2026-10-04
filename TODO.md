@@ -121,3 +121,14 @@ item count; `tabs` has the group id — so neither is redundant today. But two
 verbs over one set invites drift. Decide whether `tabs` becomes `list` with a
 projection, or gains a filter to live up to its name, next time the CLI surface
 is revised.
+
+## The config file is world-readable
+
+`palisade init` writes `~/.config/palisade/palisade.toml` with the default
+umask, so it lands 0644. It holds the paths of every folder you keep a panel
+on, which another local account can then read. 0644 is the convention for a
+config file and nothing secret belongs in it, so this is noted rather than
+changed — but if `[settings]` ever gains a field that is sensitive, the file
+needs to become 0600 at creation and this entry is the reason why.
+
+Found 2026-10-04 in the security sweep; recorded in SECURITY.md.
