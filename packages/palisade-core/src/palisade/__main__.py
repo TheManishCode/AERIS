@@ -8,7 +8,37 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "0.1.0"
+def _version() -> str:
+    """What `palisade --version` reports.
+
+    This was a hard-coded "0.1.0" while the packages said 0.3.0 — a literal
+    that has to be edited in five places on every release, so it was not, and
+    the one place a user can actually ask was the one that lied.
+
+    `importlib.metadata` is the installed answer and is therefore right by
+    construction. It is absent when running from a checkout with
+    `PALISADE_MODULES` set and nothing installed, which is how this is
+    developed, so that falls back to reading the package's own pyproject.
+    """
+    try:
+        from importlib.metadata import version
+
+        return version("palisade-core")
+    except Exception:
+        pass
+    try:
+        import tomllib
+
+        root = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        with root.open("rb") as fh:
+            return tomllib.load(fh)["project"]["version"]
+    except Exception:
+        # Neither installed nor in a checkout. Saying so beats inventing a
+        # number that a bug report would then be filed against.
+        return "unknown"
+
+
+VERSION = _version()
 
 
 def _default_config_text() -> str:

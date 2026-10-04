@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — unreleased
+
+The version the four packages now declare. Dated and summarised when the
+release is actually cut; until then the entries below are the record, newest
+first, and this heading exists so `palisade --version` and this file cannot
+disagree about which tree you are reading.
+
 ## 2026-10-04 — Run says how it went, and runs what you are looking at
 
 Role: Senior Product Designer + Frontend Engineer + QA Engineer
