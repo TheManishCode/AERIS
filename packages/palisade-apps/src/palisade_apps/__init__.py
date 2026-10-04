@@ -7,10 +7,12 @@ Anything that appears to do this on Wayland is either rendering the other
 program itself (an Electron webview, a terminal emulator) or is a compositor
 plugin rather than a client. Palisade is a client.
 
-What is achievable is here: every installed application as rows you can group,
-search and launch like any other panel content — and, on Hyprland, *pinning* a
-window so the compositor parks it exactly over a panel's rectangle. That looks
-embedded and is still a separate toplevel; see DECISIONS.md.
+What is here: every installed application as rows you can group, search and
+launch like any other panel content.
+
+Pinning a window so the compositor parks it over a panel's rectangle — the
+honest version of "embedded" — is an idea, not code. This docstring used to
+describe it alongside the shipped behaviour; nothing below implements it.
 
 Imports `palisade` (core) and nothing from the other two modules.
 """

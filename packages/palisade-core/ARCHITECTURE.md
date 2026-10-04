@@ -19,8 +19,8 @@ fourth is the thing they all stand on.
 │ palisade-dock    │ │ palisade-files   │ │ palisade-apps    │
 │ minimized apps   │ │ folders & files  │ │ installed apps   │
 │ · minimize engine│ │ · folder sources │ │ · .desktop scan  │
-│ · window source  │ │ · the viewer     │ │ · launch · pin   │
-│ · docked taskbar │ │ · markdown, run  │ │                  │
+│ · window source  │ │ · the viewer     │ │ · launch         │
+│ · docked taskbar │ │ · markdown, run  │ │ · omnibox search │
 └──────────────────┘ └──────────────────┘ └──────────────────┘
        no arrows between these three — that is the point
 ```
@@ -189,10 +189,15 @@ other panel content.
 application *inside* a Palisade panel. Wayland has no XEmbed — a client cannot
 host another client's surface, and only the compositor composites windows.
 Anything claiming otherwise on Wayland is either an Electron webview or a
-compositor plugin. What is achievable, and what this module does, is launch
-apps and — on Hyprland — *pin* a chosen window to sit exactly over a panel's
-rectangle, which looks embedded and is still a separate toplevel. See
-`DECISIONS.md`.
+compositor plugin.
+
+What it does is scan `.desktop` entries, offer them as rows and in the
+omnibox, and launch them. That is the whole of it today.
+
+There is an idea for going further — ask Hyprland to float a window and park
+it over a panel's rectangle, which would look embedded while still being a
+separate toplevel and the compositor doing the work. It is **not built**, and
+earlier revisions of this file described it as though it were. See TODO.md.
 
 ## Repository layout
 

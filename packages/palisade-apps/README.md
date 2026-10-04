@@ -66,10 +66,14 @@ composites windows, and Palisade is a client. Anything that appears to do this
 on Wayland is either rendering the other program itself (an Electron webview,
 a terminal emulator) or is a compositor plugin rather than a client.
 
-What is achievable, and is the honest version of the idea, is **pinning**: ask
-Hyprland to float a window and park it exactly over a panel's rectangle. It
-looks embedded, it is still a separate toplevel, and it is the compositor
-doing the work. See DECISIONS.md in core.
+**It does not pin windows either — not yet.** The honest version of the
+embedding idea is to ask Hyprland to float a window and park it exactly over a
+panel's rectangle: it would look embedded, it would still be a separate
+toplevel, and the compositor would be doing the work. That is designed and not
+built. Earlier revisions of this README described it in a way that read as a
+shipped feature; it is a plan. See TODO.md in the monorepo root.
+
+What this module does ship is the catalogue, omnibox search, and launching.
 
 ---
 

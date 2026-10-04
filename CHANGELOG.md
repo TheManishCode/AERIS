@@ -1,5 +1,62 @@
 # Changelog
 
+## 2026-10-04 — Stop the docs promising a pinning feature that does not exist
+
+Role: Technical Writer + owning engineer
+
+Status: Fixed, Removed
+
+Reason:
+`palisade-apps` has never pinned a window. ARCHITECTURE.md said otherwise in
+the present tense — *"what this module does, is launch apps and — on Hyprland
+— pin a chosen window"* — and its module diagram listed `launch · pin`. The
+README presented pinning as "the honest version of the idea" directly beneath
+a heading about what the module cannot do, which reads as a shipped feature,
+and the module's own docstring listed it beside the shipped behaviour.
+
+All three then referred the reader to a `DECISIONS.md` section on pinning.
+There has never been one. A dead cross-reference is worse than no reference:
+the reader assumes the rationale exists somewhere and stops looking.
+
+Ground truth: `MODULE` registers `sources`, `activate` and `omnibox`. No
+command, no action, and `activate` only launches.
+
+Changes:
+- ARCHITECTURE.md: the apps cell is now `· launch` / `· omnibox search`, and
+  the prose states what the module does, then marks pinning **not built** and
+  points at TODO.md. Diagram column widths preserved.
+- `palisade-apps/README.md` and `palisade_apps/__init__.py`: same correction.
+  The design idea is kept — it is worth building — but labelled a plan.
+- TODO.md's own entry claimed "nothing claims it works", which was wrong; it
+  now records what each file actually said.
+
+Removed/Reverted:
+- Three `See DECISIONS.md` references to a section that was never written.
+- The `pin` cell from the module diagram.
+
+Verification:
+- `palisade-apps/tests/test_docs_honesty.py` (7) and
+  `palisade-core/tests/test_architecture_doc.py` (6) are new. They guard the
+  rule, not the wording: pinning may be discussed, but not in a paragraph that
+  fails to mark it unbuilt, and no paragraph mentioning it may cite
+  DECISIONS.md. Ground truth is asserted from `MODULE.commands`/`actions`, so
+  when pinning ships the test flips and forces the prose to be revisited.
+  Word-boundary matched — "opinion", "typing" and "grouping" all contain
+  "pin" and the file's existing prose would have tripped a substring check.
+- Split across the two packages on purpose: an apps test that read core's
+  ARCHITECTURE.md would break when the package is split out to its own repo.
+- The core test also asserts the hand-drawn module boxes stay a single width.
+- All three false claims were reintroduced to confirm the tests catch them:
+  3 of 6 failed in core, 3 of 7 in apps. Sources then restored byte-identically.
+- 621 tests pass across all four packages.
+
+Result:
+The docs describe the module that exists. The pinning idea survives as an
+explicitly unbuilt one.
+
+Known Issues:
+- Whether to build pinning at all is still open. TODO.md carries it.
+
 ## 2026-10-04 — `list` could not see a tab
 
 Role: Backend Engineer + QA Engineer

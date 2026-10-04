@@ -65,9 +65,14 @@ keep the buffer across the toggle, or say so in the Done tooltip.
 ## palisade-apps has rows but no pinning
 
 The catalogue, search and launch work and are tested. The *pin a window over a
-panel's rectangle* idea described in its README and in ARCHITECTURE.md is
-designed and not built. Nothing claims it works, but the README describes it
-as achievable, which is a promise to either keep or delete.
+panel's rectangle* idea is designed and not built.
+
+This entry used to say "nothing claims it works". That was wrong:
+ARCHITECTURE.md said "what this module does, is launch apps and — on Hyprland
+— *pin* a chosen window", the module docstring listed it beside the shipped
+behaviour, and three places pointed at a `DECISIONS.md` pinning section that
+has never existed. All four now say it is unbuilt. The decision to build it or
+drop it is still open — what is closed is the docs implying it is done.
 
 ## No module exercises the IPC hook
 
