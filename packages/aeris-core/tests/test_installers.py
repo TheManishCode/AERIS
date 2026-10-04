@@ -284,14 +284,25 @@ class RepositoryUrlTests(unittest.TestCase):
         if (ROOT / "docs").is_dir():
             yield from sorted((ROOT / "docs").rglob("*.md"))
 
+    @staticmethod
+    def _repo(name: str) -> str:
+        """`AERIS` and `AERIS.git` are one repository.
+
+        The `.git` suffix is the clone-URL form and appears wherever a
+        `git clone` line does. Treating it as a different name made this
+        test fail on a correct URL, which would have taught the next person
+        to delete the test rather than the inconsistency it exists for.
+        """
+        return name[:-4] if name.endswith(".git") else name
+
     def repos(self):
         found: dict[tuple[str, str], list[str]] = {}
         for path in self.sources():
             text = path.read_text()
             for owner, repo in self.REPO.findall(text):
-                found.setdefault((owner, repo), []).append(path.name)
+                found.setdefault((owner, self._repo(repo)), []).append(path.name)
             for owner, repo, _ref, _rest in self.RAW.findall(text):
-                found.setdefault((owner, repo), []).append(path.name)
+                found.setdefault((owner, self._repo(repo)), []).append(path.name)
         # Third-party links are not ours to be consistent about.
         return {k: v for k, v in found.items() if k[1].lower().startswith("aeris")}
 
