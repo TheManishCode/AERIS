@@ -137,6 +137,28 @@ def _eval(lua: str) -> bool:
     return _hyprctl("eval", lua).strip().lower() == "ok"
 
 
+def active_address() -> str | None:
+    """The focused window's address, or None when nothing is focused.
+
+    `palisade minimize` with no argument is the gesture people actually want:
+    the window you are looking at is the one you want out of the way, and
+    making them look up a hex address first means the CLI is only usable by a
+    script that already called `hyprctl`.
+    """
+    try:
+        data = json.loads(_hyprctl("activewindow", "-j") or "{}")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    address = data.get("address")
+    # Validated here and not merely at the boundary: this value is read from
+    # the compositor and then interpolated into Lua, so it goes through the
+    # same gate as anything a user typed. A trusted-looking source is not a
+    # reason to skip the check — see SECURITY.md.
+    return address if valid_address(address) else None
+
+
 def engine_available() -> bool:
     """Whether custom/minimize.lua is loaded in the running compositor.
 

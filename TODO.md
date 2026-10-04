@@ -14,11 +14,15 @@ as a mystery.
 ## Empty-workspace branch of `unhide` not driven live
 
 `Controller.unhide` picks `bottom` when the active workspace has no windows.
-Unit-tested in `packages/palisade-core/tests/test_unhide.py`; never exercised against the compositor,
-because this machine's Hyprland config wraps `dispatch` in Lua
-(`hyprctl dispatch workspace empty` is a parse error) and every workspace held
-a window. To check by hand: clear a workspace, `palisade hide <id>`, unhide
-from the taskbar, confirm `palisade tabs` reports `layer: bottom`.
+Unit-tested in `packages/palisade-core/tests/test_unhide.py`; still never
+exercised against the compositor, because this machine's Hyprland config
+wraps `dispatch` in Lua and neither the Lua form nor the plain form switches
+to an empty workspace from a script here.
+
+`tools/verify-hyprland.sh` automates the check and reports it as a **skip**
+on this machine rather than a pass. On a stock Hyprland it should run: clear a
+workspace, then `tools/verify-hyprland.sh`. The minimize/restore half of that
+script does pass here.
 
 ## The split has not been taken the last step
 

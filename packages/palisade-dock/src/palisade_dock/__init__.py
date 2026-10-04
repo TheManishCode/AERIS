@@ -132,16 +132,62 @@ def _one_address(req: dict, verb: str) -> str:
     return address
 
 
+def _args(req: dict) -> list[str]:
+    args = req.get("args") or []
+    if isinstance(args, str):           # a caller that sent one string
+        args = [args]
+    return args if isinstance(args, list) else []
+
+
 def cmd_minimize(controller, req: dict) -> dict:
-    """Park a window on the minimized workspace. Takes one window address."""
-    address = _one_address(req, "minimize")
+    """Park a window on the minimized workspace.
+
+    With no argument, the focused window — which is the gesture people
+    actually want. Requiring a hex address first makes the verb usable only by
+    something that has already called `hyprctl`, which is a strange thing to
+    demand of a command whose whole point is "get this out of my way".
+    """
+    args = _args(req)
+    if not args:
+        address = engine.active_address()
+        if address is None:
+            raise ValueError("minimize: nothing is focused, and no address "
+                             "was given")
+    else:
+        address = _one_address(req, "minimize")
     ok = engine.minimize(address)
     controller.refresh_all()
     return {"address": address, "minimized": ok}
 
 
 def cmd_restore(controller, req: dict) -> dict:
-    """Bring one minimized window back where it came from, by address."""
+    """Bring minimized windows back where they came from.
+
+    `restore` with no argument means `last`, because undoing the thing you
+    just did is overwhelmingly the common case and it is the one gesture that
+    needs no lookup at all. `all` exists for the other end of it — a taskbar
+    full of windows after a reboot — and an address for everything between.
+    """
+    args = _args(req)
+    target = args[0] if args else "last"
+
+    if target == "all":
+        restored = [w.address for w in engine.list_minimized()]
+        ok = engine.restore_all()
+        controller.refresh_all()
+        return {"restored": restored, "ok": ok}
+
+    if target == "last":
+        # `list_minimized` is newest first, so the most recently minimized
+        # window is the head.
+        windows = engine.list_minimized()
+        if not windows:
+            raise ValueError("restore: nothing is minimized")
+        address = windows[0].address
+        ok = engine.restore_address(address)
+        controller.refresh_all()
+        return {"address": address, "restored": ok}
+
     address = _one_address(req, "restore")
     ok = engine.restore_address(address)
     controller.refresh_all()

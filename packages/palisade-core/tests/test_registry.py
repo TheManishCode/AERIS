@@ -219,12 +219,22 @@ class HintTests(unittest.TestCase):
         self.assertIn("nonsense", hint)
         self.assertNotIn("install.sh", hint)
 
-    def test_the_owner_placeholder_has_not_been_guessed_at(self):
-        """The URL 404s until the repositories exist. A plausible-looking
-        owner would turn an obviously-unfinished link into a quietly wrong
-        one, and `tools/set-owner.sh` is what fills it in."""
-        self.assertIn("PALISADE_OWNER",
-                      Registry([]).missing_source_hint("folder"))
+    def test_the_hint_url_names_the_same_owner_as_the_installers(self):
+        """Not "the placeholder is intact": `tools/set-owner.sh` rewrites
+        every tracked file including this one, so a test pinned to the literal
+        would be rewritten along with the thing it checks and pass by
+        accident. Agreement is the property that survives the tool and still
+        means something — a hint pointing somewhere the installers do not is
+        a `curl | bash` at the wrong repository."""
+        import re
+
+        from palisade.registry import INSTALL_URL
+
+        hint = Registry([]).missing_source_hint("folder")
+        owner = re.search(r"raw\.githubusercontent\.com/([^/]+)/", hint).group(1)
+        self.assertEqual(owner,
+                         re.search(r"raw\.githubusercontent\.com/([^/]+)/",
+                                   INSTALL_URL).group(1))
 
 
 class DiscoverTests(unittest.TestCase):

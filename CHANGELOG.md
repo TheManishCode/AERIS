@@ -7,6 +7,66 @@ release is actually cut; until then the entries below are the record, newest
 first, and this heading exists so `palisade --version` and this file cannot
 disagree about which tree you are reading.
 
+## 2026-10-04 — `minimize` and `restore` work without looking up an address
+
+Role: Backend Engineer + DevOps Engineer
+
+Status: Added, Fixed
+
+Reason:
+`palisade minimize` required a hex window address, which makes the verb usable
+only by something that has already called `hyprctl` — a strange thing to
+demand of a command whose entire point is "get this window out of my way".
+The defaults were specified and never built; running
+`tools/verify-hyprland.sh` for the first time is what surfaced it.
+
+Changes:
+- `engine.active_address()` reads the focused window and validates it through
+  `valid_address` before returning. Validated even though the compositor is
+  the source: the value is interpolated into Lua, and a trusted-looking origin
+  is not a reason to skip the gate.
+- `minimize` with no argument takes the focused window; nothing focused is an
+  error rather than a silent no-op.
+- `restore` with no argument means `last`, defined as the head of
+  `list_minimized` rather than re-deriving the order, so the two cannot drift.
+  `all` restores everything; an address still restores one. `all` and `last`
+  are the only two words accepted — anything else goes through the same
+  address gate as before.
+- `tools/set-owner.sh` replaces PALISADE_OWNER across git-tracked files only,
+  validating the name against GitHub's own rule first, since the value is
+  spliced into a URL people are told to pipe into bash.
+- `tools/verify-hyprland.sh` runs the two checks that cannot be unit-tested
+  and reports a skip rather than a pass when the machine cannot run one.
+
+Removed/Reverted:
+- `test_missing_and_extra_arguments_are_refused` asserted that no arguments
+  was an error, which is the behaviour this changes. Replaced by tests for
+  what the fallback actually does. It had also been reading the *live*
+  compositor — `engine.active_address` is stubbed now, because a test whose
+  result depends on which window happened to be focused is not a test.
+- A `self.addCleanup(..., engine.list_minimized)` written during this change
+  and removed in it: it captured the stub rather than the original, so the
+  stub leaked into three unrelated engine tests. Routed through a helper that
+  captures first.
+
+Verification:
+- dock: 88 tests. Owner tests rewritten to assert *agreement* between every
+  URL rather than the literal placeholder, because `set-owner.sh` rewrites the
+  test files too — verified by running it in a throwaway clone before and
+  after, and by making one installer disagree.
+- Driven live: minimized and restored a real focused window through the CLI,
+  confirmed it left workspace 1 for `special:minimized` and came back to
+  workspace 1. `tools/verify-hyprland.sh` now reports three passes and one
+  honest skip.
+
+Result:
+`palisade minimize` and `palisade restore` do the obvious thing with no
+arguments.
+
+Known Issues:
+The empty-workspace branch of `unhide` is still unexercised against a real
+compositor — the script reports it as a skip, not a pass. See TODO.md.
+
 ## 2026-10-04 — Four bugs in the installers, which had no tests
 
 Role: DevOps Engineer + Release Engineer + QA Engineer

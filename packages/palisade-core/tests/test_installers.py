@@ -243,13 +243,56 @@ class MultiarchTests(unittest.TestCase):
 
 
 class OwnerTests(unittest.TestCase):
-    def test_the_placeholder_is_still_a_placeholder(self):
-        """Every URL here 404s until the repositories exist. A plausible
-        guessed owner would turn an obviously-unfinished link into a quietly
-        wrong one that looks fine in review."""
+    """Every GitHub URL in the tree names the same owner.
+
+    Deliberately phrased that way rather than "the placeholder is intact".
+    `tools/set-owner.sh` rewrites the placeholder across every tracked file —
+    including this one — so a test pinned to the literal would pass only by
+    accident, having been rewritten along with what it was checking.
+
+    What actually matters is consistency: a tree where three installers point
+    at one owner and the fourth at another produces an install that fetches
+    core from somewhere nobody intended. The placeholder is simply the value
+    this holds before anyone has run the tool.
+    """
+
+    #: `github.com/<owner>/palisade-x` and the raw.githubusercontent form.
+    URL = re.compile(
+        r"(?:github\.com|raw\.githubusercontent\.com)/([A-Za-z0-9_-]+)/palisade-"
+    )
+
+    def owners(self):
+        found = {}
+        for path in sorted(PACKAGES.glob("palisade-*/install.sh")):
+            for owner in self.URL.findall(path.read_text()):
+                found.setdefault(owner, []).append(path.name)
+        return found
+
+    def test_every_installer_url_names_the_same_owner(self):
+        found = self.owners()
+        self.assertTrue(found, "no GitHub URLs found at all")
+        self.assertEqual(len(found), 1, f"disagreeing owners: {found}")
+
+    def test_the_owner_is_a_name_github_would_accept(self):
+        """Or the placeholder. Those are the only two legitimate states; a
+        half-applied rewrite is the thing being caught."""
+        (owner,) = self.owners()
+        if owner == "PALISADE_OWNER":
+            return
+        self.assertRegex(owner, r"^[A-Za-z0-9]([A-Za-z0-9]|-[A-Za-z0-9])*$")
+        self.assertLessEqual(len(owner), 39)
+
+    def test_the_readmes_agree_with_the_installers(self):
+        """The README is where people copy the command from, so a README
+        pointing at a different owner is the one that gets run."""
+        (expected,) = self.owners()
         for name in NAMES:
+            readme = PACKAGES / f"palisade-{name}" / "README.md"
+            if not readme.exists():
+                continue
             with self.subTest(package=name):
-                self.assertIn("PALISADE_OWNER", text(name))
+                for owner in set(self.URL.findall(readme.read_text())):
+                    self.assertEqual(owner, expected)
 
 
 if __name__ == "__main__":
