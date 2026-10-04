@@ -21,9 +21,10 @@ from pathlib import Path
 #: extension -> candidates, best first. `{file}` is substituted with the
 #: path; a candidate with no `{file}` gets it appended.
 #:
-#: Compiled languages use their single-file runner where one exists (`go run`,
-#: `cargo script` is not standard so `rustc` writes to a temp dir). Nothing
-#: here writes into the source directory.
+#: Compiled languages use their single-file runner where one exists: `go run`
+#: for Go, and for Rust `rust-script` or `cargo script`, neither of which
+#: ships with a stock toolchain — so a .rs file usually falls through to the
+#: missing-tool hint. Nothing here writes into the source directory.
 RUNNERS: dict[str, tuple[tuple[str, ...], ...]] = {
     ".py":   (("python3",), ("python",)),
     ".sh":   (("bash",), ("sh",)),
@@ -72,6 +73,45 @@ TOOL_NAMES: dict[str, str] = {
 }
 
 
+#: A shebang lives on the first line. Anything past this is not one, and a
+#: binary file should not be decoded in its entirety to find that out.
+SHEBANG_BYTES = 256
+
+
+def shebang(path: Path) -> tuple[str, ...]:
+    """The interpreter a file asks for on its first line, as argv parts.
+
+    Empty when there is none. The extension table cannot cover everything
+    people actually run: `deploy`, `build`, `Makefile.py`-less helper scripts
+    with no suffix at all. The file already says what runs it, so read that.
+
+    `#!/usr/bin/env x` is unwrapped, because `env` is a lookup mechanism and
+    not the interpreter — running it verbatim would work, but the Run button
+    would read "Run with env". `-S` is handled too: it is how a script passes
+    flags to its interpreter portably, as in `#!/usr/bin/env -S deno run`.
+    """
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(SHEBANG_BYTES)
+    except OSError:
+        return ()
+    if not head.startswith(b"#!"):
+        return ()
+    line = head.split(b"\n", 1)[0][2:]
+    parts = line.decode("utf-8", errors="replace").split()
+    if parts and Path(parts[0]).name == "env":
+        parts = parts[1:]
+        if parts and parts[0] == "-S":
+            parts = parts[1:]
+        elif parts and parts[0].startswith("-S"):
+            parts = [parts[0][2:], *parts[1:]]
+        # env also accepts NAME=VALUE before the command. They are its
+        # environment, not the program, so they are not part of the argv.
+        while parts and "=" in parts[0] and not parts[0].startswith("-"):
+            parts = parts[1:]
+    return tuple(parts)
+
+
 @dataclass(frozen=True)
 class Runner:
     """A resolved way to run one file."""
@@ -99,6 +139,18 @@ def runner_for(path: Path, *, which=shutil.which) -> Runner | None:
                 argv=(resolved, *candidate[1:], str(path)),
                 name=candidate[0],
             )
+    # The table first, the shebang second. A .py carrying a stale
+    # `#!/usr/bin/python2` should still run with the python3 that is actually
+    # installed — the extension is what the file *is*, the shebang is what
+    # someone once wrote down.
+    parts = shebang(path)
+    if parts:
+        resolved = which(parts[0])
+        if resolved:
+            return Runner(
+                argv=(resolved, *parts[1:], str(path)),
+                name=Path(parts[0]).name,
+            )
     return None
 
 
@@ -109,13 +161,16 @@ def is_runnable_kind(path: Path) -> bool:
     stay silent about a .toml instead of offering a Run button that explains
     why it cannot run a config file.
     """
-    return path.suffix.lower() in RUNNERS
+    return path.suffix.lower() in RUNNERS or bool(shebang(path))
 
 
 def missing_tool_hint(path: Path) -> str:
     """What to install, for a file we recognise but cannot run."""
     suffix = path.suffix.lower()
     tool = TOOL_NAMES.get(suffix)
-    if not tool:
-        return f"No runner configured for {suffix or 'this file'}"
-    return f"{tool} is not on PATH"
+    if tool:
+        return f"{tool} is not on PATH"
+    parts = shebang(path)
+    if parts:
+        return f"{Path(parts[0]).name} is not on PATH"
+    return f"No runner configured for {suffix or 'this file'}"

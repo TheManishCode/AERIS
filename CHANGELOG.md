@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-10-04 — A file that says how to run itself can be run
+
+Role: Senior Backend Engineer
+
+Status: Added, Fixed
+
+Reason:
+Run was offered purely from the extension table, so the scripts people
+actually keep in a folder and press Run on — `deploy`, `backup`,
+`check-certs`, anything with no suffix — were not runnable, even though each
+one states its interpreter on its first line.
+
+Changes:
+- `toolchains.shebang(path)` reads at most 256 bytes and returns the
+  interpreter as argv parts. `env` is unwrapped, including `-S` (joined or
+  separate) and the `NAME=VALUE` assignments env accepts before the command.
+- `runner_for` consults it *after* the extension table: a .py carrying a stale
+  `#!/usr/bin/python2` still runs with the python3 that is installed.
+- `is_runnable_kind` and `missing_tool_hint` use it too, so a suffixless
+  script gets a Run button, and one whose interpreter is missing is told which
+  interpreter that is.
+
+Removed/Reverted:
+- A comment claiming "`cargo script` is not standard so `rustc` writes to a
+  temp dir". `rustc` has never been in the table — the comment described code
+  that was never written. Replaced with what the table actually does, and a
+  test keeps `rustc` out of that docstring.
+
+Verification:
+- `tests/test_shebang.py` (26 tests), including a 10,000-character first line
+  that must not be read whole, undecodable bytes, a bare `#!`, a missing file
+  and a directory.
+- Proved by three reverts: not unwrapping `env` failed 7, letting the shebang
+  beat the table failed 1, dropping it from `runner_for` failed 3.
+
+Result:
+`#!/usr/bin/env python3` in a file called `deploy` gets a Run button.
+
+Known Issues:
+None.
+
 ## 2026-10-04 — Undo survives leaving and re-entering edit mode
 
 Role: Senior Backend Engineer + QA Engineer
