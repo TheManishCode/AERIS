@@ -97,6 +97,86 @@ def activate(fence, item) -> bool:
     return True
 
 
+# ----------------------------------------------------------------- commands
+#
+# IPC verbs, and therefore CLI verbs: core forwards any verb it does not
+# recognise to the daemon, which looks it up in the registry. These are the
+# first module commands in the tree, so they set the convention — positional
+# arguments arrive as `req["args"]`, a list of strings, because core cannot
+# know what a module's arguments mean and must not have to.
+#
+# A verb receives the controller, not a fence. There is no fence involved in
+# `palisade minimize 0x…`: the window being minimized may not be on any panel
+# yet, and that is the normal case.
+
+
+def _one_address(req: dict, verb: str) -> str:
+    """The single address argument, validated.
+
+    Raising ValueError rather than returning False: `ipc.Server.handle` turns
+    it into `{"ok": false, "error": …}`, so a caller gets told *why* it was
+    refused. `engine` refuses invalid addresses again on its own account —
+    this is the message, that is the boundary.
+    """
+    args = req.get("args") or []
+    if isinstance(args, str):           # a caller that sent one string
+        args = [args]
+    if not isinstance(args, list) or len(args) != 1:
+        raise ValueError(f"{verb}: expected exactly one window address")
+    address = args[0]
+    if not engine.valid_address(address):
+        raise ValueError(
+            f"{verb}: {address!r} is not a window address "
+            "(expected 0x followed by up to 16 hex digits)"
+        )
+    return address
+
+
+def cmd_minimize(controller, req: dict) -> dict:
+    """Park a window on the minimized workspace. Takes one window address."""
+    address = _one_address(req, "minimize")
+    ok = engine.minimize(address)
+    controller.refresh_all()
+    return {"address": address, "minimized": ok}
+
+
+def cmd_restore(controller, req: dict) -> dict:
+    """Bring one minimized window back where it came from, by address."""
+    address = _one_address(req, "restore")
+    ok = engine.restore_address(address)
+    controller.refresh_all()
+    return {"address": address, "restored": ok}
+
+
+def cmd_close(controller, req: dict) -> dict:
+    """Close a window by address. Discards unsaved work, like any close."""
+    address = _one_address(req, "close-window")
+    ok = engine.close_address(address)
+    controller.refresh_all()
+    return {"address": address, "closed": ok}
+
+
+def cmd_restore_all(controller, req: dict) -> dict:
+    """Bring every minimized window back. Takes no arguments."""
+    ok = engine.restore_all()
+    controller.refresh_all()
+    return {"restored": ok}
+
+
+def cmd_minimized(controller, req: dict) -> dict:
+    """What is minimized right now, without needing a taskbar panel open.
+
+    The read that makes the writes usable: an agent has to get an address from
+    somewhere before it can pass one back.
+    """
+    return {"windows": [
+        {"address": w.address, "title": w.title, "class": w.wclass,
+         "workspace": w.workspace, "seq": w.seq,
+         "fullscreen": w.fullscreen, "pinned": w.pinned}
+        for w in engine.list_minimized()
+    ]}
+
+
 def status() -> str | None:
     """Why the taskbar is empty, when the reason is not "nothing minimized".
 
@@ -119,5 +199,12 @@ MODULE = Module(
         "restore": restore_selected,
         "restore-all": restore_all,
         "close-window": close_selected,
+    },
+    commands={
+        "minimized": cmd_minimized,
+        "minimize": cmd_minimize,
+        "restore": cmd_restore,
+        "restore-all": cmd_restore_all,
+        "close-window": cmd_close,
     },
 )

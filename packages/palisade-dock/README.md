@@ -117,6 +117,27 @@ instead of looking like you have nothing minimized. The tag convention is
 plain `hyprctl` and would port to any compositor with tags and a scratchpad,
 but nothing else has been tested.
 
+## Commands
+
+Installing this package adds five verbs to `palisade`. Core forwards any verb
+it does not recognise to the daemon, so these work from the CLI without core
+knowing they exist.
+
+```bash
+palisade minimized                  # every minimized window, with its address
+palisade minimize   0x55a1b2c3      # park one on the minimized workspace
+palisade restore    0x55a1b2c3      # put it back where it came from
+palisade restore-all
+palisade close-window 0x55a1b2c3    # discards unsaved work, like any close
+```
+
+An address is `0x` followed by up to 16 hex digits, exactly as `palisade
+minimized` and `hyprctl clients -j` report it. **Anything else is refused.**
+Addresses are interpolated into Lua that the compositor executes, so this is a
+security boundary and not a tidiness check — see [SECURITY.md](SECURITY.md).
+
+`close-window`, not `close`: core's `close` closes a tab.
+
 ## Tests
 
 ```bash

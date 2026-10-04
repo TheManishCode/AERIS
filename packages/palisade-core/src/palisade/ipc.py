@@ -131,6 +131,13 @@ class Server:
         if module_cmd is not None:
             try:
                 return {"ok": True, "result": module_cmd(self.controller, req)}
+            except (ValueError, NotFound) as exc:
+                # The module rejecting its arguments — "minimize: 'nonsense'
+                # is not a window address". That is a message for whoever
+                # typed it, so it is reported the way a built-in's would be;
+                # prefixing it with `ValueError:` told them about Python
+                # instead of about their mistake.
+                return {"ok": False, "error": str(exc)}
             except Exception as exc:  # a module bug must not kill the daemon
                 return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         if cmd not in COMMANDS:
@@ -166,7 +173,28 @@ class Server:
             return {"pong": True, "protocol": PROTOCOL_VERSION,
                     "fences": len(c.windows)}
         if cmd == "describe":
-            return {"protocol": PROTOCOL_VERSION, "commands": COMMANDS}
+            # Module verbs included, or an agent cannot discover them: they
+            # are answerable but absent from the catalog, which is the one
+            # place the surface is supposed to be stated without guessing.
+            # Marked with the module that owns them, since whether they work
+            # depends on what is installed — unlike the built-ins, which are
+            # always there.
+            described = dict(COMMANDS)
+            for name, fn in c.registry.commands.items():
+                owner = c.registry.owner_of(name)
+                described[name] = {
+                    "args": {"args": "positional arguments, as a list"},
+                    "returns": (fn.__doc__ or "").strip().split("\n")[0]
+                               or f"see the {owner} module",
+                    # A callable cannot be asked whether it mutates, and
+                    # `Module.commands` has nowhere to say so. True is the
+                    # conservative default rather than a claim: an agent
+                    # avoiding mutating verbs then avoids these, which is the
+                    # harmless way to be wrong about a read like `minimized`.
+                    "mutates": True,
+                    "module": owner,
+                }
+            return {"protocol": PROTOCOL_VERSION, "commands": described}
         if cmd == "config-path":
             return {"path": str(c.config_path)}
         if cmd == "theme":

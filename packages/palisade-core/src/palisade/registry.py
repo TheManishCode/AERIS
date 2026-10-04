@@ -106,6 +106,10 @@ class Registry:
         #: module id -> status callable, for empty-state explanations.
         self.statuses: dict[str, Callable] = {}
         self.actions: dict[str, Callable] = {}
+        #: command name -> the module id that provides it. `describe` reports
+        #: it so an agent can tell a verb that is always present from one that
+        #: depends on a package being installed.
+        self.command_owner: dict[str, str] = {}
         #: Every mode every installed module contributes, in id order.
         self.modes: list = []
         self.conflicts: list[str] = []
@@ -140,11 +144,17 @@ class Registry:
                     )
                     continue
                 target[key] = value
+                if table_name == "commands":
+                    self.command_owner[key] = module.id
 
     # ---------------------------------------------------------------- lookup
 
     def has(self, module_id: str) -> bool:
         return any(m.id == module_id for m in self.modules)
+
+    def owner_of(self, command: str) -> str:
+        """Which module provides `command`, or "" for a core built-in."""
+        return self.command_owner.get(command, "")
 
     def source(self, kind: str) -> Callable | None:
         return self.sources.get(kind)
