@@ -302,3 +302,11 @@ files:
   installation, because leaving it means two daemons mapping the same panels
   over each other. A `pip install` upgrade does not: uninstall
   `palisade-core` and friends yourself.
+- **Anything that calls the launcher by path.** Status bar buttons, panel
+  widgets and scripts holding `~/.local/bin/palisade` stop working the moment
+  the old command is removed, and most of them fail *silently* — Quickshell's
+  `execDetached`, and any bare `spawn`, report nothing when the binary is
+  missing, so the button looks broken rather than misconfigured. `install.sh`
+  greps your config tree and names each file it finds; swap the path for
+  `~/.local/bin/aeris` and they work again unchanged, because the verbs did
+  not move.

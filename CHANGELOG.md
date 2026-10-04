@@ -40,6 +40,13 @@ The version the four packages declare. Dated when the release is cut.
 
 - `aeris migrate`, so the carry-over can be run and reported explicitly
   rather than only happening as a side effect.
+- `tests/test_mode_switch.py`: twelve cases over the taskbar's
+  Minimized/Hidden segmented control, which had none. Both routes into it —
+  the segments and the Tab key — go through `_set_mode`, so one regression
+  takes out both and nothing was watching. The case worth having is the pair
+  invariant: `set_css_classes` replaces rather than adds, so marking one
+  segment and clearing the other are separate writes, and only a round trip
+  catches two lit segments over one list.
 - A documentation tree under `docs/`: installation, configuration, usage,
   architecture, troubleshooting and the design decisions, with nine real
   screenshots of the running application under `docs/assets/screenshots/`.
@@ -69,6 +76,19 @@ The version the four packages declare. Dated when the release is cut.
   `aeris-core` 0.3; the 0.3 release was `palisade-core`. Inert today, since
   the installers pass `--no-deps` and nothing is on PyPI, and wrong in
   package metadata that a future release would publish.
+- **The rename broke every caller holding `~/.local/bin/palisade`, and said
+  nothing.** Core's installer removes the old launcher, but its only
+  breakage check was a grep for `palisade run` scoped to `~/.config/hypr` —
+  so an autostart line was caught and a status-bar button was not. Found on
+  a Quickshell bar button that had worked for weeks and then silently
+  stopped: `Quickshell.execDetached` at a missing binary reports nothing at
+  all, no dialog and no log line, so the failure presents as the *taskbar*
+  being broken rather than the caller pointing at a path that no longer
+  exists. The installer now scans the whole config tree for `bin/palisade`
+  and names each file it finds. It only reports — rewriting a user's bar
+  config unasked is not the installer's call — and `docs/configuration.md`
+  gains the matching migration bullet, since the list of things that cannot
+  be carried over had three entries and needed a fourth.
 
 **Features**
 

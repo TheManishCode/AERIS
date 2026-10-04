@@ -173,6 +173,32 @@ if [ -n "$legacy_found" ]; then
         warn "Your compositor config still says 'palisade run'. Change it to:"
         warn "    $PREFIX/bin/aeris run"
     fi
+
+    # The autostart line is not the only thing that names the launcher. Status
+    # bar buttons, panel widgets and user scripts invoke it by absolute path,
+    # and removing `bin/palisade` above breaks every one of them *silently* —
+    # a Quickshell `execDetached` at a missing binary reports nothing at all,
+    # so the button simply stops responding and reads as a regression in the
+    # panel rather than a dead path in the caller. Found exactly that way
+    # here, in a bar button that had worked for weeks.
+    #
+    # One pass over $XDG_CONFIG_HOME, text files only, and it only ever
+    # prints: rewriting a user's shell config unasked is not the installer's
+    # call. Scoped to the config tree because that is where the callers live
+    # and scanning $HOME would take minutes to say the same thing.
+    CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+    stale_callers="$(grep -rlsI 'bin/palisade' "$CFG" 2>/dev/null || true)"
+    if [ -n "$stale_callers" ]; then
+        warn "These still invoke the old launcher, which no longer exists."
+        warn "Point each at $PREFIX/bin/aeris — they will do nothing until you do:"
+        # No emptiness guard inside the loop: the branch already established
+        # that there is at least one line, and `[ -n "$f" ]` as the last
+        # command in a `while` body inside a pipeline returns 1 on a blank
+        # line, which `set -e` reads as the installer failing.
+        printf '%s\n' "$stale_callers" | while IFS= read -r f; do
+            warn "    $f"
+        done
+    fi
 fi
 
 # --------------------------------------------------------------------- config
