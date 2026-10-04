@@ -118,7 +118,11 @@ class EdgeTests(Fixture):
         self.seed_legacy()
         self.legacy_config.chmod(0o000)
         self.addCleanup(self.legacy_config.chmod, 0o755)
-        if self.legacy_config.joinpath("palisade.toml").exists():
+        try:
+            exists = self.legacy_config.joinpath("palisade.toml").exists()
+        except PermissionError:
+            exists = False
+        if exists:
             self.skipTest("running as root: permissions are not enforced")
         report = migrate.run(self.config, self.state)
         self.assertEqual(report.failed and len(report.failed), 1)
