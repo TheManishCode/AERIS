@@ -12,6 +12,7 @@ request was for a panel you can work in, not a staging area with a sync step.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 #: Kinds whose on-screen text is the whole file, byte for byte, and can
@@ -99,16 +100,40 @@ def save(path: Path, text: str, *, expect_mtime: float | None = None) -> float:
     # and every other path to it still has the old content.
     target = path.resolve() if path.is_symlink() else path
 
-    tmp = target.with_name(f".{target.name}.palisade-tmp")
+    # `mkstemp`, not a predictable name opened with "w", for two reasons that
+    # both bit when this was checked:
+    #
+    # * It creates with mode 0600. A plain `open("w")` creates 0666 & ~umask,
+    #   which is 0644 on a default system — so editing a 0600 file copied its
+    #   contents into a world-readable file for the length of the write. That
+    #   is how a `.env`, an `~/.ssh/config` or a private key would leak to any
+    #   other local user. An earlier comment here asserted the temp file was
+    #   already 0600; it never was.
+    # * It uses O_CREAT|O_EXCL with an unpredictable name, so it cannot open
+    #   something that already exists. `open("w")` follows a symlink sitting
+    #   at the temp path, which in any directory a second user can write —
+    #   /tmp, a shared project tree — let that user redirect this write to a
+    #   file of their choosing.
+    #
+    # Still in the target's own directory: `os.replace` is only atomic within
+    # a filesystem.
     try:
-        with tmp.open("w", encoding="utf-8", newline="") as fh:
+        handle, tmp_name = tempfile.mkstemp(
+            dir=target.parent, prefix=f".{target.name}.", suffix=".palisade-tmp"
+        )
+    except OSError as exc:
+        raise EditError(f"Could not save {path.name}: {_why(exc)}") from None
+
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8", newline="") as fh:
             fh.write(text)
             fh.flush()
             # Without this the rename can land before the data does, and a
             # power loss leaves a correctly-named empty file.
             os.fsync(fh.fileno())
-        # Keep the original's permissions: a fresh temp file is 0600, and
-        # renaming it over a 0644 script would quietly make it unreadable to
+        # Take the original's permissions: the temp file is 0600, and leaving
+        # it that way would quietly make a 0644 script unreadable to
         # everything else.
         try:
             os.chmod(tmp, target.stat().st_mode & 0o7777)

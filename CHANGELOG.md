@@ -1,5 +1,65 @@
 # Changelog
 
+## 2026-10-04 — The editor's temp file was world-readable and symlink-steerable
+
+Role: Application Security Engineer + Backend Engineer
+
+Status: Fixed, Security
+
+Reason:
+Found during a security sweep of the write paths. `save()` writes to a
+temporary file in the target's directory and renames it over the original,
+which is right for atomicity and puts a second copy of the whole content on
+disk. Both the temp file's mode and its name were wrong.
+
+**Mode.** It was created with `open("w")`, which is `0666 & ~umask` — 0644 on
+a default system. Editing a 0600 file therefore copied its contents into a
+world-readable file for the length of the write. That is how a `.env`, an
+`~/.ssh/config` or a private key would leak to any other local account. A
+comment in the source asserted the temp file was already 0600; measured, it
+was 0644.
+
+**Name.** It was `.{target}.palisade-tmp` — derivable by anyone who knew the
+target — and `open("w")` follows a symlink. In any directory a second user can
+write, that user could pre-create the temp path as a symlink and have the
+write land wherever they pointed it. Confirmed by experiment before fixing:
+the victim file's contents were replaced.
+
+Both are local-user attacks, which is the threat model that applies — Palisade
+has no network surface, so the realistic adversary is another account on the
+same machine.
+
+Changes:
+- The temp file comes from `tempfile.mkstemp(dir=target.parent, ...)`: mode
+  0600 at creation, `O_CREAT|O_EXCL` so it cannot open an existing path, and
+  an unpredictable name so there is nothing to pre-create. Still in the
+  target's own directory, because `os.replace` is only atomic within a
+  filesystem.
+- The chmod to the original's mode stays and is now doing the opposite job:
+  widening 0600 to the target's mode rather than narrowing 0644.
+
+Removed/Reverted:
+- The false comment claiming a fresh temp file is 0600.
+
+Verification:
+- `tests/test_save_safety.py` is new (10). The mode test samples the temp
+  file *mid-write*, from an `os.fsync` spy, because after the rename the
+  evidence is gone. The symlink test plants the old predictable name and
+  asserts the victim is untouched.
+- Restoring the old `open("w")` fails exactly those two.
+- Also asserted, because mkstemp could have broken them: a 0644 script stays
+  0644, an executable stays executable, a target that is itself a symlink is
+  still followed rather than replaced, a stale temp file no longer blocks a
+  save, and no temp file survives either a successful or a failed save.
+- 190 tests pass in palisade-files; 705 across the four packages.
+
+Result:
+The content of a private file is never written to a file others can read, and
+the temp path cannot be used to steer the write.
+
+Known Issues:
+- None.
+
 ## 2026-10-04 — The suite runs with no display again, and says so when it cannot
 
 Role: QA Engineer
