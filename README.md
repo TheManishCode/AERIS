@@ -391,8 +391,3 @@ Stated so nobody infers more than was done.
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-The omnibox's mode-stabilising idea is adapted from
-shapeshift (MIT); the IPC surface
-is modelled on [PecoFence](https://github.com/DayuanJiang/PecoFence)'s CLI.
-Neither project's code is vendored here.
