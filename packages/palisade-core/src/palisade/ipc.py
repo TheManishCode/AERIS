@@ -18,6 +18,8 @@ from pathlib import Path
 
 from gi.repository import Gio, GLib
 
+from . import config
+
 PROTOCOL_VERSION = 1
 
 #: Seconds a client may take to finish sending its request, or to read the
@@ -35,6 +37,26 @@ MAX_REQUEST_BYTES = 1 << 20
 
 class NotFound(Exception):
     """A referenced fence does not exist — distinct from a malformed request."""
+
+
+def _bounded(req: dict, key: str, low: int, high: int) -> int:
+    """One integer argument, inside its range.
+
+    Rejected rather than clamped: `palisade resize <id> 999999999 999999999`
+    was accepted verbatim, handed to the compositor, and written to the state
+    file — so the panel came back that size on the next start, and silently
+    fixing it would have hidden a caller's mistake instead of reporting it.
+    """
+    raw = req[key]
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        raise ValueError(f"{key} must be a number")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"{key} must be a number, not {raw!r}") from None
+    if not low <= value <= high:
+        raise ValueError(f"{key} must be between {low} and {high}, not {value}")
+    return value
 
 
 def socket_path() -> Path:
@@ -326,7 +348,8 @@ class Server:
             return {"id": fid, "collapsed": win._collapsed}
         if cmd == "move":
             fid, win = self._fence(req)
-            win.move_to(int(req["x"]), int(req["y"]))
+            win.move_to(_bounded(req, "x", -config.MAX_OFFSET, config.MAX_OFFSET),
+                        _bounded(req, "y", -config.MAX_OFFSET, config.MAX_OFFSET))
             c.persist_fence(fid, x=win.x, y=win.y)
             # Asked for a spot under a dock: honour it as the panel's home, but
             # put the panel somewhere it can actually be seen. Reported back as
@@ -335,7 +358,10 @@ class Server:
             return {"id": fid, "x": win.x, "y": win.y}
         if cmd == "resize":
             fid, win = self._fence(req)
-            win.resize_to(int(req["width"]), int(req["height"]))
+            win.resize_to(
+                _bounded(req, "width", config.MIN_WIDTH, config.MAX_DIMENSION),
+                _bounded(req, "height", config.MIN_HEIGHT, config.MAX_DIMENSION),
+            )
             c.persist_fence(fid, width=win.width, height=win.height)
             return {"id": fid, "width": win.width, "height": win.height}
         if cmd == "layer":

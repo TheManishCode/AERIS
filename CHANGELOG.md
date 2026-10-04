@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-10-04 — Geometry from an IPC caller was unbounded
+
+Role: Backend Engineer + QA Engineer
+
+Status: Fixed
+
+Reason:
+Found during the security sweep. `palisade resize <id> 999999999 999999999`
+was accepted verbatim: the number reached `resize_to`, the compositor really
+did allocate a layer surface that size — confirmed in `hyprctl layers` — and
+`persist_fence` wrote it to the state file, so the panel came back that size
+on the next start. Recovering meant knowing to resize it again, from a desktop
+now covered by one panel. `move` was the same.
+
+Config already enforced a minimum (160x120) and no maximum, so the two paths
+disagreed about what a legal size was.
+
+Changes:
+- `config.MIN_WIDTH`, `MIN_HEIGHT`, `MAX_DIMENSION` and `MAX_OFFSET` are
+  shared by config parsing and the IPC verbs. `config` has no GTK import, so
+  `ipc` can take them from it and not the other way round.
+- `move` and `resize` validate against those bounds and refuse what is out of
+  range. Rejected rather than clamped — a caller asking for 999999999 made a
+  mistake and should be told, not quietly given something else.
+- Config parsing clamps instead, in both directions. A bad number in a file
+  should not stop the whole desktop loading.
+- Non-numeric values are refused with a message saying so. Booleans too:
+  `True` is an `int` in Python and would otherwise have resized to 1.
+
+Removed/Reverted:
+- The bare `int(req["x"])` conversions.
+
+Verification:
+- `tests/test_ipc_geometry.py` is new (20). It asserts the refusal *and* that
+  nothing is persisted and the window is untouched when a request is refused —
+  the state file is what made the original survive a restart.
+- Boundary values are allowed, one past them is not, negative offsets are
+  still allowed (a panel may sit partly off-screen on purpose), numeric
+  strings are accepted because shell callers send them.
+- Live: both absurd calls now refuse with a readable message and the panel's
+  geometry is unchanged.
+- 736 tests pass across the four packages.
+
+Result:
+A panel cannot be resized to something the desktop cannot recover from.
+
+Known Issues:
+- `MAX_DIMENSION` is a flat 20000 rather than being derived from the actual
+  monitor layout. Deriving it would make a legal size depend on which
+  monitors happen to be plugged in, which is worse.
+
 ## 2026-10-04 — One silent client froze the whole daemon
 
 Role: Backend Engineer + Application Security Engineer + QA Engineer

@@ -248,8 +248,8 @@ class Fence:
             layer=layer,
             x=int(raw.get("x", 48)),
             y=int(raw.get("y", 48)),
-            width=max(160, int(raw.get("width", 420))),
-            height=max(120, int(raw.get("height", 520))),
+            width=min(MAX_DIMENSION, max(MIN_WIDTH, int(raw.get("width", 420)))),
+            height=min(MAX_DIMENSION, max(MIN_HEIGHT, int(raw.get("height", 520)))),
             icon_size=int(raw.get("icon_size", 48)),
             view=view,
             sort=sort,
@@ -332,8 +332,8 @@ class Group:
             sort=sort,
             reverse=bool(raw.get("reverse", False)),
             icon_size=int(raw.get("icon_size", 48)),
-            width=max(160, int(raw.get("width", 420))),
-            height=max(120, int(raw.get("height", 460))),
+            width=min(MAX_DIMENSION, max(MIN_WIDTH, int(raw.get("width", 420)))),
+            height=min(MAX_DIMENSION, max(MIN_HEIGHT, int(raw.get("height", 460)))),
             tint=str(raw.get("tint", "")),
             opacity=opacity,
             layer=layer,
@@ -356,6 +356,19 @@ class Group:
 
 #: Padding rhythm. See theme.SPACING for the numbers and why the dock differs.
 SPACINGS = ("desktop", "compact")
+
+#: Panel geometry bounds, shared by config parsing and the IPC verbs so the
+#: two cannot disagree about what a legal size is.
+#:
+#: The minimums are the point below which a panel has no room for its header.
+#: The maximum is generous enough for any real multi-monitor span and small
+#: enough to stay a plausible number: `palisade resize <id> 999999999
+#: 999999999` was accepted verbatim, handed to the compositor, and written to
+#: the state file, so the panel came back that size on the next start.
+MIN_WIDTH, MIN_HEIGHT = 160, 120
+MAX_DIMENSION = 20000
+#: Panels may sit partly off-screen on purpose, so offsets may be negative.
+MAX_OFFSET = 20000
 
 
 @dataclass(frozen=True)
