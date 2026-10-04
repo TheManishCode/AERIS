@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import palisade_files as files
+from _display import needs_display
 from palisade_files import create
 
 
@@ -129,10 +130,15 @@ class OpenFileTests(Tree):
         (self.root / "sub").mkdir()
         self.assertIsNone(files.open_file(self.root / "sub", lambda: None))
 
+    @needs_display
     def test_a_file_that_has_vanished_is_still_opened_here(self):
         """So the panel says what happened. Returning None would hand it to
         the desktop, which would fail the same way with no explanation —
-        and the fence is where you are looking."""
+        and the fence is where you are looking.
+
+        The one test here that builds a real widget, hence the skip: without
+        a display `Gtk.Box()` segfaults rather than raising, which would take
+        the whole run down and lose every result before it."""
         self.assertIsNotNone(files.open_file(self.root / "gone", lambda: None))
 
 

@@ -1,5 +1,58 @@
 # Changelog
 
+## 2026-10-04 — The suite runs with no display again, and says so when it cannot
+
+Role: QA Engineer
+
+Status: Fixed
+
+Reason:
+Two segfaults, one mine and one old, both from constructing a GTK widget with
+no display. GTK does not raise there — it **segfaults**, which is the worst
+possible failure in a test run because it loses the results of everything that
+already passed.
+
+`xvfb-run` was being treated as a gate it never needed to be. The real
+requirement is that the suite does not depend on a live desktop session, and
+all but one test already met it.
+
+Changes:
+- `palisade-core/tests/test_window_icons.py`, added earlier today, built a
+  real `Gtk.Image` in `setUp`. What it tests is the *fallback chain* — which
+  of three lookups wins — not GTK's rendering, so the image and the icon theme
+  are stubs now and no display is involved. Two cases were added while
+  restructuring: the icon theme as the second attempt, and the last path
+  segment as the third.
+- `palisade-files` had a pre-existing crash: one test builds a real viewer
+  widget, because the widget is what it checks. It is now skipped when there
+  is no display, with a reason naming `xvfb-run`.
+- `palisade-files/tests/_display.py` is new and holds that decorator and the
+  reasoning.
+
+Removed/Reverted:
+- The real-`Gtk.Image` fixture from test_window_icons.py.
+
+Verification:
+- All four packages, each run twice — once normally and once with
+  `env -u WAYLAND_DISPLAY -u DISPLAY`:
+
+      core   369 passed   /  369 passed
+      files  180 passed   /  179 passed, 1 skipped
+      dock    79 passed   /   79 passed
+      apps    67 passed   /   67 passed
+
+- The regression was bisected to the commit that introduced it: 095f1b2 and
+  1adc83f both pass headless, 4f62f21 segfaults.
+
+Result:
+695 tests, of which exactly one needs a display and skips visibly without one.
+`xvfb-run` is now an option for running that single test in CI, not a gate.
+
+Known Issues:
+- A skipped test is still a test that did not run. The skip is reported rather
+  than silent, which is the honest version, but CI should provide a display so
+  it executes.
+
 ## 2026-10-04 — A taskbar row with no desktop entry raised out of its bind
 
 Role: Frontend Engineer + QA Engineer
