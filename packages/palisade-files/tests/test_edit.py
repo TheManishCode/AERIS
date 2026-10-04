@@ -183,7 +183,24 @@ class ConcurrentChangeTests(Tree):
         self.assertEqual(p.read_text(encoding="utf-8"), "x")
 
 
+#: Mode bits mean nothing to uid 0: root writes into a 0555 directory without
+#: complaint, so the three tests below stop testing anything and quietly pass.
+#: CI containers run as root by default, which is exactly where a silent pass
+#: is most expensive — the atomic-save guarantee would be unguarded on the one
+#: machine that gates merges.
+#:
+#: Per method rather than on the class: the rest of `FailureTests` does not
+#: need a non-root uid, and skipping it too would hide a missing parent
+#: directory and a message-wording regression for no reason.
+needs_unprivileged = unittest.skipIf(
+    os.geteuid() == 0,
+    "running as root: a 0555 directory does not stop uid 0, so this would "
+    "pass without testing anything",
+)
+
+
 class FailureTests(Tree):
+    @needs_unprivileged
     def test_a_read_only_directory_fails_without_losing_the_file(self):
         """The whole reason for the temp-and-rename: a failure must leave the
         old file exactly as it was, not truncated."""
@@ -195,6 +212,7 @@ class FailureTests(Tree):
         self.assertEqual(p.read_text(encoding="utf-8"), "precious\n")
         self.assertIn("permission", str(caught.exception).lower())
 
+    @needs_unprivileged
     def test_a_failed_save_cleans_up_its_temporary_file(self):
         p = self.file()
         self.root.chmod(0o555)
@@ -210,6 +228,7 @@ class FailureTests(Tree):
             edit.save(missing, "x")
         self.assertIn("no longer exists", str(caught.exception))
 
+    @needs_unprivileged
     def test_the_message_names_the_file(self):
         """It is shown in a panel notification with no other context."""
         p = self.file(name="budget.md")
@@ -218,6 +237,51 @@ class FailureTests(Tree):
         with self.assertRaises(edit.EditError) as caught:
             edit.save(p, "x")
         self.assertIn("budget.md", str(caught.exception))
+
+
+class RootGuardTests(unittest.TestCase):
+    """That the guard stays on every test that needs it.
+
+    Dropping `@needs_unprivileged` from one of these does not fail anything —
+    it passes, on root, having tested nothing. The failure mode is silence, so
+    it is checked directly: any test in `FailureTests` that makes the
+    directory read-only must carry the marker.
+    """
+
+    def source_of(self, name):
+        src = Path(__file__).read_text()
+        start = src.index(f"    def {name}(self):")
+        return src[start:src.index("\n    def ", start + 10)]
+
+    def chmod_tests(self):
+        src = Path(__file__).read_text()
+        body = src[src.index("class FailureTests(Tree):"):
+                   src.index("class RootGuardTests")]
+        return [line.split("def ")[1].split("(")[0]
+                for line in body.splitlines() if line.startswith("    def test_")]
+
+    def test_every_read_only_directory_test_is_guarded(self):
+        guarded = 0
+        for name in self.chmod_tests():
+            if "chmod(0o555)" not in self.source_of(name):
+                continue
+            guarded += 1
+            with self.subTest(test=name):
+                src = Path(__file__).read_text()
+                before = src[:src.index(f"    def {name}(self):")]
+                self.assertTrue(
+                    before.rstrip().endswith("@needs_unprivileged"),
+                    f"{name} makes the directory read-only but would pass "
+                    f"silently as root",
+                )
+        self.assertGreaterEqual(guarded, 3, "the chmod tests went missing")
+
+    def test_the_guard_is_about_the_uid_and_not_the_platform(self):
+        """`os.name` or a container check would skip on machines where these
+        tests work perfectly well."""
+        src = Path(__file__).read_text()
+        guard = src[src.index("needs_unprivileged = unittest.skipIf("):]
+        self.assertIn("os.geteuid() == 0", guard[:200])
 
 
 class AtomicityTests(Tree):
