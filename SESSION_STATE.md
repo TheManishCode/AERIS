@@ -1,44 +1,49 @@
-# Session State — updated 2026-10-04 17:35
+# Session State — updated 2026-10-04 22:40
 
-Status: IN PROGRESS
-Task: Working the 31-item "finish Palisade 0.4.0" spec. This stretch covered
-spec items 2 (dock grip), 3 (breadcrumb) and 9 (viewer output pane), plus a
-regression of my own that items 2 found.
-Branch / worktree: master   Recovery point: 8ba460f (clean tree, nothing staged)
+Status: BLOCKED
+Task: Finish the 31-item "Palisade 0.4.0" spec. 25 of 31 items are done and
+committed; the rest are blocked on things I cannot supply or install.
+Branch / worktree: master   Recovery point: b59d357 (clean tree, nothing staged)
 
 Done:
-- Item 2, dock grip. Committed 8abff1b. Verified on screen: 32x4px pill against
-  the panel edge, centred within 1px of the surface centre.
-- Item 3, breadcrumb. Committed 31dfc26. Verified by driving a real
-  FenceWindow three levels down: 'clients', 'clients / invoices',
-  '… / invoices / 2026', tooltip holding the full path, and both the way back
-  up and home restoring the earlier labels.
-- Item 9, viewer output pane. Committed d3a5abe. Verified by driving a real
-  Viewer over a script printing 40 lines at five panel heights; the file stayed
-  in the body with its scroll untouched, the output tailed itself, and the pane
-  tracked each resize.
-- Headless regression fixed. Committed 8ba460f. `test_dock_grip.py` had gone in
-  without a display gate and the no-display run was segfaulting at 15%.
+- A1-A8 complete. A5 (undo across edit modes) and A8 (omnibox history) landed
+  this session, both driven against a real widget and a real registry.
+- B9-B17 complete: run pane with exit status, GtkSourceView as an optional,
+  shebang runners, the 0px Markdown code block, "0 B" rows, the square focus
+  ring, the pipx hint, the version.
+- C18-C21 complete: four installer bugs fixed and the installers given tests.
+- D22-D24 complete: display gate, root skip, and a live viewer test file.
+- E25, E28, E29, E30, E31 complete: docs corrected, CI workflows and
+  CONTRIBUTING per package, set-owner.sh, verify-hyprland.sh, and a
+  split-repos.sh that keeps history.
+- Suites: core 563, files 301 (+4 skipped), dock 88, apps 67. All four exit 0
+  with no display too. Every shell script parses. Daemon healthy, no errors.
 
 In flight:
-- Nothing. Tree is clean and both runs are green on all four packages:
-  with a display 458/219/79/67, without 451+7skip / 218+1skip / 79 / 67.
+- Nothing. Tree clean, every change committed one concern at a time.
 
 Not started:
-- Spec A5 (edit undo across modes), A8 (completion history), B10-B17,
-  C18-C21, D23-D24, E25-E31.
+- E26, the README redesign with hero images and a screenshot gallery.
+- E27, the sway-headless screenshot harness.
 
 Blocked on:
-- The real GitHub owner for `PALISADE_OWNER`, which appears in 20 files
-  including all four installers and all four READMEs. The spec says not to
-  guess it, so nothing can be pushed until Boss supplies it.
+- **The GitHub owner.** PALISADE_OWNER is in 31 files. `tools/set-owner.sh
+  <owner>` rewrites them; `split-repos.sh --push` refuses until it has been.
+- **git-filter-repo** is not installed, so the rewritten split has never
+  produced a repository. `sudo pacman -S git-filter-repo`.
+- **sway** is not installed, so E27's harness cannot be written against
+  anything real. `sudo pacman -S sway`.
+- **E26 needs design decisions** the spec says to ask about: hero image
+  composition, gallery layout, what the screenshots show.
 
 Danger:
-- Nothing half-applied. The daemon running is the current build.
-- `tools/split-repos.sh` has not been re-run since these four commits, so
-  `split/` does not exist and the four subtree branches are stale.
+- Nothing half-applied.
+- While testing the *old* split script I triggered a real `git push` to
+  `git@github.com:someone/palisade-core.git`. It failed — no such repository,
+  no credentials — and the four local `split/*` branches it made were
+  deleted. The rewritten script refuses before reaching a push. No remotes are
+  configured on this repository.
 
 Resume by:
-- Either supplying the GitHub owner so the split can be regenerated and pushed,
-  or picking up the next spec item (A5 is the largest remaining user-visible
-  gap).
+- Give me the GitHub owner, or run `tools/set-owner.sh <owner>` yourself.
+  Everything else for a push follows from that.
