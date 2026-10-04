@@ -182,10 +182,34 @@ class OmniboxTests(unittest.TestCase):
 
 
 class HintTests(unittest.TestCase):
+    """What a missing module tells you to run.
+
+    It used to say `pipx install palisade-files`. None of these packages is on
+    PyPI, so that either fails or — the reason this was a bug and not a typo —
+    installs whatever stranger's package holds the name. A hint that fetches
+    arbitrary code from an unowned namespace is a hazard, not help.
+    """
+
     def test_a_known_kind_names_the_package_to_install(self):
         hint = Registry([]).missing_source_hint("folder")
         self.assertIn("palisade-files", hint)
-        self.assertIn("pipx install", hint)
+
+    def test_it_points_at_the_module_s_own_installer(self):
+        hint = Registry([]).missing_source_hint("folder")
+        self.assertIn("install.sh", hint)
+        self.assertIn("palisade-files/main/install.sh", hint)
+
+    def test_no_hint_anywhere_tells_anyone_to_pip_install_these(self):
+        """Covers `doctor` as well as this hint — both used to say it, and
+        fixing one would have left the other lying."""
+        from palisade.registry import describe
+
+        texts = [Registry([]).missing_source_hint(k)
+                 for k in ("folder", "windows", "apps")]
+        texts += describe(Registry([]))
+        for text in texts:
+            with self.subTest(text=text):
+                self.assertNotIn("pip", text)
 
     def test_windows_points_at_the_dock(self):
         self.assertIn("palisade-dock", Registry([]).missing_source_hint("windows"))
@@ -193,7 +217,14 @@ class HintTests(unittest.TestCase):
     def test_an_unknown_kind_says_so_rather_than_inventing_a_package(self):
         hint = Registry([]).missing_source_hint("nonsense")
         self.assertIn("nonsense", hint)
-        self.assertNotIn("pipx", hint)
+        self.assertNotIn("install.sh", hint)
+
+    def test_the_owner_placeholder_has_not_been_guessed_at(self):
+        """The URL 404s until the repositories exist. A plausible-looking
+        owner would turn an obviously-unfinished link into a quietly wrong
+        one, and `tools/set-owner.sh` is what fills it in."""
+        self.assertIn("PALISADE_OWNER",
+                      Registry([]).missing_source_hint("folder"))
 
 
 class DiscoverTests(unittest.TestCase):

@@ -203,9 +203,30 @@ class Registry:
         if package:
             return (
                 f'source kind "{kind}" needs {package}, which is not '
-                f"installed:\n    pipx install {package}"
+                f"installed:\n    {install_command(package)}"
             )
         return f'unknown source kind "{kind}"'
+
+
+#: Where a module's installer lives. `PALISADE_OWNER` is a placeholder until
+#: the repositories exist; `tools/set-owner.sh` replaces it across the tree.
+INSTALL_URL = (
+    "https://raw.githubusercontent.com/PALISADE_OWNER/{package}/main/install.sh"
+)
+
+
+def install_command(package: str) -> str:
+    """How to actually install a module.
+
+    This used to say `pipx install palisade-dock`. None of these packages is
+    on PyPI, so that command either fails outright or — worse, and the reason
+    this is a bug rather than a typo — installs a stranger's package that
+    happens to hold the name. Telling someone to run a command that fetches
+    arbitrary code from an unowned namespace is not a hint, it is a hazard.
+
+    Each module ships its own `install.sh`, which is what this names.
+    """
+    return f"curl -fsSL {INSTALL_URL.format(package=package)} | bash"
 
 
 #: Dev and override hook: a comma-separated list of `package:attr` specs
@@ -291,7 +312,7 @@ def describe(registry: Registry) -> list[str]:
     for package in sorted(set(PROVIDERS.values())):
         short = package.removeprefix("palisade-")
         if short not in installed:
-            lines.append(f"  missing    {short:16} pipx install {package}")
+            lines.append(f"  missing    {short:16} {install_command(package)}")
     for conflict in registry.conflicts:
         lines.append(f"  conflict   {conflict}")
     return lines
