@@ -480,5 +480,105 @@ class RunDismissTests(RunCase):
         self.assertFalse(self.viewer._output.get_visible())
 
 
+class MarkdownBlockTests(ViewerCase):
+    """A fenced code block used to be a bare `Gtk.TextView`.
+
+    A TextView is scrollable, and a scrollable widget outside a scrolled
+    window reports a minimum height of zero, so a block whose longest line
+    overflowed was allocated 0px and vanished. Measured both ways: a two-line
+    block came out 36px, the same block with one long line came out 0.
+
+    The worse half was what it did to everything else. Its natural width
+    propagated up, so one long line stretched the whole document — a 420px
+    panel laid its prose out at 1908px and every paragraph needed horizontal
+    scrolling to read.
+    """
+
+    LONG = (
+        "# T\n\n```bash\ncurl -fsSL "
+        "https://raw.githubusercontent.com/owner/repo/main/install.sh "
+        "| bash -s -- --prefix=/usr/local --verbose\n```\n\ntail\n"
+    )
+    SHORT = "# Title\n\nprose\n\n```python\ndef hello():\n    return 1\n```\n\nafter\n"
+
+    def setUp(self):
+        super().setUp()
+        self.viewer.set_size_request(420, 560)
+
+    def render(self, text):
+        self.viewer.show_file(self.write("doc.md", text))
+        pump(300)
+        node = self.viewer._body.get_child()
+        while node is not None and "markdown" not in node.get_css_classes():
+            node = node.get_first_child()
+        self.assertIsNotNone(node, "no markdown box was rendered")
+        return node
+
+    def blocks(self, node):
+        out, child = [], node.get_first_child()
+        while child is not None:
+            out.append(child)
+            child = child.get_next_sibling()
+        return out
+
+    def code_block(self, text):
+        for widget in self.blocks(self.render(text)):
+            if "md-code" in widget.get_css_classes():
+                return widget
+        self.fail("no code block in the rendered document")
+
+    def test_a_short_block_has_a_height(self):
+        self.assertGreater(self.code_block(self.SHORT).get_height(), 20)
+
+    def test_a_block_with_an_overflowing_line_still_has_a_height(self):
+        """This is the bug, exactly. It was 0."""
+        self.assertGreater(self.code_block(self.LONG).get_height(), 10)
+
+    def test_one_long_line_does_not_stretch_the_whole_document(self):
+        """The paragraphs around it are not the thing that overflowed, and
+        making them 1908px wide to accommodate a URL makes the document
+        unreadable rather than the block."""
+        node = self.render(self.LONG)
+        # Against the viewport rather than a fixed number: the compositor
+        # decides how big a test window gets, so an absolute width would be
+        # asserting about this machine.
+        self.assertLessEqual(node.get_width(), self.viewer._body.get_width())
+
+    def test_the_overflow_is_confined_to_the_block(self):
+        node = self.render(self.LONG)
+        for widget in self.blocks(node):
+            with self.subTest(classes=widget.get_css_classes()):
+                self.assertLessEqual(widget.get_width(), node.get_width())
+
+    def test_the_block_scrolls_sideways_and_not_up(self):
+        """A scrollbar inside a scrollbar is a trap, and the page already
+        scrolls vertically."""
+        block = self.code_block(self.LONG)
+        self.assertIsInstance(block, Gtk.ScrolledWindow)
+        self.assertEqual(block.get_policy().hscrollbar_policy,
+                         Gtk.PolicyType.AUTOMATIC)
+        self.assertEqual(block.get_policy().vscrollbar_policy,
+                         Gtk.PolicyType.NEVER)
+
+    def test_the_code_can_still_be_selected(self):
+        """The existing decision, kept: `_markup_label` calls code blocks
+        "where copying out of a preview actually matters"."""
+        label = self.code_block(self.SHORT).get_child()
+        while label is not None and not isinstance(label, Gtk.Label):
+            label = label.get_first_child()
+        self.assertIsNotNone(label)
+        self.assertTrue(label.get_selectable())
+
+    def test_the_prose_around_it_is_still_not_selectable(self):
+        """The other half of that decision. Activation is a double-click, and
+        the second click used to select a line of the document every time a
+        file was opened."""
+        for widget in self.blocks(self.render(self.SHORT)):
+            if "md-para" in widget.get_css_classes():
+                self.assertFalse(widget.get_selectable())
+                return
+        self.fail("no paragraph rendered")
+
+
 if __name__ == "__main__":
     unittest.main()

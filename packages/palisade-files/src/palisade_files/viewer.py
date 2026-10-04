@@ -347,9 +347,7 @@ class Viewer(Gtk.Box):
             return rule
 
         if block.kind == md.CODE:
-            view = self._code_view(block.text, compact=True)
-            view.add_css_class("md-code")
-            return view
+            return self._code_block(block.text)
 
         if block.kind == md.TABLE:
             grid = Gtk.Grid()
@@ -380,6 +378,45 @@ class Viewer(Gtk.Box):
             md.QUOTE: "md-quote",
         }.get(block.kind, "md-para")
         return self._markup_label(block.text, css)
+
+    def _code_block(self, text: str) -> Gtk.Widget:
+        """A fenced code block, scrolling horizontally inside its own box.
+
+        This was a bare `Gtk.TextView`. A TextView is scrollable, and a
+        scrollable widget outside a scrolled window reports a minimum height
+        of zero — so a block whose longest line overflowed was allocated
+        **0px** and vanished. Measured: a two-line block came out 36px, and
+        the same block with one long line came out 0.
+
+        Worse than the block disappearing was what it did to everything else.
+        Its natural width propagated up, so one long line stretched the whole
+        document — a 420px panel laid its prose out at 1908px and every
+        paragraph needed horizontal scrolling to read.
+
+        A Label does not do either: it reports the height it needs, and the
+        scroller here is the only thing that grows. `vscroll NEVER` plus
+        `propagate_natural_height` means the block is exactly as tall as the
+        code and never scrolls vertically — a scrollbar inside a scrollbar is
+        a trap, and the page already scrolls that way.
+
+        Selectable, unlike the prose labels around it. That is the existing
+        decision rather than a change to it: `_markup_label` says code blocks
+        are "where copying out of a preview actually matters", and the reason
+        prose is not selectable — a double-click to open landing on text the
+        viewer just put under the pointer — does not apply to a block you have
+        to deliberately drag across.
+        """
+        label = Gtk.Label(label=text, xalign=0.0)
+        label.set_selectable(True)
+        label.set_wrap(False)
+        label.add_css_class("md-code-text")
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
+        scroller.set_propagate_natural_height(True)
+        scroller.set_child(label)
+        scroller.add_css_class("md-code")
+        return scroller
 
     def _markup_label(self, markup: str, css: str) -> Gtk.Label:
         label = Gtk.Label(xalign=0.0)

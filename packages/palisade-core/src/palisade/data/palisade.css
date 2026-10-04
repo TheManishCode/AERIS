@@ -873,6 +873,15 @@ window.palisade-picker .fence-root {
   margin: 8px 0;
 }
 
+/* The label inside the block above. The scroller carries the surface, so this
+ * carries only the face — a background here would paint a second box inside
+ * the first, offset by the scroller's padding. */
+.md-code-text {
+  font-family: monospace;
+  font-size: %FONT_SM_PT%pt;
+  background: transparent;
+}
+
 .md-rule {
   background: @m3_outline_variant;
   margin: 14px 0;
