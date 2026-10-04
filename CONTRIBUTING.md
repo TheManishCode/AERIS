@@ -1,8 +1,8 @@
 # Contributing to AERIS
 
-Thanks for looking. This file is the short version; [`docs/contributing.md`](docs/contributing.md)
-has the longer one, including how to set a development machine up from
-nothing.
+Thanks for looking. Setting a machine up from nothing is in
+[`docs/installation.md`](docs/installation.md); this file is what a change
+has to carry once it runs.
 
 ## Getting it running
 

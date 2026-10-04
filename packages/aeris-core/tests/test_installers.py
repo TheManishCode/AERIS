@@ -278,7 +278,7 @@ class RepositoryUrlTests(unittest.TestCase):
             yield path
         for path in sorted(PACKAGES.glob("aeris-*/README.md")):
             yield path
-        for name in ("README.md", "REFERENCE.md", "CONTRIBUTING.md"):
+        for name in ("README.md", "CONTRIBUTING.md"):
             if (ROOT / name).exists():
                 yield ROOT / name
         if (ROOT / "docs").is_dir():

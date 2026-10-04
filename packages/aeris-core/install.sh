@@ -72,7 +72,7 @@ if [ ${#missing[@]} -gt 0 ]; then
         sudo apt-get install -y python3-gi gir1.2-gtk-4.0 || true
         if [ -z "$layer_shell_found" ]; then
             warn "gtk4-layer-shell is not in older Debian/Ubuntu."
-            warn "Build it into \$HOME/.local — see docs/INSTALL.md. Continuing."
+            warn "Build it into \$HOME/.local — see docs/installation.md. Continuing."
         fi
     elif command -v dnf >/dev/null; then
         say "Installing with dnf (sudo)…"

@@ -1,16 +1,50 @@
-# AERIS — reference
+# Usage
 
-Everything you can press, type or configure. Read from the source, not from
+Everything you can press, type or run. Read from the source, not from
 memory: if something here disagrees with the code, the code is right and this
 file is a bug.
 
+- [Getting started](#getting-started)
 - [Keys](#keys)
 - [The field](#the-field)
-- [Config](#config)
-- [Recipes](#recipes)
+- [Workflows](#workflows)
 - [CLI](#cli)
 - [Menus](#menus)
 - [Compositor keybinds](#compositor-keybinds)
+
+See [configuration.md](configuration.md) for the config file itself.
+
+---
+
+## Getting started
+
+Start the daemon:
+
+```bash
+aeris run
+```
+
+Nothing appears. That is deliberate — the desktop starts empty, and a
+`[[group]]` in the config is a *menu entry*, not a panel. There are two ways
+to put something on screen:
+
+```bash
+aeris new downloads      # open a group as a tab, by id
+aeris new ~/Projects     # or open any folder directly
+aeris new                # or pick from the catalogue
+```
+
+A **tab** is opened on demand and remembers where you dragged it. A
+**fence** is placed in the config with an `x` and `y` and is always there.
+Both are the same kind of panel; the difference is who decided it should
+exist.
+
+```bash
+aeris check      # validate the config and preview every panel, no GUI
+aeris doctor     # which modules are installed
+```
+
+![AERIS panels on a desktop](assets/screenshots/overview.png)
 
 ---
 
@@ -107,6 +141,7 @@ text (a group may well be called "2024-archive"), and the search entry consumes
 it before the shortcut could see it.
 
 ---
+---
 
 ## The field
 
@@ -139,207 +174,74 @@ comment or category — which is why `>term` finds Alacritty, kitty and Konsole,
 none of which have "term" in their name.
 
 ---
-
-## Config
-
-`~/.config/aeris/aeris.toml`. `aeris init` writes a starter;
-`aeris check` validates it and previews what every panel would show.
-
-### `[settings]`
-
-| Key | Default | Values |
-| --- | --- | --- |
-| `layer` | `"bottom"` | `background`, `bottom`, `top`, `overlay` |
-| `blur` | `true` | Ask the compositor to blur behind panels |
-| `corner_radius` | `18` | 0–48. Drives the whole radius ladder — see below |
-| `spacing` | `"desktop"` | `desktop` (10/5), `compact` (8/4) |
-| `font_scale` | `1.0` | 0.6–2.0 |
-| `show_item_count` | `true` | The number beside the title |
-| `follow_material_you` | `true` | Re-colour when the wallpaper changes |
-
-`corner_radius` is the shell. Everything inside it is derived by subtracting
-`spacing`'s padding at each step, so the curves nest instead of fighting:
-
-| `spacing` | Padding | At `corner_radius = 18` |
-| --- | --- | --- |
-| `desktop` | 10 at the panel, 5 at the card | 18 → 8 → 6 |
-| `compact` | 8 and 4 | 18 → 10 → 6 |
-
-`desktop` matches the quickshell rice's own spacing. `compact` is tighter and
-suits a smaller `corner_radius`, where the shell has less room to descend
-through. The last rung never goes below 6 under either — below that a corner
-reads as unrounded rather than deliberately slight. A docked panel insets by 6
-whatever the setting, since width in a narrow column is what the window titles
-need.
-
-### `[[group]]` — the catalogue of things a panel can show
-
-Groups are templates. The desktop starts empty; you open groups as *tabs*.
-
-| Key | Default | Notes |
-| --- | --- | --- |
-| `id` | *required* | What `aeris new <id>` takes |
-| `title` | *required* | Shown in the header |
-| `source` | *required* | See below |
-| `icon` | `""` | Icon-theme name, shown in the picker |
-| `view` | `"icons"` | `icons`, `list` |
-| `sort` | `"name"` | `name`, `mtime`, `size`, `kind`, `manual` |
-| `reverse` | `false` | |
-| `icon_size` | `48` | |
-| `width` / `height` | `420` / `460` | |
-| `tint` | `""` | `""` follows Material 3; or a hex colour |
-| `opacity` | `0.55` | 0.0–1.0 |
-| `layer` | `""` | `""` inherits `[settings].layer` |
-| `picker` | `false` | Holds the keyboard and dismisses on pick |
-| `dock` | `""` | `left`, `right`, `top`, `bottom`. A docked panel is a *bar*: it reserves its edge and your windows tile around it. A floating one never does |
-
-### `[[fence]]` — always on screen
-
-Same keys as a group, plus `x`, `y`, `monitor`, `workspaces`, `collapsed`,
-`hidden`, `locked`. A fence is placed in the config and is always there; a tab
-is opened on demand and remembers where you dragged it.
-
-### `source` — where rows come from
-
-| `type` | Shows | Needs |
-| --- | --- | --- |
-| `directory` (or `folder`) | One folder, live | aeris-files |
-| `query` | A saved search across several roots | aeris-files |
-| `paths` | A fixed, pinned list | aeris-files |
-| `windows` | Windows you have minimized | aeris-dock |
-| `apps` | Installed applications | aeris-apps |
-
-Name a type whose package is not installed and the panel tells you which one to
-install — it does not quietly show an empty folder.
-
-### Filters — the `query` vocabulary
-
-These are what "add a filter" means. All optional; they combine with AND.
-
-| Key | Type | Does |
-| --- | --- | --- |
-| `roots` | list of paths | Where to search. `query` only |
-| `path` | path | The single folder. `directory` only |
-| `paths` | list of paths | The pinned list. `paths` only |
-| `depth` | int, default `1` | How many levels down to walk |
-| `include_hidden` | bool, default `false` | Dotfiles |
-| `ext` | list of strings | Extensions, no dot: `["pdf", "epub"]` |
-| `categories` | list | `image`, `video`, `audio`, `document`, `archive`, `code`, `folder` |
-| `name_contains` | string | Substring of the filename |
-| `newer_than_days` | int | Only files modified within this many days |
-| `min_size` | int, bytes | Skip anything smaller |
-| `limit` | int, default `500` | Hard ceiling on rows |
-
-Walks are breadth-first, depth-limited, and prune `.git`, `node_modules`,
-`__pycache__`, `.venv`, `venv`, `.cache`, `target`, `dist`, `build`,
-`.mypy_cache`, `.ruff_cache` and `.next` — so pointing `roots` at `~` scans
-your files rather than your dependency trees.
+![Jumping to a folder from the field](assets/screenshots/omnibox-path.png)
 
 ---
 
-## Recipes
+## Workflows
 
-### A folder on the desktop
+### Read a file without opening an editor
 
-```toml
-[[group]]
-id = "desktop"
-title = "Desktop"
-icon = "user-desktop"
-source = { type = "directory", path = "~/Desktop", depth = 1 }
-```
+Activate a row. The panel swaps the list for the file and keeps the list's
+scroll position and selection; <kbd>Esc</kbd> swaps it back. Markdown is
+rendered with a **Preview / Source** toggle, code is monospaced with the
+language named, images are scaled to the panel, and anything with no
+renderer gets a description card rather than being silently handed to
+whatever claims the extension.
 
-### Everything I downloaded this week, newest first
+![A Markdown file rendered in the panel](assets/screenshots/file-viewer.png)
 
-```toml
-[[group]]
-id = "recent-downloads"
-title = "This week"
-sort = "mtime"
-reverse = true
-[group.source]
-type = "query"
-roots = ["~/Downloads"]
-depth = 2
-newer_than_days = 7
-```
+### Edit and save in place
 
-### Every PDF and ePub across three folders
+<kbd>Ctrl</kbd>+<kbd>E</kbd> to edit, <kbd>Ctrl</kbd>+<kbd>S</kbd> to save.
+The title carries a dot while there are unsaved changes, and <kbd>Esc</kbd>
+asks once before discarding them — a layer-shell panel cannot host a "save
+changes?" dialog, so the confirmation is pressing the key again.
 
-```toml
-[[group]]
-id = "reading"
-title = "Reading"
-view = "list"
-[group.source]
-type = "query"
-roots = ["~/Documents", "~/Downloads", "~/Books"]
-depth = 3
-ext = ["pdf", "epub", "djvu"]
-limit = 200
-```
+Saving is atomic, preserves the file's permissions, follows symlinks rather
+than replacing them, and refuses if something else wrote the file after you
+opened it. A file too large to load whole is read-only, with a banner saying
+so.
 
-### Screenshots from the last day, as a grid
+### Run a file and watch its output
 
-```toml
-[[group]]
-id = "shots"
-title = "Screenshots"
-view = "icons"
-sort = "mtime"
-[group.source]
-type = "query"
-roots = ["~/Pictures"]
-depth = 2
-categories = ["image"]
-newer_than_days = 1
-name_contains = "screenshot"
-```
+<kbd>Ctrl</kbd>+<kbd>R</kbd> with a code or Markdown file open, when a
+toolchain for its language is on `PATH`. The file is saved first, then the
+output streams into a pane below it — a third of the panel, following its own
+newest line while you keep your place in the source. <kbd>Esc</kbd> dismisses
+the pane. AERIS detects what you have; it never installs a compiler.
 
-### A hand-picked shelf
+![A Python file open in the viewer](assets/screenshots/code-viewer.png)
 
-```toml
-[[group]]
-id = "shelf"
-title = "Shelf"
-[group.source]
-type = "paths"
-paths = ["~/notes.md", "~/work/spec.pdf", "~/.config/hypr"]
-```
+### Keep a live view instead of a folder
 
-A pinned path is shown even if it would fail the filters — you named it
-explicitly, so filters are not meaningful for it.
+A `query` source is a saved search: filtered, depth-limited, across several
+roots. Nothing is moved or copied to make the panel exist.
 
-### A taskbar docked to the right edge
+![A saved search](assets/screenshots/saved-search.png)
 
-```toml
-[[group]]
-id = "minimized"
-title = "Minimized"
-view = "list"
-sort = "mtime"
-layer = "overlay"       # a taskbar you cannot see is not a taskbar
-dock = "right"
-picker = true
-source = { type = "windows" }
-```
+### Pick a specific window back out of the taskbar
 
-### An application launcher
+*(aeris-dock)* Hyprland has no minimize, so the module supplies one: a
+minimized window is parked on a special workspace with its origin recorded in
+compositor window tags. The taskbar reads those tags, so it stays in step with
+the keybind path without a shared file to go stale.
 
-```toml
-[[group]]
-id = "apps"
-title = "Applications"
-view = "icons"
-picker = true
-source = { type = "apps", limit = 200 }
-```
+![The minimized-windows taskbar](assets/screenshots/taskbar.png)
 
-### A big source narrowed live instead of in config
+### Launch an application
 
-Open any folder panel and type. The field filters what is on screen without
-touching the config — useful when the filter is a one-off rather than a view
-you want to keep.
+*(aeris-apps)* Type `>` in any panel's field. Name matches rank first, then
+matches on an entry's comment or category — which is why `>term` finds
+Alacritty, kitty and Konsole, none of which have "term" in their name.
+
+![The application launcher](assets/screenshots/application-launcher.png)
+
+### Group a selection from the file manager
+
+*(aeris-files)* "Group in AERIS" and "Open as an AERIS tab" appear in
+Dolphin, Nautilus and anything else that reads `.desktop` actions. Add them
+with `aeris install-menus`.
 
 ---
 
@@ -425,6 +327,7 @@ of RAW files would stall the compositor it is drawn on. Files without a cached
 thumbnail show their content-type icon.
 
 ---
+---
 
 ## Menus
 
@@ -440,6 +343,7 @@ Rename… · Group into a new tab · Move to trash
 New file · New folder · Place (On the desktop / Above windows) · Lock position ·
 Collapse / Expand · Hide this fence · Close tab
 
+---
 ---
 
 ## Compositor keybinds

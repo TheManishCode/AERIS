@@ -9,7 +9,7 @@ description = "Minimized applications for AERIS: a real minimize for Hyprland, a
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = ["aeris-core>=0.3"]
+dependencies = ["aeris-core>=0.4"]
 
 [project.entry-points."aeris.modules"]
 dock = "aeris_dock:MODULE"

@@ -4,26 +4,22 @@ AERIS ships as **four** Python distributions: one shared core and three
 feature modules. Three of them are the things you install on purpose; the
 fourth is the thing they all stand on.
 
+```mermaid
+flowchart TD
+    core["<b>aeris-core</b><br/>layer-shell surface · cards · theme<br/>config · IPC · module registry"]
+
+    dock["<b>aeris-dock</b><br/>minimize engine<br/>window source<br/>docked taskbar"]
+    files["<b>aeris-files</b><br/>folder · query · paths sources<br/>the viewer<br/>markdown, edit, run"]
+    apps["<b>aeris-apps</b><br/>.desktop catalogue<br/>launch<br/>omnibox search"]
+
+    dock  -- "depends on" --> core
+    files -- "depends on" --> core
+    apps  -- "depends on" --> core
 ```
-                    ┌───────────────────┐
-                    │  aeris-core       │   the panel, and nothing else
-                    │  layer-shell      │   visible on screen by itself
-                    │  cards · theme    │
-                    │  config · IPC     │
-                    │  module registry  │
-                    └─────────┬─────────┘
-                              │  every module depends on core
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-┌─────────┴────────┐ ┌────────┴─────────┐ ┌───────┴──────────┐
-│ aeris-dock       │ │ aeris-files      │ │ aeris-apps       │
-│ minimized apps   │ │ folders & files  │ │ installed apps   │
-│ · minimize engine│ │ · folder sources │ │ · .desktop scan  │
-│ · window source  │ │ · the viewer     │ │ · launch         │
-│ · docked taskbar │ │ · markdown, run  │ │ · omnibox search │
-└──────────────────┘ └──────────────────┘ └──────────────────┘
-       no arrows between these three — that is the point
-```
+
+There is no edge between the three modules, and that is the whole point.
+Core draws the panel and is invisible on its own; each module contributes
+content to it and knows nothing about the others.
 
 ## Why a core at all
 
@@ -103,7 +99,7 @@ coupling the registry exists to remove.
 
 One field per panel that changes what it is as you type. The idea and the
 anti-flicker state machine are from shapeshift (MIT); the classification is
-deterministic rather than a model, for the reasons in DECISIONS.md §7.
+deterministic rather than a model, for the reasons in [decisions.md](decisions.md) §7.
 
 `aeris/omnibox.py` is the decision layer and imports no GTK, so all of it
 is tested without a display. Three pieces:
@@ -171,7 +167,7 @@ the monorepo and an installed system both work with no extra step.
 The layer-shell window and everything that is true of every panel: geometry
 and docking, the exclusive-zone reflow, layers and hiding, the theme bridge to the
 desktop's Material You palette and the radius ladder derived from it
-(DECISIONS.md §8), the omnibox decision layer, `aeris.toml` and `state.json`, the
+([decisions.md](decisions.md) §8), the omnibox decision layer, `aeris.toml` and `state.json`, the
 daemon, the Unix-socket IPC, the group picker, and the registry above.
 
 Installing only core gives you a working `aeris` command and an empty

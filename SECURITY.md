@@ -91,6 +91,22 @@ Stated so nobody infers more than was done.
   that does needs its own validation at its own boundary; the dock's regex is
   specific to Hyprland window addresses and is not a general sanitiser.
 
+## Supported versions
+
+0.4.0 is the only release. There is no backport branch and no security
+support for anything earlier, because there is nothing earlier — the
+versions before it were published under the project's previous name,
+Palisade, and were never released anywhere a user could install them from.
+
 ## Reporting
 
-Open an issue on the relevant package's repository.
+Open an issue at
+[github.com/TheManishCode/AERIS/issues](https://github.com/TheManishCode/AERIS/issues).
+
+There is no private disclosure channel, and pretending otherwise would be
+worse than saying so. This is a local desktop application with no network
+listener: the realistic bug classes here are a local privilege or
+information-disclosure issue, or an injection through the control socket by
+something already running as you. If you find something you judge too
+sensitive for a public issue, open an empty one asking for a contact and it
+will be given.

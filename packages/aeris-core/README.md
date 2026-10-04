@@ -47,7 +47,7 @@ dock = "aeris_dock:MODULE"
 
 Core enumerates whatever is installed. There is no plugin directory to copy
 into and no config line to add — installation *is* registration. See
-[ARCHITECTURE.md](ARCHITECTURE.md).
+[docs/architecture.md](../../docs/architecture.md).
 
 ---
 
@@ -142,7 +142,7 @@ terminal is the normal arrangement. This example used to put it there, where
 it was silently ignored.
 
 `aeris new notes` opens the group as a tab; the `[[fence]]` block is what
-makes one of them permanent. REFERENCE.md has every key.
+makes one of them permanent. [docs/usage.md](../../docs/usage.md) has every key.
 
 `aeris check` validates it and previews what every fence would show.
 
@@ -181,7 +181,7 @@ A wlroots compositor with `wlr-layer-shell`. Developed against Hyprland;
 aeris-dock is Hyprland-only, the rest is not.
 
 `install.sh` handles all of this on Arch, Debian and Fedora. See
-[docs/INSTALL.md](docs/INSTALL.md) for the manual route, including building
+[docs/installation.md](../../docs/installation.md) for the manual route, including building
 gtk4-layer-shell into `~/.local` without root.
 
 ---

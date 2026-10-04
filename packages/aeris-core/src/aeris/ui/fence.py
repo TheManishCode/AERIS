@@ -4,7 +4,7 @@ Deliberately does not use ``wl_data_device`` drag-and-drop. Hyprland drops the
 pointer grab when a drag leaves a layer-shell surface (hyprwm/Hyprland#16156,
 and the 0.54+ DnD regression in #13780), so a fence that depended on dragging
 would be broken through no fault of its own. Items arrive by live query, by
-CLI, or by the in-app "Move to fence" picker instead. See DECISIONS.md.
+CLI, or by the in-app "Move to fence" picker instead. See `docs/decisions.md`.
 """
 
 from __future__ import annotations

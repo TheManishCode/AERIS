@@ -11,40 +11,6 @@ in that case. Either refuse the second dock on an edge at config-validation
 time, or sum the strips. Unlikely in practice — noted so it is not rediscovered
 as a mystery.
 
-## Empty-workspace branch of `unhide` not driven live
-
-`Controller.unhide` picks `bottom` when the active workspace has no windows.
-Unit-tested in `packages/aeris-core/tests/test_unhide.py`; still never
-exercised against the compositor, because this machine's Hyprland config
-wraps `dispatch` in Lua and neither the Lua form nor the plain form switches
-to an empty workspace from a script here.
-
-`tools/verify-hyprland.sh` automates the check and reports it as a **skip**
-on this machine rather than a pass. On a stock Hyprland it should run: clear a
-workspace, then `tools/verify-hyprland.sh`. The minimize/restore half of that
-script does pass here.
-
-## Nothing has been pushed, and one command is why
-
-Every GitHub URL in the tree — four READMEs, four installers, four pyprojects,
-the registry's install hint — is built from the `TheManishCode` placeholder
-and 404s. `tools/set-owner.sh <owner>` rewrites all of them across git-tracked
-files, and `tools/split-repos.sh --push <owner>` refuses to run until it has
-been.
-
-`split-repos.sh` was rewritten to use `git filter-repo`, so the four
-repositories keep the history that `git subtree split` was discarding —
-subtree does not follow renames and every package directory was created in one
-restructuring commit, which is why each branch used to carry exactly one.
-
-**git-filter-repo is not installed here**, so the rewritten script has never
-produced a repository. It refuses with the install command rather than falling
-back to subtree. To finish: `sudo pacman -S git-filter-repo`, then
-`tools/set-owner.sh <owner>`, then `tools/split-repos.sh` and read
-`dist/repos/aeris-core/` before pushing anything.
-
-Found 2026-10-03; rewritten 2026-10-04.
-
 ## The breadcrumb cannot be clicked
 
 The header now names the last two levels (`… / invoices / 2026`,
@@ -86,14 +52,6 @@ it wants a decision rather than a quiet fix.
 `aeris-dock` is tested not to collide (`test_commands.py`), which protects
 today's tree but not the next module.
 
-## One IPC test takes five seconds
-
-`packages/aeris-core/tests/test_ipc_server.py::BasicTests::test_the_socket_is_private`
-accounts for 5s of a ~6s suite — almost certainly a timeout being waited out
-rather than an event being waited for. Not new, and not investigated: it
-surfaced on 2026-10-04 only because the headless run had been segfaulting
-before it got that far. Worth a look next time that file is open.
-
 ## The GtkSourceView path has never run
 
 `viewer.source_ns()` returns None on this machine: Arch ships
@@ -110,6 +68,17 @@ To verify: `sudo pacman -S gtksourceview5`, then
 and 0 skipped, and `tests/test_viewer_live.py` should still be green.
 
 Found 2026-10-04 when the optional integration was written.
+
+## Not driven against a compositor other than Hyprland
+
+Layer shell is a standard and core, `aeris-files` and `aeris-apps` should
+work on sway, river, niri, wayfire and KDE Plasma. Nothing here has been run
+on any of them, so that is a reading of the protocol rather than a result.
+`aeris-dock` genuinely cannot port: window tags are Hyprland's.
+
+`tools/verify-hyprland.sh` is the Hyprland check and passes all four of its
+assertions as of 2026-10-04. An equivalent for one other compositor would
+turn the claim in the README into a tested one.
 
 ## Unverified by a human
 

@@ -9,7 +9,7 @@ description = "Installed applications as AERIS panel content: catalogue, search 
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = ["aeris-core>=0.3"]
+dependencies = ["aeris-core>=0.4"]
 
 [project.entry-points."aeris.modules"]
 apps = "aeris_apps:MODULE"

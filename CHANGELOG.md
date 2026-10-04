@@ -2,10 +2,73 @@
 
 ## 0.4.0 — unreleased
 
-The version the four packages declare. Still *unreleased*: nothing has been
-pushed, because every GitHub URL in the tree is built from the
-`TheManishCode` placeholder and 404s until someone runs
-`tools/set-owner.sh`. Dated when the release is actually cut.
+The version the four packages declare. Dated when the release is cut.
+
+> **Note on the entries below.** The project was called **Palisade** until
+> 2026-10-04 and is now **AERIS**. Entries throughout this file use the
+> current names, so that the history reads as one project's rather than two
+> — an entry about `aeris/theme.py` in 2026-09 describes a file that was
+> spelled `palisade/theme.py` at the time. The rename itself is the first
+> entry below.
+
+**Renamed**
+
+- **The project is AERIS.** The four distributions, the `aeris` import
+  package, the CLI, the layer-shell namespace, the application id, the
+  service menus, the stylesheet and the environment variables.
+- Three things a user owns are migrated rather than abandoned:
+  `~/.config/palisade/palisade.toml` and `~/.local/state/palisade/` are
+  **copied** to their AERIS paths on first run and by `aeris migrate`;
+  `PALISADE_*` environment variables are still read when the `AERIS_*` one
+  is unset; and the `palisade.modules` entry-point group is still
+  discovered, so a module installed before the rename is not silently
+  invisible. Copied and not moved, because a move makes the rename
+  irreversible and a half-finished one leaves neither installation working.
+  Nothing is ever overwritten, which is what makes the attempt safe on
+  every start.
+- Core's installer removes the previous installation. Leaving `palisade` on
+  PATH with its own autostart line means two daemons mapping the same panels
+  over each other.
+
+**Changed**
+
+- **One repository, not four.** The four packages are published together, so
+  an installer clones the repository and installs a subdirectory rather than
+  cloning a repository per package.
+
+**Added**
+
+- `aeris migrate`, so the carry-over can be run and reported explicitly
+  rather than only happening as a side effect.
+- A documentation tree under `docs/`: installation, configuration, usage,
+  architecture, troubleshooting and the design decisions, with nine real
+  screenshots of the running application under `docs/assets/screenshots/`.
+- `tools/screenshots.sh` and `tools/demo-content.py`, which produce those
+  screenshots from the actual compositor against a generated throwaway home.
+- An AERIS mark, `docs/assets/branding/aeris-mark.svg`.
+- `CODE_OF_CONDUCT.md`, and a root `CONTRIBUTING.md`.
+
+**Removed**
+
+- `tools/split-repos.sh`, `tools/set-owner.sh` and `tools/gen-ci.py`, with
+  the four-repository plan they existed to serve.
+- The four per-package GitHub Actions workflows and the four per-package
+  `CONTRIBUTING.md` files. GitHub only reads `.github/workflows` at the root
+  of a repository, so the per-package workflows were inert the moment the
+  split was dropped — which is worse than absent, because a workflow that
+  does not run still looks like coverage. Replaced by one root workflow with
+  a matrix over the four packages, plus a job that parses and shellchecks
+  every installer.
+- `REFERENCE.md` and `packages/aeris-core/docs/INSTALL.md`, folded into
+  `docs/usage.md`, `docs/configuration.md` and `docs/installation.md` rather
+  than left to drift against them.
+
+**Fixed**
+
+- The three modules declared `aeris-core>=0.3`. There has never been an
+  `aeris-core` 0.3; the 0.3 release was `palisade-core`. Inert today, since
+  the installers pass `--no-deps` and nothing is on PyPI, and wrong in
+  package metadata that a future release would publish.
 
 **Features**
 

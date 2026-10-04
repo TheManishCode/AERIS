@@ -9,7 +9,7 @@ description = "Group folders on your desktop and render what is in them — imag
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = ["aeris-core>=0.3"]
+dependencies = ["aeris-core>=0.4"]
 
 [project.entry-points."aeris.modules"]
 files = "aeris_files:MODULE"

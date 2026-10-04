@@ -50,11 +50,22 @@ jqp() { python3 -c "import json,sys; d=json.load(sys.stdin); $1"; }
 
 say "1. unhide on an empty workspace"
 
-# This machine's Hyprland config wraps dispatch in Lua, so
-# `hyprctl dispatch workspace empty` is a parse error there. Try both forms
-# and skip honestly if neither lands rather than reporting a pass.
+# Where to come back to. Check 1 moves to an empty workspace by definition,
+# and check 2 needs a focused window — so without this, check 2 skipped with
+# "no active window to minimize" on a machine that had plenty, and the skip
+# was this script's own doing rather than a limitation of the machine.
+ORIGINAL_WS="$(hyprctl activeworkspace -j | jqp 'print(d["id"])')"
+
+# A Hyprland config that wraps dispatch in Lua makes
+# `hyprctl dispatch workspace empty` a parse error, and the obvious Lua
+# spelling is wrong too: there is no `hl.dsp.workspace` — the dispatcher is
+# `hl.dsp.focus`, which is also what `minimize.lua` uses to follow a window
+# home. Both of the first two forms failed here for a year and the check
+# reported an honest skip the whole time. Try all three and still skip
+# rather than report a pass.
 switched=""
-for form in 'hl.dispatch(hl.dsp.workspace.name{name="aeris-verify"})' \
+for form in 'hl.dsp.focus({ workspace = "name:aeris-verify" })' \
+            'hl.dispatch(hl.dsp.workspace.name{name="aeris-verify"})' \
             'workspace name:aeris-verify'; do
     if hyprctl dispatch "$form" 2>/dev/null | grep -qi '^ok'; then
         switched="$form"
@@ -83,6 +94,11 @@ else
         CREATED_TAB=""
     fi
 fi
+
+# Back to where the caller was, so the next check has something focused.
+hyprctl dispatch "hl.dsp.focus({ workspace = \"$ORIGINAL_WS\" })" >/dev/null 2>&1 \
+    || hyprctl dispatch "workspace $ORIGINAL_WS" >/dev/null 2>&1 || true
+sleep 0.4
 
 say "2. minimize and restore the active window"
 
