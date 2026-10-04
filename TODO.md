@@ -110,12 +110,6 @@ Found 2026-10-04 when the optional integration was written.
 - Whether the glass reads well against a bright wallpaper at `opacity = 0.55`.
 - Multi-monitor placement. `_screen_size` reads monitor 0 only.
 
-## The field has no completion history
-
-<kbd>Tab</kbd> completes, but nothing recalls what you typed last time. History
-would have to be per-mode or it is noise: a path you visited is not a useful
-suggestion in the launcher.
-
 
 ## The core README's config example is stale
 

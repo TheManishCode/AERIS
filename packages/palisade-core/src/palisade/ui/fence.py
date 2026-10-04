@@ -62,6 +62,13 @@ class FenceWindow(Gtk.ApplicationWindow):
         #: `palisade.omnibox.Stabiliser`.
         self._omni = controller.registry.omnibox()
         self._omni_open = False
+        #: 0 = not recalling. Otherwise the 1-based position in the history
+        #: matches, counting backwards in time.
+        self._recall_step = 0
+        self._recall_prefix = ""
+        #: True only while `_set_omni_text` is writing, so the resulting
+        #: "changed" signal is not mistaken for the user typing.
+        self._recalling = False
         #: Rows as resolved from the source, before the field narrows them.
         #: Kept so a keystroke re-renders without re-walking the folder, and
         #: so `rows()` can hand the *unfiltered* list to a filter mode that
@@ -344,7 +351,7 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._omni_entry = Gtk.Entry()
         self._omni_entry.add_css_class("omni-entry")
         self._omni_entry.set_hexpand(True)
-        self._omni_entry.connect("changed", lambda *_: self._render())
+        self._omni_entry.connect("changed", self._on_omni_changed)
         self._omni_entry.connect("activate", self._omni_activate)
         omni_keys = Gtk.EventControllerKey()
         omni_keys.connect("key-pressed", self._on_omni_key)
@@ -898,6 +905,13 @@ class FenceWindow(Gtk.ApplicationWindow):
             return True
         if keyval == Gdk.KEY_Tab and self._omni_complete():
             return True
+        if keyval == Gdk.KEY_Up:
+            return self._omni_recall(+1)
+        if keyval == Gdk.KEY_Down and self._recall_step:
+            # Down only walks *forward* through history while you are already
+            # recalling. Otherwise it keeps its old job of going into the
+            # list, which is the far more common thing to want.
+            return self._omni_recall(-1)
         if keyval in (Gdk.KEY_Down, Gdk.KEY_Tab):
             # Into the list, keeping the query. The field stays open: it says
             # what you searched for, and losing that on arrow-down would make
@@ -927,6 +941,57 @@ class FenceWindow(Gtk.ApplicationWindow):
         self._omni_entry.set_position(-1)
         self._omni_entry.select_region(len(done), len(done))
         return True
+
+    def _on_omni_changed(self, *_args) -> None:
+        """A keystroke in the field.
+
+        Any real edit ends the recall: the entry on screen is now yours, and
+        a later Up should search for what you have made rather than resuming
+        a walk through a list you have stepped off. The guard is what
+        distinguishes that from `_set_omni_text` writing a recalled entry.
+        """
+        if not self._recalling:
+            self._recall_step = 0
+        self._render()
+
+    def _omni_recall(self, direction: int) -> bool:
+        """Walk the history. +1 is older, -1 is newer.
+
+        The *prefix* is what was typed before recall started, not what is in
+        the field now — otherwise the first Up rewrites the box and the second
+        Up searches for the thing it just inserted, which pins you to one
+        entry forever.
+        """
+        if not self._recall_step:
+            self._recall_prefix = self._omni_entry.get_text()
+        step = self._recall_step + direction
+        if step < 1:
+            # Back past the newest match: return the text to what was being
+            # typed. Leaving the oldest recalled entry there would mean Down
+            # could never get you back to your own half-written query.
+            self._set_omni_text(self._recall_prefix)
+            self._recall_step = 0
+            return True
+        entry = self._omni.recall(self._recall_prefix, step)
+        if entry is None:
+            return True            # consumed: Up at the end should not move focus
+        self._recall_step = step
+        self._set_omni_text(entry)
+        return True
+
+    def _set_omni_text(self, text: str) -> None:
+        """Set the field without the change being mistaken for typing.
+
+        `_recalling` is the flag `_on_omni_changed` checks: without it, the
+        text this inserts counts as a keystroke and resets the recall step,
+        so the second Up would start over from the newest entry.
+        """
+        self._recalling = True
+        try:
+            self._omni_entry.set_text(text)
+            self._omni_entry.set_position(-1)
+        finally:
+            self._recalling = False
 
     def _hidden_items(self) -> list[Item]:
         """Hidden panels as rows. `path` holds a fence id, not a real path.
@@ -1065,10 +1130,17 @@ class FenceWindow(Gtk.ApplicationWindow):
         obj = self._store.get_item(position)
         if obj is None:
             return
-        # Picking is the end of the query, so the field closes and the panel
-        # goes back to its own contents. Safe to do before the launch: `obj`
-        # is a reference to the row, not an index into a store the re-render
-        # is about to rebuild.
+        # Picking is the end of the query, so it is worth remembering — and
+        # only now, not on every keystroke: a history of every prefix you
+        # typed on the way to an answer is a history of nothing.
+        if self._omni_open:
+            query = self._omni_entry.get_text()
+            if query:
+                self._omni.remember(query)
+                self.controller.save_history()
+        # The field closes and the panel goes back to its own contents. Safe
+        # to do before the launch: `obj` is a reference to the row, not an
+        # index into a store the re-render is about to rebuild.
         self.close_omnibox()
         self._launch(obj.item)
 

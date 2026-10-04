@@ -229,15 +229,123 @@ class Stabiliser:
         self._streak = 0
 
 
+class History:
+    """What you typed before, per mode.
+
+    Per mode and not one flat list, because the modes are not
+    interchangeable: a folder you navigated to is noise in the launcher, and a
+    command you ran is noise in a path field. A single list would make Up
+    mostly useless in whichever mode you used least.
+
+    The raw text is stored *with* its sigil. The sigil is how a mode is
+    selected, so an entry recalled without it lands in the wrong mode — and
+    recall across all modes, which the prompt-less field does, has no other
+    way to put it back.
+
+    Pure data with no GTK and no filesystem: it is given a dict and hands one
+    back, so persistence is `app.py`'s problem and this is testable without
+    either.
+    """
+
+    #: Per mode. Long enough to cover a working session, short enough that the
+    #: file stays small and a linear scan of it is free.
+    LIMIT = 50
+
+    def __init__(self, entries: dict[str, list[str]] | None = None):
+        self._by_mode: dict[str, list[str]] = {}
+        self.dirty = False
+        if entries:
+            self._load(entries)
+
+    def _load(self, entries) -> None:
+        """Tolerant on purpose. This file is on disk, hand-editable, and
+        shared with older and newer versions of Palisade; one bad key must not
+        cost the user every other entry, and must never raise into startup."""
+        if not isinstance(entries, dict):
+            return
+        for mode, items in entries.items():
+            if not isinstance(mode, str) or not isinstance(items, list):
+                continue
+            kept = [i for i in items if isinstance(i, str) and i]
+            if kept:
+                self._by_mode[mode] = kept[: self.LIMIT]
+
+    def record(self, mode: str, text: str) -> None:
+        """Remember one entry, newest first.
+
+        Re-using an entry moves it to the front rather than adding a second
+        copy. Without that, the thing you use constantly sinks under the
+        one-off things you typed after it — which is the opposite of what a
+        history is for.
+        """
+        if not text or not mode:
+            return
+        items = self._by_mode.setdefault(mode, [])
+        if items and items[0] == text:
+            return                        # already newest: nothing changed
+        if text in items:
+            items.remove(text)
+        items.insert(0, text)
+        del items[self.LIMIT:]
+        self.dirty = True
+
+    def entries(self, mode: str | None = None) -> list[str]:
+        """Newest first. `None` means every mode, newest-first within each."""
+        if mode is not None:
+            return list(self._by_mode.get(mode, ()))
+        out: list[str] = []
+        for items in self._by_mode.values():
+            out.extend(items)
+        return out
+
+    def complete(self, mode: str, typed: str) -> str | None:
+        """The newest entry that extends `typed`, or None.
+
+        Used *after* a mode's own completion has had its turn: history is a
+        memory, and a mode that can actually resolve what you typed knows
+        better than what you happened to type last week.
+        """
+        if not typed:
+            return None
+        for entry in self._by_mode.get(mode, ()):
+            if entry.startswith(typed) and entry != typed:
+                return entry
+        return None
+
+    def recall(self, mode: str | None, typed: str, step: int) -> str | None:
+        """Step `step` entries back through what matches `typed`.
+
+        `step` is 1-based and counts backwards in time, so 1 is the newest
+        match and the caller can hold a single integer rather than an index
+        into a list that changes under it.
+
+        An empty `typed` matches everything, which is what makes Up on an
+        empty field walk the whole history.
+        """
+        if step < 1:
+            return None
+        matches = [e for e in self.entries(mode) if e.startswith(typed)]
+        if step > len(matches):
+            return None
+        return matches[step - 1]
+
+    def to_dict(self) -> dict[str, list[str]]:
+        return {mode: list(items) for mode, items in self._by_mode.items() if items}
+
+
 class Registry:
     """The installed modes, and the state of the field over them.
 
     One per fence: two panels with omniboxes open must not share a streak.
     """
 
-    def __init__(self, modes: list[Mode] | None = None):
+    def __init__(self, modes: list[Mode] | None = None, history=None):
         self.modes: list[Mode] = list(modes or ())
         self.stabiliser = Stabiliser()
+        #: Shared across fences on purpose, unlike the stabiliser: a streak is
+        #: about one field's keystrokes, but something you typed in one panel
+        #: is worth recalling in another.
+        self.history = history if history is not None else History()
 
     def add(self, modes) -> None:
         """Merge a module's modes. Later duplicates of an id are ignored."""
@@ -270,12 +378,26 @@ class Registry:
             done = current.mode.complete(fence, current.query)
         except Exception:  # noqa: BLE001 - a bad mode must not eat the key
             return None
-        if not done or done == current.query:
-            return None
-        # Put the sigil back: `complete` works in the mode's own terms and
-        # never sees one, so returning its answer bare would delete the `>`
-        # that selected the mode in the first place.
-        return current.mode.sigil + done
+        if done and done != current.query:
+            # Put the sigil back: `complete` works in the mode's own terms and
+            # never sees one, so returning its answer bare would delete the
+            # `>` that selected the mode in the first place.
+            return current.mode.sigil + done
+        # The mode had nothing. Fall back to what was typed here before — in
+        # *this* mode only, because an entry from another one carries a
+        # different sigil and would silently switch modes under the cursor.
+        return self.history.complete(current.mode.id, query)
+
+    def remember(self, query: str) -> None:
+        """Record an accepted query against the mode it ran in."""
+        current = self.stabiliser.current
+        if current is not None:
+            self.history.record(current.mode.id, query)
+
+    def recall(self, typed: str, step: int) -> str | None:
+        """Up and Down. Searches every mode, because the field has no prompt
+        and the sigil in each entry is what puts the mode back."""
+        return self.history.recall(None, typed, step)
 
     def hints(self) -> list[tuple[str, str]]:
         """`(sigil or '', title)` for every mode, for the help line."""

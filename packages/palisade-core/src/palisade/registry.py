@@ -95,8 +95,16 @@ class Registry:
     notices the wrong panel.
     """
 
-    def __init__(self, modules: list[Module] | None = None):
+    def __init__(self, modules: list[Module] | None = None, history=None):
         self.modules: list[Module] = list(modules or ())
+        #: Shared by every omnibox field. Imported lazily because `registry`
+        #: must stay free of GTK and `omnibox` is already pure, so this is
+        #: only about not importing it when a Registry is built for a test.
+        if history is None:
+            from .omnibox import History
+
+            history = History()
+        self.history = history
         self.sources: dict[str, Callable] = {}
         self.commands: dict[str, Callable] = {}
         #: Tried in turn until one returns a widget; see Module.open_file.
@@ -184,12 +192,15 @@ class Registry:
         One per fence, not one shared: the stabiliser holds the streak of the
         text being typed, and two panels with the field open are two separate
         pieces of typing.
+
+        The *history* is shared, which is the one thing that is not per field:
+        something you typed in one panel is worth recalling in another.
         """
         from . import omnibox as _omnibox
 
         # Core's own modes go in first, so a module cannot shadow `filter`
         # with something that does not filter.
-        field = _omnibox.Registry(list(_omnibox.core_modes()))
+        field = _omnibox.Registry(list(_omnibox.core_modes()), self.history)
         field.add(self.modes)
         return field
 

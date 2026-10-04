@@ -7,6 +7,66 @@ release is actually cut; until then the entries below are the record, newest
 first, and this heading exists so `palisade --version` and this file cannot
 disagree about which tree you are reading.
 
+## 2026-10-04 — The omnibox remembers what you typed
+
+Role: Backend Engineer + Frontend Engineer
+
+Status: Added
+
+Reason:
+Tab completed, but nothing recalled the previous query, so every one was typed
+from scratch — including the long path you had just visited and the command
+you had just run.
+
+Changes:
+- `omnibox.History`: per mode, newest first, capped at 50. Per mode because
+  the modes are not interchangeable — a folder you navigated to is noise in
+  the launcher — and one flat list would make Up useless in whichever mode you
+  used least. Re-using an entry promotes it rather than adding a second copy,
+  or the thing you use constantly sinks under the one-offs typed after it.
+- Entries keep their sigil, because the sigil is *how* a mode is selected and
+  recall across all modes has no other way to put the mode back.
+- `Registry.complete` falls back to history *after* the mode's own completion:
+  a mode that can resolve what you typed knows better than what you typed last
+  week. History completion is per mode only — another mode's entry carries a
+  different sigil and would switch modes under the cursor.
+- Up walks older, Down walks newer and only while already recalling, so Down
+  keeps its far more common job of going into the list. Down past the newest
+  restores the query you were half-way through typing.
+- `$XDG_STATE_HOME/palisade/history.json`, atomic, separate from `state.json`.
+  State is what the daemon owns and losing it loses your desktop; history is a
+  convenience written far more often, and mixing them would rewrite every
+  panel's geometry on every accepted query.
+- Recorded on *acceptance*, not per keystroke: a history of every prefix typed
+  on the way to an answer is a history of nothing.
+
+Removed/Reverted:
+- Two assertions of an exact render count on opening and closing the field.
+  They were describing the test stub, not GTK: the stub's `Entry.set_text` did
+  not emit "changed", so it under-counted. The real widget renders twice on a
+  seeded open. The stub emits now and the tests assert that a redraw happened
+  rather than re-encoding a number that was never true.
+
+Verification:
+- `tests/test_history.py` (30 tests) and 16 new field-level tests covering the
+  prefix trap: recall searches for what was being typed when recall *started*,
+  not what is in the box, or the second Up searches for the entry the first Up
+  inserted and pins you to it.
+- Proved by three reverts: taking the prefix from the field failed 3, dropping
+  the `_recalling` flag failed 4, and appending instead of promoting failed 2.
+- The `_recalling` revert initially failed *nothing*, because the silent stub
+  made the flag unobservable. Fixing the stub is what made that test real.
+- Persistence driven through the real controller methods: written atomically,
+  no temp file left, `state.json` untouched, round-tripped, and a deliberately
+  corrupted file loads as empty instead of raising into startup.
+
+Result:
+Up recalls, Tab completes from history when the mode has nothing, and both
+survive a restart.
+
+Known Issues:
+None.
+
 ## 2026-10-04 — `minimize` and `restore` work without looking up an address
 
 Role: Backend Engineer + DevOps Engineer

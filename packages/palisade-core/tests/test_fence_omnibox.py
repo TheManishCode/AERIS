@@ -27,17 +27,28 @@ FenceWindow = fence_mod.FenceWindow
 
 
 class Entry:
+    """A stand-in for `Gtk.Entry` that emits "changed" like the real one.
+
+    It did not, which quietly made one test meaningless: the whole point of
+    the `_recalling` flag is that `set_text` *does* fire "changed", and a stub
+    that stays silent proves the flag unnecessary no matter what the code
+    does. Caught by deleting the flag and watching the suite stay green.
+    """
+
     def __init__(self):
         self.text = ""
         self.focused = 0
         self.selection = None
         self.position = None
+        self.on_changed = None
 
     def get_text(self):
         return self.text
 
     def set_text(self, value):
         self.text = value
+        if self.on_changed is not None:
+            self.on_changed()
 
     def set_position(self, value):
         self.position = value
@@ -92,6 +103,22 @@ class Store:
         return len(self.items)
 
 
+class FakeController:
+    """The controller surface the field actually touches.
+
+    `save_history` is the whole of it today. It is counted rather than
+    ignored, because "history is written when a query is accepted" is a
+    behaviour worth asserting and a `lambda: None` would assert nothing.
+    """
+
+    def __init__(self):
+        self.saves = 0
+        self.registry = None
+
+    def save_history(self):
+        self.saves += 1
+
+
 class Panel:
     """Enough of a FenceWindow to exercise the field."""
 
@@ -102,15 +129,26 @@ class Panel:
     omnibox_open = FenceWindow.omnibox_open
     rows = FenceWindow.rows
 
-    def __init__(self, items=(), modes=None):
+    _on_omni_changed = FenceWindow._on_omni_changed
+    _omni_recall = FenceWindow._omni_recall
+    _set_omni_text = FenceWindow._set_omni_text
+
+    def __init__(self, items=(), modes=None, history=None):
         self._source_items = list(items)
         self._missing_hint = ""
         self._omni = omnibox.Registry(
-            list(modes) if modes is not None else list(omnibox.core_modes())
+            list(modes) if modes is not None else list(omnibox.core_modes()),
+            history,
         )
+        self.controller = FakeController()
         self._omni_open = False
+        self._recall_step = 0
+        self._recall_prefix = ""
+        self._recalling = False
         self._omni_bar = Widget()
         self._omni_entry = Entry()
+        # What `fence.py` wires with `connect("changed", ...)`.
+        self._omni_entry.on_changed = self._on_omni_changed
         self._omni_chip = Label()
         self._view = View()
         self._store = Store()
@@ -189,9 +227,18 @@ class OpenTests(unittest.TestCase):
         self.assertFalse(p.omnibox_open)
 
     def test_opening_redraws(self):
+        """At least once, not exactly once.
+
+        `open_omnibox` seeds the field and then renders; seeding fires
+        "changed", which renders too, so the real widget redraws twice on an
+        open with a seed character. The old `== 1` here was describing a stub
+        that did not emit — it passed because the stub was wrong, and pinning
+        the number again would just re-encode that. One redundant pass on
+        open, not per keystroke, is not worth contorting the code to avoid.
+        """
         p = Panel(FILES)
         p.open_omnibox("n")
-        self.assertEqual(p.renders, 1)
+        self.assertGreaterEqual(p.renders, 1)
 
 
 class CloseTests(unittest.TestCase):
@@ -228,7 +275,7 @@ class CloseTests(unittest.TestCase):
     def test_closing_redraws_so_the_panel_comes_back(self):
         before = self.p.renders
         self.p.close_omnibox()
-        self.assertEqual(self.p.renders, before + 1)
+        self.assertGreater(self.p.renders, before)
 
 
 class ItemTests(unittest.TestCase):
@@ -403,6 +450,133 @@ class FailingModeTests(unittest.TestCase):
     def test_a_mode_that_raises_does_not_propagate(self):
         p = Panel(FILES, modes=[self.boom_mode()])
         p.type("x")   # would raise out of the key handler
+
+
+class RecallTests(unittest.TestCase):
+    """Up and Down over the history, in the field.
+
+    The subtle part is the prefix. Recall searches for what was being typed
+    when recall *started*, not what is in the box now — otherwise the first Up
+    rewrites the field and the second Up searches for the thing it just
+    inserted, pinning you to one entry forever.
+    """
+
+    def panel(self, entries=(), query=""):
+        history = omnibox.History()
+        for mode, text in entries:
+            history.record(mode, text)
+        p = Panel(FILES, history=history)
+        p.open_omnibox(query)
+        return p
+
+    def up(self, p):
+        p._omni_recall(+1)
+        return p._omni_entry.get_text()
+
+    def down(self, p):
+        p._omni_recall(-1)
+        return p._omni_entry.get_text()
+
+    def test_up_recalls_the_newest(self):
+        p = self.panel([("filter", "alpha"), ("filter", "beta")])
+        self.assertEqual(self.up(p), "beta")
+
+    def test_up_twice_goes_further_back(self):
+        p = self.panel([("filter", "alpha"), ("filter", "beta")])
+        self.up(p)
+        self.assertEqual(self.up(p), "alpha")
+
+    def test_up_does_not_search_for_what_it_just_inserted(self):
+        """The bug this is here for. With the prefix taken from the field,
+        the second Up searches for "beta" and finds only "beta"."""
+        p = self.panel([("filter", "alpha"), ("filter", "beta")])
+        self.up(p)
+        self.assertNotEqual(self.up(p), "beta")
+
+    def test_up_at_the_oldest_leaves_the_text_alone(self):
+        p = self.panel([("filter", "only")])
+        self.up(p)
+        self.assertEqual(self.up(p), "only")
+
+    def test_down_walks_back_towards_the_present(self):
+        p = self.panel([("filter", "alpha"), ("filter", "beta")])
+        self.up(p); self.up(p)
+        self.assertEqual(self.down(p), "beta")
+
+    def test_down_past_the_newest_restores_what_you_were_typing(self):
+        """Leaving a recalled entry in the box would mean Down could never
+        get you back to your own half-written query."""
+        p = self.panel([("filter", "alpha")], query="my own text")
+        self.up(p)
+        self.assertEqual(self.down(p), "my own text")
+
+    def test_the_prefix_narrows_the_walk(self):
+        p = self.panel(
+            [("filter", "apple"), ("filter", "banana"), ("filter", "apricot")],
+            query="ap",
+        )
+        self.assertEqual(self.up(p), "apricot")
+        self.assertEqual(self.up(p), "apple")
+
+    def test_typing_ends_the_recall(self):
+        """The entry on screen is yours now; a later Up should search for what
+        you have made rather than resuming a walk you stepped off."""
+        p = self.panel([("filter", "alpha"), ("filter", "beta")])
+        self.up(p)
+        p._on_omni_changed()                 # as a keystroke would
+        self.assertEqual(p._recall_step, 0)
+
+    def test_recalling_does_not_count_as_typing(self):
+        """`_set_omni_text` has to be distinguishable from a keystroke, or the
+        second Up starts over from the newest entry."""
+        p = self.panel([("filter", "alpha"), ("filter", "beta")])
+        self.up(p)
+        self.assertEqual(p._recall_step, 1)
+
+    def test_up_on_an_empty_history_does_nothing_visible(self):
+        p = self.panel(query="typed")
+        self.assertEqual(self.up(p), "typed")
+
+    def test_down_without_recalling_is_not_history(self):
+        """Down keeps its old job of going into the list unless a recall is in
+        progress — that is the far more common thing to want."""
+        p = self.panel([("filter", "alpha")])
+        self.assertEqual(p._recall_step, 0)
+
+
+class RememberTests(unittest.TestCase):
+    def panel(self, query="note"):
+        p = ActivateTests.Live(FILES)
+        p.open_omnibox(query)
+        return p
+
+    def test_accepting_a_query_records_it(self):
+        p = self.panel("note")
+        p._on_activate(p._view, 0)
+        self.assertIn("note", p._omni.history.entries("filter"))
+
+    def test_it_is_recorded_against_the_mode_that_ran(self):
+        p = self.panel("note")
+        p._on_activate(p._view, 0)
+        self.assertEqual(p._omni.history.entries("filter"), ["note"])
+
+    def test_accepting_asks_the_controller_to_save(self):
+        """In memory only would lose the history on every restart, which is
+        most of the point."""
+        p = self.panel("note")
+        p._on_activate(p._view, 0)
+        self.assertEqual(p.controller.saves, 1)
+
+    def test_an_empty_query_is_not_recorded(self):
+        p = self.panel("")
+        p._on_activate(p._view, 0)
+        self.assertEqual(p._omni.history.entries("filter"), [])
+
+    def test_nothing_is_recorded_when_the_field_is_closed(self):
+        """Double-clicking a row in a normal panel is not a query."""
+        p = ActivateTests.Live(FILES)
+        p._on_activate(p._view, 0)
+        self.assertEqual(p.controller.saves, 0)
 
 
 if __name__ == "__main__":

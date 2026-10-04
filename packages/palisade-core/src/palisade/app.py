@@ -32,9 +32,17 @@ from .theme import CSS_PRIORITY, Theme, stylesheet
 from .ui.fence import FenceWindow
 from .ui.picker import GroupPicker
 
-STATE_PATH = Path(
+STATE_DIR = Path(
     os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")
-) / "palisade" / "state.json"
+) / "palisade"
+STATE_PATH = STATE_DIR / "state.json"
+
+#: Separate from state.json on purpose. State is what the daemon *owns* —
+#: geometry, collapsed, which tabs exist — and losing it loses your desktop.
+#: History is a convenience, is written far more often, and is the one file a
+#: user might reasonably want to delete on its own. Mixing them would mean
+#: rewriting the layout of every panel on every accepted query.
+HISTORY_PATH = STATE_DIR / "history.json"
 
 APP_ID = "dev.palisade.Palisade"
 
@@ -83,6 +91,10 @@ class Controller:
         #: because the controller is the only thing that outlives a reload —
         #: rediscovering on every config change would reimport every module.
         self.registry = registry.discover()
+        # Loaded after discovery and handed to the registry, which passes it
+        # to every omnibox field. One history for the session, not one per
+        # panel: something you typed in one is worth recalling in another.
+        self.registry.history = self._load_history()
         if self.registry.conflicts:
             for line in self.registry.conflicts:
                 print(f"palisade: {line}", file=sys.stderr)
@@ -116,13 +128,43 @@ class Controller:
             return {}
 
     def _save_state(self) -> None:
+        self._write_json(STATE_PATH, self.state, "state")
+
+    def _write_json(self, path: Path, data, what: str) -> None:
+        """Atomic write. Never leave a half-written file behind: this runs on
+        every geometry nudge and every accepted query, so "interrupted
+        mid-write" is a matter of time rather than bad luck."""
         try:
-            STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            tmp = STATE_PATH.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(self.state, indent=2), encoding="utf-8")
-            tmp.replace(STATE_PATH)  # atomic: never leave a half-written state file
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp.replace(path)
         except OSError as exc:
-            print(f"palisade: could not save state: {exc}", file=sys.stderr)
+            print(f"palisade: could not save {what}: {exc}", file=sys.stderr)
+
+    def _load_history(self):
+        from .omnibox import History
+
+        try:
+            raw = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            # A corrupt history is an inconvenience, not a reason to refuse to
+            # start. `History` is tolerant of the contents too.
+            raw = {}
+        return History(raw)
+
+    def save_history(self) -> None:
+        """Write the omnibox history if anything changed.
+
+        Guarded on `dirty` because this is called on every accepted query and
+        most of them re-use an entry that is already newest, which changes
+        nothing.
+        """
+        history = self.registry.history
+        if not history.dirty:
+            return
+        self._write_json(HISTORY_PATH, history.to_dict(), "history")
+        history.dirty = False
 
     def persist_fence(self, fence_id: str, **fields) -> None:
         self.state.setdefault("fences", {}).setdefault(fence_id, {}).update(fields)
