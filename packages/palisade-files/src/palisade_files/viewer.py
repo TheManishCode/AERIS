@@ -57,6 +57,50 @@ OUTPUT_FRACTION = 3
 MIN_OUTPUT_HEIGHT = 96
 
 
+#: Files whose format is defined in terms of literal tab characters. A
+#: Makefile recipe line *must* start with a tab — spaces are a syntax error,
+#: not a style preference — and gofmt rewrites to tabs on every save, so
+#: inserting spaces there means fighting the formatter.
+TAB_INDENTED = {".go", ".mk"}
+TAB_INDENTED_NAMES = {"Makefile", "makefile", "GNUmakefile"}
+
+#: Dark by default to match the panel. A scheme that is missing is not an
+#: error: `set_style_scheme(None)` just leaves the default.
+STYLE_SCHEMES = ("Adwaita-dark", "classic-dark", "solarized-dark")
+
+_SOURCE_NS = None
+_SOURCE_CHECKED = False
+
+
+def source_ns():
+    """The GtkSourceView 5 namespace, or None when it is not installed.
+
+    Optional on purpose, and resolved here rather than at import time for the
+    same reason the rest of this module's heavy imports are lazy: making it a
+    hard dependency would mean no preview *at all* on a machine without it,
+    which is a far worse failure than monochrome code.
+
+    Checked once. `gi.require_version` on a missing namespace is not free and
+    this is called for every text file opened.
+    """
+    global _SOURCE_NS, _SOURCE_CHECKED
+    if not _SOURCE_CHECKED:
+        _SOURCE_CHECKED = True
+        try:
+            gi.require_version("GtkSource", "5")
+            from gi.repository import GtkSource
+
+            _SOURCE_NS = GtkSource
+        except (ValueError, ImportError):
+            _SOURCE_NS = None
+    return _SOURCE_NS
+
+
+def indents_with_tabs(path: Path) -> bool:
+    """Whether this file's format requires literal tabs."""
+    return path.suffix.lower() in TAB_INDENTED or path.name in TAB_INDENTED_NAMES
+
+
 def output_height(height: int) -> int:
     """How tall the output pane should be inside a viewer `height` tall.
 
@@ -479,6 +523,40 @@ class Viewer(Gtk.Box):
         self._doc.set_modified(False)
         self._read_mtime = self._disk_mtime
 
+    def _new_document(self) -> Gtk.TextBuffer:
+        """A buffer for the open file: highlighting one where that is possible.
+
+        `GtkSource.Buffer` is a `Gtk.TextBuffer`, so everything else — the
+        undo history, `dirty`, `save_file` — is unchanged and unaware. That is
+        the point: the optional dependency affects one constructor rather than
+        branching through the rest of the viewer.
+        """
+        src = source_ns()
+        if src is None:
+            return Gtk.TextBuffer()
+        buf = src.Buffer()
+        buf.set_highlight_syntax(True)
+        if self.path is not None:
+            lang = src.LanguageManager.get_default().guess_language(
+                str(self.path), None
+            )
+            buf.set_language(lang)
+        manager = src.StyleSchemeManager.get_default()
+        for name in STYLE_SCHEMES:
+            scheme = manager.get_scheme(name)
+            if scheme is not None:
+                buf.set_style_scheme(scheme)
+                break
+        return buf
+
+    def highlight_language(self) -> str:
+        """The language id in use, or "" for none. Exists to be asserted on."""
+        src = source_ns()
+        if src is None or not isinstance(self._doc, src.Buffer):
+            return ""
+        lang = self._doc.get_language()
+        return lang.get_id() if lang is not None else ""
+
     def _document(self, text: str) -> Gtk.TextBuffer:
         """The one buffer for the open file, created on first sight.
 
@@ -489,7 +567,7 @@ class Viewer(Gtk.Box):
         is not a write.
         """
         if self._doc is None:
-            self._doc = Gtk.TextBuffer()
+            self._doc = self._new_document()
             self._doc.connect("modified-changed", lambda *_: self._sync_dirty())
             self._fill(text)
         elif (
@@ -507,7 +585,23 @@ class Viewer(Gtk.Box):
         here and making it a hard dependency would mean no preview at all on a
         machine without it. The text is shown either way; see README.
         """
-        view = Gtk.TextView.new_with_buffer(self._document(text))
+        doc = self._document(text)
+        src = source_ns()
+        if src is not None and isinstance(doc, src.Buffer):
+            view = src.View.new_with_buffer(doc)
+            view.set_show_line_numbers(True)
+            view.set_auto_indent(True)
+            view.set_tab_width(4)
+            # Spaces everywhere except where the *format* requires tabs: a
+            # Makefile recipe line starting with spaces is a syntax error, and
+            # gofmt rewrites to tabs on every save, so spaces there mean
+            # fighting the formatter rather than choosing a style.
+            view.set_insert_spaces_instead_of_tabs(
+                self.path is None or not indents_with_tabs(self.path)
+            )
+            view.add_css_class("source-view")
+        else:
+            view = Gtk.TextView.new_with_buffer(doc)
         view.set_editable(editable)
         view.set_cursor_visible(editable)
         view.set_monospace(True)

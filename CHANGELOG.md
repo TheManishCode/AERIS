@@ -7,6 +7,53 @@ release is actually cut; until then the entries below are the record, newest
 first, and this heading exists so `palisade --version` and this file cannot
 disagree about which tree you are reading.
 
+## 2026-10-04 — Syntax highlighting, where the machine has it
+
+Role: Frontend Engineer
+
+Status: Added
+
+Reason:
+Code was shown monochrome. GtkSourceView is the obvious answer and a bad hard
+dependency: requiring it would mean no preview *at all* — not just no colour —
+on a machine without it, which is the same trade `toolchains.py` already
+refuses to make about compilers.
+
+Changes:
+- `viewer.source_ns()` resolves GtkSourceView 5 behind a try, once, and
+  returns None when it is absent. Nothing is imported at module scope: a
+  top-level `require_version` would take every renderer down with it.
+- `GtkSource.Buffer` *is* a `Gtk.TextBuffer`, so it slots into the existing
+  document and undo, `dirty` and `save_file` never learn about it. The
+  optional dependency touches one constructor and one view branch; a test
+  asserts those three methods stay free of it.
+- Language guessed from the path, dark scheme, line numbers, auto-indent,
+  tab width 4. Spaces except where the format requires tabs — `.go`, `.mk`
+  and the Makefile names — because a recipe line indented with spaces is a
+  syntax error and gofmt rewrites to tabs on every save.
+- CSS makes the scheme's background transparent, which it otherwise paints
+  opaque over the compositor blur, and mutes the gutter.
+
+Removed/Reverted:
+- None.
+
+Verification:
+- `tests/test_source_view.py`: 14 pass, 4 skip. The pure decisions (indent
+  rule, optionality, stylesheet) are covered regardless of the library.
+- The fallback is what all 287 files tests actually run against.
+- **The highlighted path has never executed.** `gtksourceview5` is in Arch's
+  repos and not installed here, and `gtksourceview4` cannot stand in for it:
+  it links GTK 3, and the process already has GTK 4 loaded — tried, and it
+  raises. The four tests skip loudly rather than passing. Recorded in TODO.md
+  with the command that would verify it.
+
+Result:
+Highlighted code where GtkSourceView 5 is installed, plain monospace where it
+is not, and no difference to anything else either way.
+
+Known Issues:
+As above: unexecuted on this machine.
+
 ## 2026-10-04 — Run says how it went, and runs what you are looking at
 
 Role: Senior Product Designer + Frontend Engineer + QA Engineer

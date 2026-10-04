@@ -83,6 +83,23 @@ rather than an event being waited for. Not new, and not investigated: it
 surfaced on 2026-10-04 only because the headless run had been segfaulting
 before it got that far. Worth a look next time that file is open.
 
+## The GtkSourceView path has never run
+
+`viewer.source_ns()` returns None on this machine: Arch ships
+`gtksourceview5` but it is not installed, and `gtksourceview4` cannot stand in
+because it links GTK 3 and the process already has GTK 4 loaded.
+
+So everything in `_new_document` and the `src.View` branch of `_doc_view` is
+written and unexecuted. The *fallback* is thoroughly exercised — it is what
+all 287 files tests run against — and `test_source_view.py` reports four
+skips rather than passing silently.
+
+To verify: `sudo pacman -S gtksourceview5`, then
+`python3 -m pytest tests/test_source_view.py -q -rs` should report 18 passed
+and 0 skipped, and `tests/test_viewer_live.py` should still be green.
+
+Found 2026-10-04 when the optional integration was written.
+
 ## Unverified by a human
 
 - Whether drag-to-**resize** feels right. Unit-tested only.

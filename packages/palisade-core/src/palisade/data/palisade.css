@@ -886,6 +886,23 @@ window.palisade-picker .fence-root {
   margin: 8px 0;
 }
 
+/* GtkSourceView, when it is installed. Its style scheme paints an opaque
+ * background of its own, which would put a solid rectangle on top of the
+ * translucent panel and undo the compositor blur behind it — so the scheme
+ * supplies the syntax colours and this supplies the surface, as everywhere
+ * else in this sheet. */
+.source-view,
+.source-view text {
+  background: transparent;
+}
+
+/* Line numbers are navigation furniture, not content. At full contrast a
+ * narrow panel reads as two columns of equal weight. */
+.source-view gutter {
+  color: alpha(@m3_on_surface_variant, 0.55);
+  background: transparent;
+}
+
 /* The label inside the block above. The scroller carries the surface, so this
  * carries only the face — a background here would paint a second box inside
  * the first, offset by the scroller's padding. */
