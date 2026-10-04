@@ -350,3 +350,71 @@ Not yet verified:
 Next recommended action:
 - Add the remote and push: `git push -u origin aeris:main`. Then fetch one of
   the four install URLs to confirm it resolves.
+
+## 2026-10-05 — Session Summary: the bar button the rename killed
+
+What we did:
+- Chased down "the minimize tab button is not working". Ruled out, by driving
+  the real compositor rather than reading code: the taskbar's
+  Minimized/Hidden segments (both directions, mouse and Tab), the
+  `SUPER+ALT+Tab` keybind (open and close), `SUPER+S`, and restore-by-row.
+  All four already worked.
+- Found the actual break outside this repository, in
+  `~/.config/quickshell/ii/modules/ii/bar/UtilButtons.qml`: the bar button
+  still ran `~/.local/bin/palisade`, which the 0.4.0 rename deletes.
+  `Quickshell.execDetached` at a missing binary reports nothing — no dialog,
+  no log line — so the button was simply inert and read as a taskbar fault.
+  Repointed it at `~/.local/bin/aeris` (backup kept beside it).
+- Fixed the class, not just the instance: core's installer removes the old
+  launcher but only checked `~/.config/hypr` for `palisade run`, so an
+  autostart line was caught and a bar button was not. It now scans the whole
+  config tree for `bin/palisade` and names each file. Reports only — it does
+  not rewrite a user's bar config.
+- Added the matching migration bullet to `docs/configuration.md`; the list of
+  things that cannot be carried over had three entries and needed a fourth.
+- Added `tests/test_mode_switch.py` (12 cases). The segmented control had no
+  coverage at all, and both routes into it share `_set_mode`.
+- Cleaned three stale-brand spots in the live config: the `aeris.toml` header
+  (named Palisade and a `state.json` path that moved) and two comments in
+  `keybinds.lua`. Backups kept for both.
+- Killed a `git push` left hanging 40 minutes by the previous session, and
+  repointed `origin` from `github.com` (which resolves to the work key,
+  `manishp-wk`, with no write access) to the `github-main` alias.
+
+What worked:
+- 1055 tests pass across the four packages (599 / 88 / 301 / 67), 4 skipped.
+  `test_headless.py` passes, so the new file is safe with no display.
+- The new test was mutation-checked, not just run: dropping the
+  `_sync_mode_switch` call from `_set_mode` fails 3 cases, and lighting both
+  segments fails 5. `fence.py` was restored from a pre-mutation copy and
+  `git diff` confirms it unchanged.
+- The installer's new block was run against a fixture under `set -euo
+  pipefail`, both branches: it names the stale QML, skips a binary file and a
+  clean file, and goes quiet once the path is fixed. All four installers
+  still `bash -n` clean.
+- The bar button was driven with a real pointer four times in a row:
+  open, close, open, close. This closes the "not yet verified" item carried
+  since 2026-10-03.
+- Full chain on Hyprland after `hyprctl reload`: `SUPER+S` parked the focused
+  window on `special:minimized` with tags `minimized` and
+  `minstate:2:5:0:0`; the bar button opened the taskbar; clicking the row
+  returned the window to workspace 5 with tags cleared.
+- Pushed as `1364792`; `git ls-remote` confirms `origin/main` matches.
+
+What's still broken / unfinished:
+- Nothing found. The one real defect is fixed and verified.
+
+Not yet verified:
+- `shellcheck` was not run on the installer change — it is not installed on
+  this machine. `bash -n` passes and CI runs shellcheck on every installer,
+  so the next CI run is the real check.
+- The installer's new scan was proven against a fixture, not by running
+  `install.sh` end to end; a full install was out of scope for a diagnosis.
+- `xvfb-run` is not installed here, so the suites ran against the live
+  Wayland session. The no-display path is still covered, because
+  `test_headless.py` spawns its own child run with the display variables
+  stripped — and that passed.
+
+Next recommended action:
+- Watch the CI run on `1364792` for the shellcheck job, since that is the one
+  check this session could not run locally.
