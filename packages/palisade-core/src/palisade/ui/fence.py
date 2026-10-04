@@ -627,7 +627,16 @@ class FenceWindow(Gtk.ApplicationWindow):
         than a broken-image box.
         """
         if wclass:
-            info = Gio.DesktopAppInfo.new(f"{wclass}.desktop")
+            # `Gio.DesktopAppInfo.new` returns NULL when no such entry exists,
+            # and PyGObject turns a NULL from a constructor into a TypeError
+            # rather than None — so the `is not None` guard below never ran and
+            # a window whose class has no desktop file (a browser profile, an
+            # Electron app, anything renamed) raised out of the row's bind
+            # callback instead of falling through to the glyph.
+            try:
+                info = Gio.DesktopAppInfo.new(f"{wclass}.desktop")
+            except TypeError:
+                info = None
             if info is not None and info.get_icon() is not None:
                 image.set_from_gicon(info.get_icon())
                 return

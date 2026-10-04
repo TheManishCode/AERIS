@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-10-04 — A taskbar row with no desktop entry raised out of its bind
+
+Role: Frontend Engineer + QA Engineer
+
+Status: Fixed
+
+Reason:
+Found in the daemon log while verifying the dock's new verbs, against a real
+`web.whatsapp.com` window.
+
+`Gio.DesktopAppInfo.new` returns NULL when no such entry exists, and PyGObject
+turns a NULL from a constructor into a `TypeError` rather than None. So the
+`if info is not None` guard in `_apply_window_icon` could never run — the
+exception was raised first, out of the list row's bind callback, for any
+window whose class has no desktop file: a browser profile, an Electron app,
+anything renamed.
+
+GTK catches an exception in a callback and prints it, so the symptom was a row
+that silently lost its icon plus a traceback per bind, rather than a crash.
+That is why it survived: nothing visibly broke, and the fallback glyph the
+docstring promises was simply never reached.
+
+Changes:
+- `_apply_window_icon` catches the `TypeError` and treats it as "no entry",
+  which is what the dead guard was trying to express.
+
+Removed/Reverted:
+- None. The unreachable `is not None` check is kept — it is still correct if
+  PyGObject ever returns None — and is now actually reachable.
+
+Verification:
+- `tests/test_window_icons.py` is new (6). It asserts the fallback glyph is
+  reached, not merely that nothing raised, and includes a test that the real
+  `Gio.DesktopAppInfo.new` still raises what the code catches, so the except
+  clause cannot quietly become dead.
+- Reverting the fix fails two of them.
+- 687 tests pass across the four packages.
+
+Result:
+A minimized window with no desktop entry gets the neutral window glyph, which
+is what was intended all along.
+
+Known Issues:
+- None.
+
 ## 2026-10-04 — Module verbs reach the CLI, and the Lua boundary is closed
 
 Role: Backend Engineer + Application Security Engineer + QA Engineer
