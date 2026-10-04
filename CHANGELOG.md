@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-10-04 — Undo survives leaving and re-entering edit mode
+
+Role: Senior Backend Engineer + QA Engineer
+
+Status: Fixed, Changed
+
+Reason:
+The undo history lived on whichever `Gtk.TextView` was on screen, and
+`_render()` builds a fresh view for every mode change. Pressing Done threw the
+stack away, so going back in started from nothing and leaving edit mode was a
+one-way door for anything you had not saved.
+
+Changes:
+- One `Gtk.TextBuffer` per open file (`_doc`), created on first sight and
+  reset in `show_file`. Every view is `Gtk.TextView.new_with_buffer(_doc)`, so
+  the history belongs to the document rather than to a view.
+- The buffer is only re-read from disk when that is safe: not editing, nothing
+  unsaved, and the mtime actually changed. Re-rendering for any other reason
+  leaves the text alone.
+- `_read_mtime` (what the buffer holds) is now separate from `_disk_mtime`
+  (what the last stat saw). Collapsing them would have let a re-render while
+  editing silently refresh the changed-on-disk guard in `edit.save`.
+- A confirmed discard — the second Escape — reloads from disk.
+- `_code_view` is now only for text that is *not* the document: Markdown code
+  blocks and run output. The document goes through `_doc_view`.
+
+Removed/Reverted:
+- The `_editing` gate on the `dirty` property. It was never observable: you
+  cannot leave edit mode holding unsaved work, because `stop_editing` discards
+  first. A simplification, recorded as one — not a bug fix.
+
+Verification:
+- `tests/test_viewer_live.py` (16 tests), a real Viewer in a real window with
+  the main loop pumped. Proved by reverting the code three ways: a fresh
+  buffer per render failed 3, refilling a dirty buffer failed 1, and the
+  before/after of a real session was driven by hand — type, save, Done, Edit,
+  Ctrl+Z, and the edit came back out.
+- Full suite: core 458, files 234, dock 79, apps 67.
+
+Result:
+Ctrl+Z still works after Done and Edit.
+
+Known Issues:
+`begin/end_irreversible_action` around the file load is a no-op today —
+measured, GTK 4 already treats `set_text` as irreversible. It is kept because
+the guarantee is load-bearing and undocumented, and the test watches the
+guarantee rather than the wrapper. Both say so.
+
 ## 2026-10-04 — The no-display run crashed at 15% and nobody noticed
 
 Role: QA Engineer

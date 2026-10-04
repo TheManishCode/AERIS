@@ -46,13 +46,6 @@ ellipsizing at 420px — a real header rebuild, not a format change.
 Found 2026-10-03 while building navigation; narrowed 2026-10-04 when the
 trail landed.
 
-## Editing has no undo across modes
-
-The TextView carries GTK's own undo history while editing, and it goes when
-edit mode does — `_render()` builds a fresh view. Leaving edit mode and going
-back in is therefore a one-way door for anything you had not saved. Either
-keep the buffer across the toggle, or say so in the Done tooltip.
-
 ## palisade-apps has rows but no pinning
 
 The catalogue, search and launch work and are tested. The *pin a window over a

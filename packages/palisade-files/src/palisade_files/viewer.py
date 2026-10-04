@@ -124,12 +124,20 @@ class Viewer(Gtk.Box):
         self.kind: str = ""
         self._mode = "preview"     #: markdown only: "preview" or "source"
         self._proc: Gio.Subprocess | None = None
-        #: Editing state. `_buffer` is the live TextBuffer while editing, so
-        #: the text can be read back on save without walking the widget tree.
+        #: Editing state. `_doc` is *the* buffer for the open file — one per
+        #: file, not one per render. Every view of the text is built with
+        #: `Gtk.TextView.new_with_buffer(self._doc)`, so the undo history
+        #: belongs to the document rather than to whichever view is on screen.
+        #: Rebuilding it per render is what made Done a one-way door.
         self._editing = False
-        self._buffer: Gtk.TextBuffer | None = None
-        #: mtime the open buffer was read at, for the changed-on-disk check.
+        self._doc: Gtk.TextBuffer | None = None
+        #: mtime the *buffer* was filled from, for the changed-on-disk check
+        #: in `edit.save`. Deliberately not "the mtime of the last stat": if
+        #: the file moves under a dirty buffer, this has to keep pointing at
+        #: what was read, or the save silently overwrites someone else's work.
         self._read_mtime: float | None = None
+        #: mtime seen by the most recent read, which is a different question.
+        self._disk_mtime: float | None = None
         #: Whether the whole file is in the buffer. A truncated read is never
         #: editable — writing 256 KB over a 200 MB log is the single most
         #: destructive thing this viewer could do.
@@ -203,8 +211,9 @@ class Viewer(Gtk.Box):
         self.kind = preview.classify(path)
         self._mode = "preview"
         self._editing = False
-        self._buffer = None
+        self._doc = None
         self._read_mtime = None
+        self._disk_mtime = None
         self._discard_armed = False
         self._title.set_text(path.name)
         self._title.set_tooltip_text(str(path))
@@ -288,7 +297,7 @@ class Viewer(Gtk.Box):
             self._actions.append(toggle)
 
         if self._editing or self._mode == "source":
-            return self._code_view(text, editable=self._editing)
+            return self._doc_view(text, editable=self._editing)
         return self._markdown_view(text)
 
     def _markdown_view(self, text: str) -> Gtk.Widget:
@@ -361,36 +370,81 @@ class Viewer(Gtk.Box):
             label.set_text(_strip_markup(markup))
         return label
 
-    def _code_view(
-        self, text: str, *, compact: bool = False, editable: bool = False
-    ) -> Gtk.Widget:
-        """Monospaced and selectable; editable only when asked.
+    def _code_view(self, text: str, *, compact: bool = False) -> Gtk.Widget:
+        """Monospaced and selectable, with a buffer of its own.
+
+        For text that is *not* the open document: Markdown code blocks and run
+        output. The file itself goes through `_doc_view`, which shares one
+        buffer so its undo history outlives the view.
+        """
+        view = Gtk.TextView()
+        view.set_editable(False)
+        view.set_cursor_visible(False)
+        view.set_monospace(True)
+        view.set_wrap_mode(Gtk.WrapMode.NONE)
+        view.get_buffer().set_text(text)
+        view.add_css_class("code-view")
+        if not compact:
+            view.set_vexpand(True)
+        return view
+
+    def _fill(self, text: str) -> None:
+        """Put file text into the document without making it undoable.
+
+        `begin/end_irreversible_action` pins a guarantee this depends on:
+        a Ctrl+Z on a freshly-opened file must not empty the editor, because
+        that is an undo of something the user never did.
+
+        Measured, GTK 4 already treats `set_text` as irreversible — the
+        wrapper changes nothing today. It is kept because the guarantee is
+        load-bearing and undocumented: the moment this fill becomes an
+        `insert` (a streaming read, a partial reload) the wrapper is the only
+        thing holding it. `test_loading_the_file_is_not_undoable` watches the
+        guarantee itself rather than the wrapper.
+        """
+        assert self._doc is not None
+        self._doc.begin_irreversible_action()
+        self._doc.set_text(text)
+        self._doc.end_irreversible_action()
+        # After the text, not before: setting it marks the buffer modified,
+        # and a file would open already claiming unsaved changes.
+        self._doc.set_modified(False)
+        self._read_mtime = self._disk_mtime
+
+    def _document(self, text: str) -> Gtk.TextBuffer:
+        """The one buffer for the open file, created on first sight.
+
+        Re-reads from disk only when it is safe to: not editing, nothing
+        unsaved, and the file actually changed. Refilling a dirty buffer
+        because something re-rendered would throw away work with no prompt,
+        which is the single most destructive thing this viewer could do that
+        is not a write.
+        """
+        if self._doc is None:
+            self._doc = Gtk.TextBuffer()
+            self._doc.connect("modified-changed", lambda *_: self._sync_dirty())
+            self._fill(text)
+        elif (
+            not self._editing
+            and not self._doc.get_modified()
+            and self._disk_mtime != self._read_mtime
+        ):
+            self._fill(text)
+        return self._doc
+
+    def _doc_view(self, text: str, *, editable: bool) -> Gtk.Widget:
+        """A view onto the open document. Editable only when asked.
 
         GtkSourceView would bring syntax highlighting, but it is not installed
         here and making it a hard dependency would mean no preview at all on a
         machine without it. The text is shown either way; see README.
         """
-        view = Gtk.TextView()
+        view = Gtk.TextView.new_with_buffer(self._document(text))
         view.set_editable(editable)
         view.set_cursor_visible(editable)
         view.set_monospace(True)
-        if editable:
-            view.add_css_class("editing")
-            buf = view.get_buffer()
-            buf.set_text(text)
-            # Cleared here rather than before set_text: setting the initial
-            # text marks the buffer modified, and a file would open already
-            # claiming unsaved changes.
-            buf.set_modified(False)
-            buf.connect("modified-changed", lambda *_: self._sync_dirty())
-            self._buffer = buf
-            view.set_vexpand(True)
-            return view
-        view.set_wrap_mode(Gtk.WrapMode.NONE if compact else Gtk.WrapMode.NONE)
-        view.get_buffer().set_text(text)
-        view.add_css_class("code-view")
-        if compact:
-            return view
+        view.set_wrap_mode(Gtk.WrapMode.NONE)
+        view.add_css_class("editing" if editable else "code-view")
         view.set_vexpand(True)
         return view
 
@@ -414,7 +468,7 @@ class Viewer(Gtk.Box):
                 "install toolchains."
             )
             self._actions.append(hint)
-        return self._code_view(text)
+        return self._doc_view(text, editable=self._editing)
 
     def _build_pdf(self, path: Path) -> Gtk.Widget:
         try:
@@ -528,11 +582,12 @@ class Viewer(Gtk.Box):
 
     @property
     def dirty(self) -> bool:
-        return (
-            self._editing
-            and self._buffer is not None
-            and self._buffer.get_modified()
-        )
+        """Unsaved work in the document.
+
+        Not gated on `_editing` any more. The buffer outlives edit mode now,
+        and a marker that disappeared when you pressed Done would be saying
+        the work was gone when it was not."""
+        return self._doc is not None and self._doc.get_modified()
 
     def start_editing(self) -> None:
         if not edit.can_edit(self.kind, self._complete) or self._editing:
@@ -556,11 +611,23 @@ class Viewer(Gtk.Box):
                 f"changes. Ctrl+S to save, or press Escape again to discard."
             )
             return False
+        if self.dirty:
+            # The confirmed discard. Irreversible on purpose: offering undo
+            # of a discard you just confirmed twice is a third prompt nobody
+            # asked for, and the disk is the thing being returned to.
+            self._discard()
         self._editing = False
-        self._buffer = None
         self._discard_armed = False
         self._render()
         return True
+
+    def _discard(self) -> None:
+        """Throw the edits away and go back to what is on disk."""
+        if self.path is None or self._doc is None:
+            return
+        text = self._load_text(self.path)
+        if text is not None:
+            self._fill(text)
 
     def save_file(self) -> bool:
         """Write the buffer back. False if it could not be written.
@@ -569,10 +636,10 @@ class Viewer(Gtk.Box):
         permissions, the changed-on-disk check — is in `edit.save`, where it
         is tested without a display.
         """
-        if self.path is None or self._buffer is None:
+        if self.path is None or self._doc is None:
             return False
-        start, end = self._buffer.get_bounds()
-        text = self._buffer.get_text(start, end, False)
+        start, end = self._doc.get_bounds()
+        text = self._doc.get_text(start, end, False)
         try:
             self._read_mtime = edit.save(
                 self.path, text, expect_mtime=self._read_mtime
@@ -580,7 +647,7 @@ class Viewer(Gtk.Box):
         except edit.EditError as exc:
             self._notify(str(exc))
             return False
-        self._buffer.set_modified(False)
+        self._doc.set_modified(False)
         self._sync_dirty()
         return True
 
@@ -602,7 +669,9 @@ class Viewer(Gtk.Box):
         """
         try:
             text, complete = edit.readable_text(path, max_bytes=MAX_TEXT_BYTES)
-            self._read_mtime = path.stat().st_mtime
+            # `_disk_mtime`, not `_read_mtime`: this is what the file is now,
+            # which is only what the *buffer* holds once `_fill` accepts it.
+            self._disk_mtime = path.stat().st_mtime
         except OSError:
             self._complete = False
             return None
