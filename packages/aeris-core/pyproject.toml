@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aeris-core"
+version = "0.4.0"
+description = "The panel every AERIS module draws on: layer-shell surface, cards, theme, config, IPC."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# PyGObject and gtk4-layer-shell are system packages, not wheels. install.sh
+# puts them in place; declaring them here would make pip fail on a machine
+# where they are already present and working.
+dependencies = []
+
+# Deliberately no [project.scripts]. gtk4-layer-shell must be loaded before
+# libwayland-client, which only LD_PRELOAD can arrange and a Python console
+# script cannot. A generated `aeris` entry point would shadow the real
+# launcher on PATH and fail at surface creation with an obscure error.
+# install.sh places bin/aeris instead — one `aeris` command, and it works.
+
+[project.urls]
+Homepage = "https://github.com/TheManishCode/AERIS"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aeris"]
+
+# The stylesheet, the starter config and the file-manager menu entries live
+# inside the package rather than beside it, so one path works from a checkout
+# and from site-packages alike.
+artifacts = [
+    "src/aeris/data/*.css",
+    "src/aeris/data/*.toml",
+    "src/aeris/data/*.desktop",
+]

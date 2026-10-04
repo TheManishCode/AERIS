@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aeris-apps"
+version = "0.4.0"
+description = "Installed applications as AERIS panel content: catalogue, search and launch."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["aeris-core>=0.3"]
+
+[project.entry-points."aeris.modules"]
+apps = "aeris_apps:MODULE"
+
+[project.urls]
+Homepage = "https://github.com/TheManishCode/AERIS"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aeris_apps"]

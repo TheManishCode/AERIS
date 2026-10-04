@@ -1,4 +1,4 @@
-# Palisade — reference
+# AERIS — reference
 
 Everything you can press, type or configure. Read from the source, not from
 memory: if something here disagrees with the code, the code is right and this
@@ -31,8 +31,8 @@ file is a bug.
 | <kbd>F5</kbd> | Re-scan now |
 | <kbd>Ctrl</kbd>+<kbd>C</kbd> | Copy the selected paths |
 | <kbd>Ctrl</kbd>+<kbd>A</kbd> | Select all |
-| <kbd>Ctrl</kbd>+<kbd>N</kbd> | New file *(needs palisade-files)* |
-| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> | New folder *(needs palisade-files)* |
+| <kbd>Ctrl</kbd>+<kbd>N</kbd> | New file *(needs aeris-files)* |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> | New folder *(needs aeris-files)* |
 | Right-click a row | Item menu |
 | Right-click the header | Panel menu |
 | Double-click the header | Collapse / expand |
@@ -59,11 +59,11 @@ back to history — the newest thing you typed that starts the same way.
 already in the field, so typing `~/P` and pressing Up offers only the paths
 starting that way. Entries are kept per mode and carry their sigil, so
 recalling a `>launcher` entry puts you back in the launcher. Fifty per mode,
-in `$XDG_STATE_HOME/palisade/history.json`; delete the file to forget
+in `$XDG_STATE_HOME/aeris/history.json`; delete the file to forget
 everything. Only queries you actually accepted are recorded, not every prefix
 typed on the way there.
 
-### In a file viewer *(palisade-files)*
+### In a file viewer *(aeris-files)*
 
 | Key | Does |
 | --- | --- |
@@ -81,7 +81,7 @@ a dirty buffer — and dismisses the run output before it leaves the file, since
 closing the file to be rid of a pane that is a third of it is a bigger step
 than was asked for.
 
-### In the taskbar *(palisade-dock)*
+### In the taskbar *(aeris-dock)*
 
 | Key | Does |
 | --- | --- |
@@ -116,9 +116,9 @@ depends on which packages are installed.
 | You type | It becomes | From |
 | --- | --- | --- |
 | `report` | A filter over the rows already on screen | core |
-| `~/Documents`, `/etc`, `./src`, `sub/thing` | A listing of that folder, anywhere on disk | palisade-files |
-| `>firefox`, `>browser` | An application launcher | palisade-apps |
-| `@kitty` | A search over minimized windows | palisade-dock |
+| `~/Documents`, `/etc`, `./src`, `sub/thing` | A listing of that folder, anywhere on disk | aeris-files |
+| `>firefox`, `>browser` | An application launcher | aeris-apps |
+| `@kitty` | A search over minimized windows | aeris-dock |
 
 **Sigils are the only way into `>` and `@`.** An application name is an
 ordinary word — "code", "files" and "notes" are all programs *and* all
@@ -142,8 +142,8 @@ none of which have "term" in their name.
 
 ## Config
 
-`~/.config/palisade/palisade.toml`. `palisade init` writes a starter;
-`palisade check` validates it and previews what every panel would show.
+`~/.config/aeris/aeris.toml`. `aeris init` writes a starter;
+`aeris check` validates it and previews what every panel would show.
 
 ### `[settings]`
 
@@ -178,7 +178,7 @@ Groups are templates. The desktop starts empty; you open groups as *tabs*.
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `id` | *required* | What `palisade new <id>` takes |
+| `id` | *required* | What `aeris new <id>` takes |
 | `title` | *required* | Shown in the header |
 | `source` | *required* | See below |
 | `icon` | `""` | Icon-theme name, shown in the picker |
@@ -203,11 +203,11 @@ is opened on demand and remembers where you dragged it.
 
 | `type` | Shows | Needs |
 | --- | --- | --- |
-| `directory` (or `folder`) | One folder, live | palisade-files |
-| `query` | A saved search across several roots | palisade-files |
-| `paths` | A fixed, pinned list | palisade-files |
-| `windows` | Windows you have minimized | palisade-dock |
-| `apps` | Installed applications | palisade-apps |
+| `directory` (or `folder`) | One folder, live | aeris-files |
+| `query` | A saved search across several roots | aeris-files |
+| `paths` | A fixed, pinned list | aeris-files |
+| `windows` | Windows you have minimized | aeris-dock |
+| `apps` | Installed applications | aeris-apps |
 
 Name a type whose package is not installed and the panel tells you which one to
 install — it does not quietly show an empty folder.
@@ -349,51 +349,51 @@ you want to keep.
 
 | | Command | Returns |
 | --- | --- | --- |
-| | `palisade run` | Start the daemon |
-| | `palisade init` | Write a starter config |
-| | `palisade check` | Validate the config, preview every panel |
-| | `palisade doctor` | Which modules are installed, which are missing |
-| | `palisade install-launcher` | Symlink `~/.local/bin/palisade` at this checkout |
-| | `palisade hyprland-rule` | Print compositor rules for permanent blur |
-| | `palisade install-menus` | Add Palisade to the file manager's right-click menu |
-| | `palisade ping` | Is the daemon up |
-| | `palisade describe` | Machine-readable command catalog |
-| | `palisade config-path` | Path of the active config |
-| | `palisade list` | Every panel with its live item count |
-| | `palisade show <id>` | One panel, including item names |
-| | `palisade theme` | Active Material 3 tokens and where they came from |
-| | `palisade groups` | The catalogue of groups |
-| | `palisade tabs` | Tabs currently open |
-| | `palisade hidden` | Panels currently hidden |
-| ! | `palisade reload` | Re-read config and theme, rebuild |
-| ! | `palisade refresh` | Re-scan sources without rebuilding |
-| ! | `palisade new [group]` | Open a tab. No argument opens the picker |
-| ! | `palisade toggle <group>` | Open it, or close it if already open |
-| ! | `palisade close <id\|all>` | Close a tab |
-| ! | `palisade collect <paths…>` | A new tab holding exactly those paths |
-| ! | `palisade move <id> <x> <y>` | |
-| ! | `palisade resize <id> <w> <h>` | |
-| ! | `palisade layer <id> <layer>` | |
-| ! | `palisade collapse <id> <bool>` | |
-| ! | `palisade lock <id> <bool>` | |
-| ! | `palisade hide <id> <bool>` | |
-| ! | `palisade unhide <id>` | Bring a hidden panel back |
-| ! | `palisade peek <seconds>` | Raise every panel above your windows, briefly |
+| | `aeris run` | Start the daemon |
+| | `aeris init` | Write a starter config |
+| | `aeris check` | Validate the config, preview every panel |
+| | `aeris doctor` | Which modules are installed, which are missing |
+| | `aeris install-launcher` | Symlink `~/.local/bin/aeris` at this checkout |
+| | `aeris hyprland-rule` | Print compositor rules for permanent blur |
+| | `aeris install-menus` | Add AERIS to the file manager's right-click menu |
+| | `aeris ping` | Is the daemon up |
+| | `aeris describe` | Machine-readable command catalog |
+| | `aeris config-path` | Path of the active config |
+| | `aeris list` | Every panel with its live item count |
+| | `aeris show <id>` | One panel, including item names |
+| | `aeris theme` | Active Material 3 tokens and where they came from |
+| | `aeris groups` | The catalogue of groups |
+| | `aeris tabs` | Tabs currently open |
+| | `aeris hidden` | Panels currently hidden |
+| ! | `aeris reload` | Re-read config and theme, rebuild |
+| ! | `aeris refresh` | Re-scan sources without rebuilding |
+| ! | `aeris new [group]` | Open a tab. No argument opens the picker |
+| ! | `aeris toggle <group>` | Open it, or close it if already open |
+| ! | `aeris close <id\|all>` | Close a tab |
+| ! | `aeris collect <paths…>` | A new tab holding exactly those paths |
+| ! | `aeris move <id> <x> <y>` | |
+| ! | `aeris resize <id> <w> <h>` | |
+| ! | `aeris layer <id> <layer>` | |
+| ! | `aeris collapse <id> <bool>` | |
+| ! | `aeris lock <id> <bool>` | |
+| ! | `aeris hide <id> <bool>` | |
+| ! | `aeris unhide <id>` | Bring a hidden panel back |
+| ! | `aeris peek <seconds>` | Raise every panel above your windows, briefly |
 
 ### From modules
 
-These exist only when the package providing them is installed. `palisade
+These exist only when the package providing them is installed. `aeris
 describe` lists what the running daemon actually answers, each tagged with the
 module it came from; a verb core does not recognise is forwarded to the daemon
 rather than rejected, which is how they reach the CLI at all.
 
 | | Command | Package | Returns |
 | --- | --- | --- | --- |
-| | `palisade minimized` | palisade-dock | Every minimized window, with its address |
-| ! | `palisade minimize [address]` | palisade-dock | Park a window. With no address, the focused one |
-| ! | `palisade restore [address\|last\|all]` | palisade-dock | Put one back where it came from. Defaults to `last` |
-| ! | `palisade restore-all` | palisade-dock | Put every minimized window back |
-| ! | `palisade close-window <address>` | palisade-dock | Close a window. Discards unsaved work |
+| | `aeris minimized` | aeris-dock | Every minimized window, with its address |
+| ! | `aeris minimize [address]` | aeris-dock | Park a window. With no address, the focused one |
+| ! | `aeris restore [address\|last\|all]` | aeris-dock | Put one back where it came from. Defaults to `last` |
+| ! | `aeris restore-all` | aeris-dock | Put every minimized window back |
+| ! | `aeris close-window <address>` | aeris-dock | Close a window. Discards unsaved work |
 
 `minimize` with no argument takes the focused window, and `restore` with none
 means the one you minimized most recently — the two cases that would otherwise
@@ -401,13 +401,13 @@ force you to look up a hex address to undo something you just did. `last` and
 `all` are the only two words either verb accepts; everything else is treated
 as an address.
 
-An address is `0x` followed by up to 16 hex digits, exactly as `palisade
+An address is `0x` followed by up to 16 hex digits, exactly as `aeris
 minimized` and `hyprctl clients -j` report it. Anything else is refused:
 addresses are interpolated into Lua that the compositor executes, so this is a
 security boundary rather than a tidiness check.
 
 ```bash
-palisade minimized
+aeris minimized
 ```
 
 ### Optional libraries
@@ -416,11 +416,11 @@ Installed, they are used; absent, the feature degrades and nothing fails.
 
 | Library | Package provides | Brings | Without it |
 | --- | --- | --- | --- |
-| GtkSourceView 5 | palisade-files | Highlighting, line numbers, auto-indent | Monospaced text, language named |
-| poppler | palisade-files | PDF pages in the panel | File description, Open externally |
+| GtkSourceView 5 | aeris-files | Highlighting, line numbers, auto-indent | Monospaced text, language named |
+| poppler | aeris-files | PDF pages in the panel | File description, Open externally |
 
 Thumbnails are read from the desktop's cache (`~/.cache/thumbnails`) and are
-never generated by Palisade — a panel that spawned thumbnailers over a folder
+never generated by AERIS — a panel that spawned thumbnailers over a folder
 of RAW files would stall the compositor it is drawn on. Files without a cached
 thumbnail show their content-type icon.
 
@@ -444,7 +444,7 @@ Collapse / Expand · Hide this fence · Close tab
 
 ## Compositor keybinds
 
-Not part of Palisade — these live in `~/.config/hypr/custom/keybinds.lua` and
+Not part of AERIS — these live in `~/.config/hypr/custom/keybinds.lua` and
 are listed here because they are how you reach it.
 
 | Key | Does |

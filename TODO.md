@@ -6,7 +6,7 @@ Open items found in passing, specific enough to act on without rediscovery.
 
 `dock` is per-fence, so configuring two fences with `dock = "right"` reserves
 two columns and the second sits beside the first. `reserved_strips` takes the
-`max`, not the sum, so Palisade's own reflow under-estimates the occupied width
+`max`, not the sum, so AERIS's own reflow under-estimates the occupied width
 in that case. Either refuse the second dock on an edge at config-validation
 time, or sum the strips. Unlikely in practice — noted so it is not rediscovered
 as a mystery.
@@ -14,7 +14,7 @@ as a mystery.
 ## Empty-workspace branch of `unhide` not driven live
 
 `Controller.unhide` picks `bottom` when the active workspace has no windows.
-Unit-tested in `packages/palisade-core/tests/test_unhide.py`; still never
+Unit-tested in `packages/aeris-core/tests/test_unhide.py`; still never
 exercised against the compositor, because this machine's Hyprland config
 wraps `dispatch` in Lua and neither the Lua form nor the plain form switches
 to an empty workspace from a script here.
@@ -27,7 +27,7 @@ script does pass here.
 ## Nothing has been pushed, and one command is why
 
 Every GitHub URL in the tree — four READMEs, four installers, four pyprojects,
-the registry's install hint — is built from the `PALISADE_OWNER` placeholder
+the registry's install hint — is built from the `TheManishCode` placeholder
 and 404s. `tools/set-owner.sh <owner>` rewrites all of them across git-tracked
 files, and `tools/split-repos.sh --push <owner>` refuses to run until it has
 been.
@@ -41,7 +41,7 @@ restructuring commit, which is why each branch used to carry exactly one.
 produced a repository. It refuses with the install command rather than falling
 back to subtree. To finish: `sudo pacman -S git-filter-repo`, then
 `tools/set-owner.sh <owner>`, then `tools/split-repos.sh` and read
-`dist/repos/palisade-core/` before pushing anything.
+`dist/repos/aeris-core/` before pushing anything.
 
 Found 2026-10-03; rewritten 2026-10-04.
 
@@ -57,7 +57,7 @@ ellipsizing at 420px — a real header rebuild, not a format change.
 Found 2026-10-03 while building navigation; narrowed 2026-10-04 when the
 trail landed.
 
-## palisade-apps has rows but no pinning
+## aeris-apps has rows but no pinning
 
 The catalogue, search and launch work and are tested. The *pin a window over a
 panel's rectangle* idea is designed and not built.
@@ -83,12 +83,12 @@ or have `handle` prefer its own table and report the shadowing. The second is
 a behaviour change to a deliberate comment that explains the current order, so
 it wants a decision rather than a quiet fix.
 
-`palisade-dock` is tested not to collide (`test_commands.py`), which protects
+`aeris-dock` is tested not to collide (`test_commands.py`), which protects
 today's tree but not the next module.
 
 ## One IPC test takes five seconds
 
-`packages/palisade-core/tests/test_ipc_server.py::BasicTests::test_the_socket_is_private`
+`packages/aeris-core/tests/test_ipc_server.py::BasicTests::test_the_socket_is_private`
 accounts for 5s of a ~6s suite — almost certainly a timeout being waited out
 rather than an event being waited for. Not new, and not investigated: it
 surfaced on 2026-10-04 only because the headless run had been segfaulting
@@ -129,7 +129,7 @@ is revised.
 
 ## The config file is world-readable
 
-`palisade init` writes `~/.config/palisade/palisade.toml` with the default
+`aeris init` writes `~/.config/aeris/aeris.toml` with the default
 umask, so it lands 0644. It holds the paths of every folder you keep a panel
 on, which another local account can then read. 0644 is the convention for a
 config file and nothing secret belongs in it, so this is noted rather than

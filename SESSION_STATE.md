@@ -1,7 +1,7 @@
 # Session State — updated 2026-10-04 22:40
 
 Status: BLOCKED
-Task: Finish the 31-item "Palisade 0.4.0" spec. 25 of 31 items are done and
+Task: Finish the 31-item "AERIS 0.4.0" spec. 25 of 31 items are done and
 committed; the rest are blocked on things I cannot supply or install.
 Branch / worktree: master   Recovery point: b59d357 (clean tree, nothing staged)
 
@@ -27,7 +27,7 @@ Not started:
 - E27, the sway-headless screenshot harness.
 
 Blocked on:
-- **The GitHub owner.** PALISADE_OWNER is in 31 files. `tools/set-owner.sh
+- **The GitHub owner.** TheManishCode is in 31 files. `tools/set-owner.sh
   <owner>` rewrites them; `split-repos.sh --push` refuses until it has been.
 - **git-filter-repo** is not installed, so the rewritten split has never
   produced a repository. `sudo pacman -S git-filter-repo`.
@@ -39,7 +39,7 @@ Blocked on:
 Danger:
 - Nothing half-applied.
 - While testing the *old* split script I triggered a real `git push` to
-  `git@github.com:someone/palisade-core.git`. It failed — no such repository,
+  `git@github.com:someone/aeris-core.git`. It failed — no such repository,
   no credentials — and the four local `split/*` branches it made were
   deleted. The rewritten script refuses before reaching a push. No remotes are
   configured on this repository.

@@ -13,7 +13,7 @@ What we did:
 - Changed taskbar rows to restore on a single click. They required a double
   click while the tooltip promised a single one.
 - Added a "Minimized" button with a live count to the quickshell bar.
-- Found and fixed two Palisade daemons running at once, each drawing a full set
+- Found and fixed two AERIS daemons running at once, each drawing a full set
   of fences on top of the other's. That was the likely cause of the reported
   "tab alignment" problem.
 - Fixed `tests/test_windows.py` anchoring on the first *mention* of
@@ -71,7 +71,7 @@ What we did:
 - Built gtk4-layer-shell 1.3.0 from source into ~/.local, no root required.
 - Ran two feasibility spikes against the live compositor before writing product
   code. This changed the architecture twice.
-- Built Palisade: config, source resolution, Material 3 theming, layer-shell
+- Built AERIS: config, source resolution, Material 3 theming, layer-shell
   fence windows, compositor integration, JSON control socket, CLI.
 - Audited and removed the debt the build itself created.
 
@@ -84,7 +84,7 @@ What worked (and how it was verified):
   defects (an inner box from view widgets painting their own background, and a
   negative scrollbar slider size). GTK warning log now clean.
 - Material 3: 49 live tokens read from the running matugen pipeline; confirmed
-  via `palisade theme`.
+  via `aeris theme`.
 - IPC: ping, describe, list, show, theme, collapse (both directions), refresh,
   reload all exercised. All three error paths return distinct structured JSON.
 - Live reload: edited the TOML on disk, fence retitled within 2s, no restart.
@@ -98,7 +98,7 @@ What's still broken / unfinished:
   confirmed against hyprwm/Hyprland#16156 (pointer grab released when a drag
   leaves a layer surface) and #13780 (DnD regression from 0.54). Documented in
   DECISIONS.md §2. Revisit when upstream closes.
-- `palisade fence add` not implemented — fences are created by editing TOML.
+- `aeris fence add` not implemented — fences are created by editing TOML.
 - `sort = "manual"` parses but there is no reorder UI.
 - Fences cannot be moved or resized with the mouse; geometry is config-driven.
 
@@ -116,8 +116,8 @@ Not yet verified:
   memory or file-descriptor behaviour observed over hours.
 
 Next recommended action:
-- Run it for real: `~/palisade/bin/palisade run`, then add the three lines from
-  `palisade hyprland-rule` to ~/.config/hypr/custom/rules.lua so the blur
+- Run it for real: `~/aeris/bin/aeris run`, then add the three lines from
+  `aeris hyprland-rule` to ~/.config/hypr/custom/rules.lua so the blur
   survives a compositor reload. Judge the glass against a bright wallpaper and
   tell me whether the opacity default (0.55) is right.
 
@@ -140,7 +140,7 @@ What we did:
 - Found and fixed four more live breakages: the GPU env vars, the wallpaper
   chain, `hypr-project`, and two missing hyprlock scripts. Full detail in
   `~/.config/hypr/CHANGELOG.md`.
-- Added the `windows` source kind to Palisade — the minimized-windows taskbar —
+- Added the `windows` source kind to AERIS — the minimized-windows taskbar —
   and committed it as 7ec3283.
 
 What worked:
@@ -161,13 +161,13 @@ What's still broken / unfinished:
 - Fence geometry is absolute, so the taskbar's default y had to be hand-tuned
   (880 -> 752) to fit a 1080p panel when expanded. A bottom-anchored fence is
   the real fix and does not exist yet.
-- `palisade fence add` and manual reorder are still not started.
+- `aeris fence add` and manual reorder are still not started.
 
 Not yet verified:
 - `hypr-project`'s four multi-monitor branches. This machine has one output, so
   only the single-output early exit and the `hl.monitor` call shape were
   exercised; the enable/disable/mirror paths are reasoned-about, not run.
-- Palisade on multiple monitors — unchanged from the previous session.
+- AERIS on multiple monitors — unchanged from the previous session.
 - The `suppress_event` recipe documented in `custom/rules.lua` was syntax-probed
   against the compositor but never applied to a real app, because no app was
   observed misbehaving once the plain-workspace bug was fixed.
@@ -224,8 +224,8 @@ What's still broken / unfinished:
 - The paper sheet duplicates colour rules rather than factoring colour out of
   structure. Fine for two themes, wrong for three.
 - Carried from before: breadcrumb is one level deep, no syntax highlighting in
-  the viewer, no undo across the edit-mode toggle, palisade-apps window pinning
-  is designed and not built, `PALISADE_OWNER` placeholder URLs (nothing
+  the viewer, no undo across the edit-mode toggle, aeris-apps window pinning
+  is designed and not built, `TheManishCode` placeholder URLs (nothing
   pushed).
 
 Not yet verified:
@@ -273,7 +273,7 @@ What worked:
 - Panels confirmed dark and translucent again, corners nesting.
 
 What's still broken / unfinished:
-- Panels are now inset 8/4 against the rice's 10/5, so a Palisade panel sits
+- Panels are now inset 8/4 against the rice's 10/5, so an AERIS panel sits
   2px tighter at the shell than the quickshell panels beside it. A real
   inconsistency, taken deliberately — the ladder has to fit inside an 18px
   shell radius, and `corner_radius` is pinned to Hyprland's rounding.

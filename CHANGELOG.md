@@ -4,7 +4,7 @@
 
 The version the four packages declare. Still *unreleased*: nothing has been
 pushed, because every GitHub URL in the tree is built from the
-`PALISADE_OWNER` placeholder and 404s until someone runs
+`TheManishCode` placeholder and 404s until someone runs
 `tools/set-owner.sh`. Dated when the release is actually cut.
 
 **Features**
@@ -20,7 +20,7 @@ pushed, because every GitHub URL in the tree is built from the
   Tab falls back to history.
 - A docked panel gets a grip that matches what it can actually do.
 - The header names the last two levels you navigated into, not just the leaf.
-- `palisade minimize` with no argument takes the focused window; `palisade
+- `aeris minimize` with no argument takes the focused window; `aeris
   restore` with none means the last one.
 
 **Fixes**
@@ -29,7 +29,7 @@ pushed, because every GitHub URL in the tree is built from the
   stretched the whole document to its width.
 - Installed applications and minimized windows were labelled "0 B".
 - The focus ring was a square outline inside a rounded item.
-- `pipx install palisade-x` was suggested for packages that are not on PyPI.
+- `pipx install aeris-x` was suggested for packages that are not on PyPI.
 - `--version` said 0.1.0 while the packages said 0.3.0.
 - Four installer bugs, including one that pip-installed whatever project you
   happened to be standing in.
@@ -47,7 +47,7 @@ pushed, because every GitHub URL in the tree is built from the
 
 - The breadcrumb's segments are a label, not buttons; you cannot click one to
   jump back.
-- Pinning a window over a panel, in palisade-apps. Designed, not built.
+- Pinning a window over a panel, in aeris-apps. Designed, not built.
 - The GtkSourceView path has never executed on the development machine.
 - The screenshots and the README redesign.
 
@@ -79,7 +79,7 @@ Changes:
 - Up walks older, Down walks newer and only while already recalling, so Down
   keeps its far more common job of going into the list. Down past the newest
   restores the query you were half-way through typing.
-- `$XDG_STATE_HOME/palisade/history.json`, atomic, separate from `state.json`.
+- `$XDG_STATE_HOME/aeris/history.json`, atomic, separate from `state.json`.
   State is what the daemon owns and losing it loses your desktop; history is a
   convenience written far more often, and mixing them would rewrite every
   panel's geometry on every accepted query.
@@ -120,7 +120,7 @@ Role: Backend Engineer + DevOps Engineer
 Status: Added, Fixed
 
 Reason:
-`palisade minimize` required a hex window address, which makes the verb usable
+`aeris minimize` required a hex window address, which makes the verb usable
 only by something that has already called `hyprctl` — a strange thing to
 demand of a command whose entire point is "get this window out of my way".
 The defaults were specified and never built; running
@@ -138,7 +138,7 @@ Changes:
   `all` restores everything; an address still restores one. `all` and `last`
   are the only two words accepted — anything else goes through the same
   address gate as before.
-- `tools/set-owner.sh` replaces PALISADE_OWNER across git-tracked files only,
+- `tools/set-owner.sh` replaces TheManishCode across git-tracked files only,
   validating the name against GitHub's own rule first, since the value is
   spliced into a URL people are told to pipe into bash.
 - `tools/verify-hyprland.sh` runs the two checks that cannot be unit-tested
@@ -166,7 +166,7 @@ Verification:
   honest skip.
 
 Result:
-`palisade minimize` and `palisade restore` do the obvious thing with no
+`aeris minimize` and `aeris restore` do the obvious thing with no
 arguments.
 
 Known Issues:
@@ -202,10 +202,10 @@ Changes:
   That is exactly how the `--no-deps` below would have been accepted and
   ignored.
 - **Module installs needed `--no-deps`.** The script installs core itself;
-  without the flag pip resolves `palisade-core` from PyPI, where nothing of
+  without the flag pip resolves `aeris-core` from PyPI, where nothing of
   that name is published.
 - **Debian and Ubuntu were unsupported in practice.** Both the installer and
-  `bin/palisade` searched only `/usr/lib` and `/usr/lib64`, never
+  `bin/aeris` searched only `/usr/lib` and `/usr/lib64`, never
   `/usr/lib/<gnu-triplet>` — so a correct `apt install` of gtk4-layer-shell
   was reported missing and then not found at all, and the daemon would not
   start on the distributions where the package exists. The installer asks
@@ -224,7 +224,7 @@ Removed/Reverted:
   produce. It renders the template in memory now.
 
 Verification:
-- `packages/palisade-core/tests/test_installers.py`, 20 tests and 51 subtests.
+- `packages/aeris-core/tests/test_installers.py`, 20 tests and 51 subtests.
   All four installers `bash -n` clean, and the three generated ones are
   checked against the template in memory.
 - Each fix proved by reintroducing its bug and watching the matching test
@@ -445,7 +445,7 @@ inherited the session's `WAYLAND_DISPLAY`, so the suite was green each time it
 was looked at. The regression was mine.
 
 Changes:
-- `packages/palisade-core/tests/_display.py`, matching the one `palisade-files`
+- `packages/aeris-core/tests/_display.py`, matching the one `aeris-files`
   already had. `GripWidgetTests` and `test_it_still_has_the_corner_wedge` are
   behind `@needs_display`.
 - `tests/test_headless.py` in both GTK-carrying packages: spawns the suite in
@@ -516,7 +516,7 @@ Removed/Reverted:
   720, a tail permanently one chunk behind. Deferred to an idle.
 
 Verification:
-- `packages/palisade-files/tests/test_output_pane.py` (26 tests). Each was
+- `packages/aeris-files/tests/test_output_pane.py` (26 tests). Each was
   proved by reintroducing the bug it guards and confirming it failed:
   output back over the body, the floor removed, the tail removed, Escape
   closing the file instead of the pane, a CSS `min-height`, the dead vfunc,
@@ -576,7 +576,7 @@ Verification:
   filesystem root whose `.name` is empty, a trailing slash, and the ellipsis
   not growing with depth.
 - Driven live against a real `FenceWindow` over
-  `.palisade-crumb/clients/invoices/2026`: root `'Crumbs'`, then `'clients'`,
+  `.aeris-crumb/clients/invoices/2026`: root `'Crumbs'`, then `'clients'`,
   `'clients / invoices'`, `'… / invoices / 2026'`, with the tooltip holding
   the full path at each step and the up button appearing off the root.
   Navigating back up and home restored each earlier label.
@@ -700,7 +700,7 @@ Role: Backend Engineer + QA Engineer
 Status: Fixed
 
 Reason:
-Found during the security sweep. `palisade resize <id> 999999999 999999999`
+Found during the security sweep. `aeris resize <id> 999999999 999999999`
 was accepted verbatim: the number reached `resize_to`, the compositor really
 did allocate a layer surface that size — confirmed in `hyprctl layers` — and
 `persist_fence` wrote it to the state file, so the panel came back that size
@@ -758,7 +758,7 @@ and then does nothing.
 client that connected and sent no newline blocked that read, and with it every
 panel on the desktop — nothing redrew, no verb answered, until the client
 disconnected. Measured against the live daemon before the fix: with one silent
-socket open, `palisade ping` timed out.
+socket open, `aeris ping` timed out.
 
 No attacker is required. An interrupted script, a crashed tool, or an
 abandoned `nc` holding the socket open does it. As a denial of service it is
@@ -796,7 +796,7 @@ Verification:
   that disconnects mid-request, a client that never reads its reply, an
   oversize request, and that the server still answers after each.
 - Live, against the real daemon: five silent clients plus one half-sent
-  request, and `palisade ping` and `palisade list` both answered in 0.24s.
+  request, and `aeris ping` and `aeris list` both answered in 0.24s.
   Before the fix the same test timed out.
 - 716 tests pass across the four packages.
 
@@ -826,13 +826,13 @@ world-readable file for the length of the write. That is how a `.env`, an
 comment in the source asserted the temp file was already 0600; measured, it
 was 0644.
 
-**Name.** It was `.{target}.palisade-tmp` — derivable by anyone who knew the
+**Name.** It was `.{target}.aeris-tmp` — derivable by anyone who knew the
 target — and `open("w")` follows a symlink. In any directory a second user can
 write, that user could pre-create the temp path as a symlink and have the
 write land wherever they pointed it. Confirmed by experiment before fixing:
 the victim file's contents were replaced.
 
-Both are local-user attacks, which is the threat model that applies — Palisade
+Both are local-user attacks, which is the threat model that applies — AERIS
 has no network surface, so the realistic adversary is another account on the
 same machine.
 
@@ -858,7 +858,7 @@ Verification:
   0644, an executable stays executable, a target that is itself a symlink is
   still followed rather than replaced, a stale temp file no longer blocks a
   save, and no temp file survives either a successful or a failed save.
-- 190 tests pass in palisade-files; 705 across the four packages.
+- 190 tests pass in aeris-files; 705 across the four packages.
 
 Result:
 The content of a private file is never written to a file others can read, and
@@ -884,16 +884,16 @@ requirement is that the suite does not depend on a live desktop session, and
 all but one test already met it.
 
 Changes:
-- `palisade-core/tests/test_window_icons.py`, added earlier today, built a
+- `aeris-core/tests/test_window_icons.py`, added earlier today, built a
   real `Gtk.Image` in `setUp`. What it tests is the *fallback chain* — which
   of three lookups wins — not GTK's rendering, so the image and the icon theme
   are stubs now and no display is involved. Two cases were added while
   restructuring: the icon theme as the second attempt, and the last path
   segment as the third.
-- `palisade-files` had a pre-existing crash: one test builds a real viewer
+- `aeris-files` had a pre-existing crash: one test builds a real viewer
   widget, because the widget is what it checks. It is now skipped when there
   is no display, with a reason naming `xvfb-run`.
-- `palisade-files/tests/_display.py` is new and holds that decorator and the
+- `aeris-files/tests/_display.py` is new and holds that decorator and the
   reasoning.
 
 Removed/Reverted:
@@ -987,7 +987,7 @@ Lua string, and Lua's statement separator is optional, so an address carrying
 a quote closes the string and the remainder runs with the compositor's
 privileges. Demonstrated, not theorised — with the guard removed:
 
-    palisade minimize "0x1') os.execute('touch /tmp/pwned"
+    aeris minimize "0x1') os.execute('touch /tmp/pwned"
       -> Minimize.minimize_address('0x1') os.execute('touch /tmp/pwned')
 
 and the table-constructor variant against `close_address`. Both are valid Lua.
@@ -1003,13 +1003,13 @@ valid address and the tail is exactly what would execute. `restore` and
 compositor JSON goes through the same gate.
 
 Changes:
-- `palisade-dock` gains five commands: `minimized` (read), `minimize`,
+- `aeris-dock` gains five commands: `minimized` (read), `minimize`,
   `restore`, `restore-all`, `close-window`. Each write refreshes the panels,
   because what a taskbar should show has changed.
 - Core forwards any verb it does not recognise to the daemon. Core's argparse
   table lists only core's own subcommands and cannot list a module's — core
   does not import modules, and what is installed is known only to the running
-  daemon. `palisade minimize 0x55a1` previously died at argparse with "invalid
+  daemon. `aeris minimize 0x55a1` previously died at argparse with "invalid
   choice" on a verb the daemon could serve.
 - The passthrough scan handles global options itself, since argparse never
   runs on that path — notably `--config <path>`, whose value must not be
@@ -1023,7 +1023,7 @@ Changes:
   `ValueError: …`. Validation failures are messages for whoever typed them;
   the type prefix told them about Python instead of about their mistake.
   Genuine module bugs keep the prefix.
-- `SECURITY.md` at the root (trust model, socket) and in `palisade-dock` (the
+- `SECURITY.md` at the root (trust model, socket) and in `aeris-dock` (the
   Lua boundary in full). Split so each survives `git subtree split` — the
   dock's README links its own, not a path two levels up that would 404.
 
@@ -1051,7 +1051,7 @@ Verification:
   user's was untouched throughout.
 
 Result:
-`palisade minimize <address>` works from the CLI, is discoverable through
+`aeris minimize <address>` works from the CLI, is discoverable through
 `describe`, and refuses anything that is not a window address.
 
 Known Issues:
@@ -1069,7 +1069,7 @@ Role: Technical Writer + owning engineer
 Status: Fixed, Removed
 
 Reason:
-`palisade-apps` has never pinned a window. ARCHITECTURE.md said otherwise in
+`aeris-apps` has never pinned a window. ARCHITECTURE.md said otherwise in
 the present tense — *"what this module does, is launch apps and — on Hyprland
 — pin a chosen window"* — and its module diagram listed `launch · pin`. The
 README presented pinning as "the honest version of the idea" directly beneath
@@ -1087,7 +1087,7 @@ Changes:
 - ARCHITECTURE.md: the apps cell is now `· launch` / `· omnibox search`, and
   the prose states what the module does, then marks pinning **not built** and
   points at TODO.md. Diagram column widths preserved.
-- `palisade-apps/README.md` and `palisade_apps/__init__.py`: same correction.
+- `aeris-apps/README.md` and `aeris_apps/__init__.py`: same correction.
   The design idea is kept — it is worth building — but labelled a plan.
 - TODO.md's own entry claimed "nothing claims it works", which was wrong; it
   now records what each file actually said.
@@ -1097,8 +1097,8 @@ Removed/Reverted:
 - The `pin` cell from the module diagram.
 
 Verification:
-- `palisade-apps/tests/test_docs_honesty.py` (7) and
-  `palisade-core/tests/test_architecture_doc.py` (6) are new. They guard the
+- `aeris-apps/tests/test_docs_honesty.py` (7) and
+  `aeris-core/tests/test_architecture_doc.py` (6) are new. They guard the
   rule, not the wording: pinning may be discussed, but not in a paragraph that
   fails to mark it unbuilt, and no paragraph mentioning it may cite
   DECISIONS.md. Ground truth is asserted from `MODULE.commands`/`actions`, so
@@ -1126,7 +1126,7 @@ Role: Backend Engineer + QA Engineer
 Status: Fixed
 
 Reason:
-`palisade list` answered `{"fences": []}` on a desktop with panels visibly on
+`aeris list` answered `{"fences": []}` on a desktop with panels visibly on
 screen. It is the introspection verb an agent or a script reaches for first,
 and it was reporting that nothing existed.
 
@@ -1159,7 +1159,7 @@ Verification:
 - The bug was reintroduced to confirm the tests catch it: 5 of 7 failed, and
   the source was then restored byte-identically.
 - 320 core tests pass; 608 across all four packages.
-- Live against a restarted daemon: `palisade list` reports `tab-15` with
+- Live against a restarted daemon: `aeris list` reports `tab-15` with
   `items: 6`, matching the count in the panel's own header.
 
 Result:
@@ -1197,7 +1197,7 @@ Changes:
   `MIN_ITEM_RADIUS = 6` floors the last rung, which is what makes 10/5 viable
   without raising `corner_radius`: it solves the 3px item directly rather than
   through the padding.
-- `palisade.css` grew `%PAD_SHELL%`, `%PAD_CARD%` and `%PAD_DOCK%`;
+- `aeris.css` grew `%PAD_SHELL%`, `%PAD_CARD%` and `%PAD_DOCK%`;
   `.viewer-body` now takes the card radius and card padding rather than its
   own hardcoded pair, so opening a file does not change the panel's shape.
 - `app.apply_theme` passes the setting through. `default.toml` and
@@ -1227,7 +1227,7 @@ The default rhythm matches the desktop around it again, and the ladder still
 nests at every radius because the floor, not the padding, now guarantees it.
 
 Known Issues:
-- `palisade list` reported `{"fences": []}` while a tab was on screen. Found
+- `aeris list` reported `{"fences": []}` while a tab was on screen. Found
   during this verification, unrelated to the spacing change; diagnosed and
   fixed in the entry above.
 
@@ -1300,7 +1300,7 @@ Tab behaves the way a shell does. The panels look like they did, with corners
 that nest.
 
 Known Issues:
-- Panels are now inset 8/4 against the rice's 10/5, so a Palisade panel is 2px
+- Panels are now inset 8/4 against the rice's 10/5, so an AERIS panel is 2px
   tighter at the shell than the quickshell panels beside it.
 - No completion history; Tab is stateless.
 - Window-title completion rarely adds anything, because a title is a sentence
@@ -1331,7 +1331,7 @@ deciding whether a string starts with `~`. Classification here is sigils and
 scoring: faster, offline by construction, and explainable when it is wrong.
 
 Changes:
-- `palisade/omnibox.py` (new): `Mode`, `Candidate`, `classify`, `Stabiliser`,
+- `aeris/omnibox.py` (new): `Mode`, `Candidate`, `classify`, `Stabiliser`,
   `Registry`, and name matching (`match`/`rank`). No GTK import — the whole
   decision layer is tested without a display.
 - The stabiliser is ported almost directly: a challenger must beat the sitting
@@ -1413,7 +1413,7 @@ Status: Fixed, Removed
 
 Reason:
 Reported with a screenshot: *"Could not find the program
-'/home/Fool/palisade/bin/palisade'"* from the status bar's taskbar button —
+'/home/Fool/aeris/bin/aeris'"* from the status bar's taskbar button —
 "yeah minimise button in taskbar is failing and many more mistakes u did study
 all verify and rework on everything".
 
@@ -1423,16 +1423,16 @@ was worse than any of them: external things pointed into a *checkout*, which
 can move.
 
 Changes:
-- `palisade install-launcher` symlinks `~/.local/bin/palisade` at the current
+- `aeris install-launcher` symlinks `~/.local/bin/aeris` at the current
   checkout. The launcher already resolves itself with `readlink -f`, so being
   reached through a symlink is the case it was written for.
-- `launcher_path()` prefers `$PALISADE_LAUNCHER`, then the installed symlink,
+- `launcher_path()` prefers `$AERIS_LAUNCHER`, then the installed symlink,
   then the in-tree script. Everything outside the repository now points at
-  `~/.local/bin/palisade`: the quickshell bar button, the five Hyprland
+  `~/.local/bin/aeris`: the quickshell bar button, the five Hyprland
   keybinds, the autostart line, and both KIO service menus.
 - Fixed: `cmd_install_menus` computed the launcher as
-  `__file__/../../bin/palisade`, which after the move resolved to
-  `src/bin/palisade` and did not exist — the command failed outright.
+  `__file__/../../bin/aeris`, which after the move resolved to
+  `src/bin/aeris` and did not exist — the command failed outright.
 - Fixed: the install hint for a missing module was written into `_empty_base`,
   so a panel kept telling you to install a package you had since installed
   until the daemon restarted.
@@ -1456,13 +1456,13 @@ Changes:
 - `schedule_refresh` is suppressed while renaming — a rename creates its own
   directory-changed events, which would rebuild the field under the cursor.
 - Docs: `docs/INSTALL.md` autostart lines, and a new section saying plainly
-  that external references must use `~/.local/bin/palisade` and never a path
+  that external references must use `~/.local/bin/aeris` and never a path
   into the checkout. `default.toml` now lists `apps` and names the package
   each source kind comes from.
 
 Removed/Reverted:
 - `Controller.prompt_rename` and its dialog, replaced by the in-row field.
-- Unused imports: `typing.Any` in registry.py, `os` in palisade_files, `time`
+- Unused imports: `typing.Any` in registry.py, `os` in aeris_files, `time`
   in test_edit.py.
 
 Verification:
@@ -1474,8 +1474,8 @@ Verification:
   extension survived on disk. Created a file with Ctrl+N two folders deep and
   confirmed it landed in the folder on screen, not at the group root.
 - All four wheels built and installed into a clean venv; module discovery
-  worked through real entry points with no `PALISADE_MODULES`. Verified with
-  core+dock only, then with all four. `python3 -m palisade_dock
+  worked through real entry points with no `AERIS_MODULES`. Verified with
+  core+dock only, then with all four. `python3 -m aeris_dock
   install-engine` placed `minimize.lua` from the installed wheel.
 - Mechanical sweeps: every relative markdown link resolves; every CLI verb
   mentioned in the docs exists; the shipped `default.toml` validates.
@@ -1516,7 +1516,7 @@ Changes:
   the title names the folder you are in. Backspace, Alt+Left and Escape come
   back out; Alt+Home returns to the group. The stack is live only — reopening
   a tab puts you at the group, not three folders down where you stopped.
-- `palisade_files.activate` claims directory rows and calls `navigate_to`. The
+- `aeris_files.activate` claims directory rows and calls `navigate_to`. The
   mechanism is core's; the opinion that a directory is a thing you go *into*
   is the module's. Previously a subfolder was handed to the desktop file
   manager, which answered "show me what is in here" with another window.
@@ -1524,7 +1524,7 @@ Changes:
   subfolder of a saved search means "show me this folder", not "re-run the
   search inside it". Filters and sort are carried through; the fence's own
   source is never mutated.
-- **In-place editing.** New `palisade_files/edit.py` — `readable_text`,
+- **In-place editing.** New `aeris_files/edit.py` — `readable_text`,
   `can_edit`, `save`. The viewer gains Edit / Save / Done, Ctrl+S, a dirty dot
   on the title, and a two-press Escape before discarding (a layer-shell panel
   cannot host a "save changes?" dialog). Markdown editing opens the source,
@@ -1535,7 +1535,7 @@ Changes:
   read, and refuses outright for a truncated read — editing the head of a
   200 MB log and writing it back over the whole file is the worst thing this
   could do, so it is not reachable rather than guarded.
-- **Applications launch.** `palisade_apps.activate` was missing entirely, so
+- **Applications launch.** `aeris_apps.activate` was missing entirely, so
   clicking an application fell through to core's file handling, which asked a
   renderer to show a desktop entry id. It now starts the program detached,
   dismisses a summoned picker, and reports a failed launch rather than
@@ -1562,11 +1562,11 @@ Changes:
 - CSS: `.fence-up`, `.viewer-save`, `.code-view.editing`.
 
 Removed/Reverted:
-- `palisade_apps.launch(app)` — `activate` does the same thing from the row,
+- `aeris_apps.launch(app)` — `activate` does the same thing from the row,
   and two spellings of "start this program" is one too many.
 - `edit.Truncated`, declared and never raised; `can_edit` returns False
   instead, which is the better place for it.
-- `test_it_claims_no_rows_of_its_own` in palisade-files, which asserted the
+- `test_it_claims_no_rows_of_its_own` in aeris-files, which asserted the
   old design (no `activate`). Replaced with six tests for what it claims now.
 
 Verification:
@@ -1578,7 +1578,7 @@ Verification:
   real defect on first run — `os.replace` onto a link path replaces the link
   with a regular file, silently detaching a symlinked dotfile. Fixed.
 - Driven live on the compositor: double-clicked `packages` and then
-  `palisade-core` — navigated in place both times, `palisade tabs` still
+  `aeris-core` — navigated in place both times, `aeris tabs` still
   reported one tab. Opened a scratch Markdown file, clicked Edit, typed, saw
   the dirty dot appear on the title and Save take the accent, pressed Ctrl+S;
   the file on disk had the new content, mode still 644, no temp file left
@@ -1602,7 +1602,7 @@ Known Issues:
 - The breadcrumb is one level — the header names the current folder, not the
   path. Deep in a tree you can see where you are but not how you got there.
 - Application search (`match` on the source) has no UI; it is config-only.
-- Window pinning in palisade-apps is still designed and not built.
+- Window pinning in aeris-apps is still designed and not built.
 
 ## 2026-10-03 — Split into four packages: core plus three installable modules
 
@@ -1623,21 +1623,21 @@ satisfies the first and breaks the second; vendored copies do the reverse. A
 shared core is the only arrangement that satisfies both.
 
 Changes:
-- `packages/palisade-core` — the panel and nothing else. Layer-shell surface,
+- `packages/aeris-core` — the panel and nothing else. Layer-shell surface,
   cards, theme, config, CLI, IPC, group picker, module registry. Source moved
-  to `src/palisade/`, data files moved *inside* the package
-  (`src/palisade/data/`) so one path resolves from a checkout and from
+  to `src/aeris/`, data files moved *inside* the package
+  (`src/aeris/data/`) so one path resolves from a checkout and from
   site-packages alike.
-- `packages/palisade-files` — folder/query/paths/directory source kinds, the
+- `packages/aeris-files` — folder/query/paths/directory source kinds, the
   walk, the viewer, Markdown, content classification, toolchain detection,
   file creation, the file-manager menu entries.
-- `packages/palisade-dock` — the Hyprland minimize engine (now vendored as
-  `src/palisade_dock/hypr/minimize.lua`, previously only in the author's
+- `packages/aeris-dock` — the Hyprland minimize engine (now vendored as
+  `src/aeris_dock/hypr/minimize.lua`, previously only in the author's
   `~/.config`), the `windows` source kind, restore/restore-all/close verbs,
   row activation, and the empty-state explanation.
-- `packages/palisade-apps` — XDG desktop-entry catalogue, search, launch.
-- `palisade/registry.py` — `Module`, `Registry`, `discover()`, `describe()`.
-  Modules register through the `palisade.modules` entry point: installation
+- `packages/aeris-apps` — XDG desktop-entry catalogue, search, launch.
+- `aeris/registry.py` — `Module`, `Registry`, `discover()`, `describe()`.
+  Modules register through the `aeris.modules` entry point: installation
   *is* registration, with no plugin directory and no config line. A module
   that fails to import is skipped with a message rather than taking the daemon
   down. Collisions are first-wins and reported.
@@ -1652,21 +1652,21 @@ Changes:
   provides and would need editing in core for every new module — the exact
   coupling the registry removes. An unknown kind now fails at resolve time,
   where the message can name the package.
-- `palisade doctor` — installed modules, missing ones with their install
-  command, and any conflicts. `palisade check` loads modules the way the
+- `aeris doctor` — installed modules, missing ones with their install
+  command, and any conflicts. `aeris check` loads modules the way the
   daemon does and reports per-fence what is missing.
 - Module IPC verbs routed through `Server.handle`; a module bug returns an
   error rather than killing the daemon.
-- `PALISADE_MODULES` env hook so a checkout works without an editable install.
-  `bin/palisade` sets it from sibling package directories; after a subtree
+- `AERIS_MODULES` env hook so a checkout works without an editable install.
+  `bin/aeris` sets it from sibling package directories; after a subtree
   split the glob matches nothing and entry points take over.
-- Installers: `packages/palisade-core/install.sh` (system deps on
+- Installers: `packages/aeris-core/install.sh` (system deps on
   Arch/Debian/Fedora, pip, launcher, starter config, autostart hint) and one
   per module, generated by `tools/gen-installers.py` from a single template.
   A module installer bootstraps core if absent, does its own module-specific
   step, and restarts a running daemon — the module list is built once at
   startup, so without that the install is invisible until the next login.
-- `python3 -m palisade_dock install-engine` places `minimize.lua`, backing up
+- `python3 -m aeris_dock install-engine` places `minimize.lua`, backing up
   an edited copy rather than overwriting it. The tag format is a contract with
   the Python side; a local change to it is worth not destroying.
 - `tools/split-repos.sh` — `git subtree split` into four standalone branches,
@@ -1680,16 +1680,16 @@ Changes:
   index. ARCHITECTURE.md moved into core and rewritten against what was built.
 
 Removed/Reverted:
-- `[project.scripts] palisade` from core. gtk4-layer-shell must be loaded
+- `[project.scripts] aeris` from core. gtk4-layer-shell must be loaded
   before libwayland-client, which only LD_PRELOAD can arrange; a generated
   console script would shadow the real launcher on PATH and fail at surface
-  creation. `bin/palisade` is the single command.
+  creation. `bin/aeris` is the single command.
 - Core's `new-file`/`new-folder` actions, `_new_entry`, and the `create`
-  import — moved to palisade-files.
+  import — moved to aeris-files.
 - Core's filesystem walk (`_walk`, `_matches`, `_scandir`, `PRUNE`) — moved to
-  `palisade_files/walk.py`.
+  `aeris_files/walk.py`.
 - Core's restore/restore-all/close-window verbs and the `hwindows` import —
-  moved to palisade-dock.
+  moved to aeris-dock.
 - `SOURCE_KINDS` whitelist in config.py, replaced by `SHAPED_KINDS` (which
   kinds core knows the config *shape* of, not which kinds exist).
 - Duplicated `_dismiss_if_summoned`; the public `dismiss_if_summoned` remains.
@@ -1702,17 +1702,17 @@ Removed/Reverted:
 Verification:
 - 298 tests across four suites, each runnable from its own package root with
   no PYTHONPATH: core 136, files 105, dock 36, apps 21.
-- `palisade doctor` run with all three modules, with one, and with none.
-- `palisade check` against a config naming `windows` and `directory` with the
+- `aeris doctor` run with all three modules, with one, and with none.
+- `aeris check` against a config naming `windows` and `directory` with the
   dock absent, then with nothing installed: each missing fence named its
   package; exit code 1.
 - Daemon started from the new layout and driven live: taskbar opened docked
-  right showing the Minimized/Hidden switch and palisade-dock's own empty
+  right showing the Minimized/Hidden switch and aeris-dock's own empty
   text; a three-file group opened; double-click on README.md rendered the
   Markdown through the registry's `open_file` with the Source toggle present;
   Escape returned to the list; double-click on registry.py opened the code
   view with a Run button. Screenshots taken at each step.
-- `python3 -m palisade_dock install-engine` run twice against a temp
+- `python3 -m aeris_dock install-engine` run twice against a temp
   XDG_CONFIG_HOME, second time over an edited file: the backup was made and
   the keybind hint printed.
 - `bash -n` on all four installers and the split script.
@@ -1723,12 +1723,12 @@ module; installing all three installs core once. No module imports another.
 
 Known Issues:
 - Nothing has been pushed, and the repository URLs in the four READMEs and
-  four installers are `PALISADE_OWNER` placeholders that 404.
+  four installers are `TheManishCode` placeholders that 404.
 - The published repos would start from one commit each (see above). Carrying
   pre-split history across needs `git filter-repo`, which is not installed.
 - No module declares `commands` yet, so the IPC hook is wired but unexercised
   by a real module.
-- palisade-apps has no UI of its own beyond rows: the grid of installed
+- aeris-apps has no UI of its own beyond rows: the grid of installed
   applications renders, but window-pinning is designed and not built.
 - In-fence folder navigation is still absent; a subfolder opens in the file
   manager. See TODO.md.
@@ -1823,8 +1823,8 @@ Investigated:
 `~/.config/gtk-4.0/gtk.css` on this desktop carries a blanket
 `window { background: @window_bg_color; }`. A desktop's own gtk.css loads at
 `GTK_STYLE_PROVIDER_PRIORITY_USER` (800), which outranks the
-`PRIORITY_APPLICATION` (600) Palisade registered its sheet at — so that rule
-beat `window.palisade { background: transparent; }` and every fence painted an
+`PRIORITY_APPLICATION` (600) AERIS registered its sheet at — so that rule
+beat `window.aeris { background: transparent; }` and every fence painted an
 opaque `#121412` rectangle behind its rounded root. Visible as black corners
 where the rounding cut away.
 
@@ -1885,7 +1885,7 @@ Added:
 - `Controller.reserved_strips` / `work_area` / `reflow_for_docks`. A dock's
   exclusive zone moves your *windows*; the protocol does not apply it to other
   layer surfaces, so a panel sitting where the taskbar opened simply vanished
-  underneath it. Palisade now moves them itself, on spawn, close, hide,
+  underneath it. AERIS now moves them itself, on spawn, close, hide,
   unhide, restore, a finished drag, and the `move` verb.
 - `_dock_inset_area`: a pushed panel keeps `MARGIN` clear of the dock, the
   same gap a new tab keeps from the screen edge. Only edges a dock actually
@@ -1936,13 +1936,13 @@ Removed/Reverted:
   was replaced with the dock-only inset above before going in.
 
 Result:
-Panels get out of the taskbar's way and come back when it leaves, and Palisade
+Panels get out of the taskbar's way and come back when it leaves, and AERIS
 now takes its shape from the compositor as well as its colour.
 
 Known Issues:
 - `~/.config/gtk-4.0/gtk.css:312` uses `row:insensitive`, which GTK4 renamed
   to `:disabled`, so the daemon logs one theme-parser warning on start. That
-  file belongs to the desktop's own theme, not to Palisade.
+  file belongs to the desktop's own theme, not to AERIS.
 - The docked taskbar still shows a resize grip in its corner. A dock's length
   is the compositor's to decide; only its thickness is meaningful. Not fixed
   here — logged in TODO.md.
@@ -1972,7 +1972,7 @@ Added:
 
 Fixed:
 - The Hidden segment read "none right now" over a panel that had just been
-  hidden. The taskbar refreshes on compositor window events, and a Palisade
+  hidden. The taskbar refreshes on compositor window events, and an AERIS
   panel going into hiding is not one — nothing told it. `set_hidden` now
   announces the change and `Controller.hidden_set_changed` refreshes only the
   panels that list hidden ones; a folder fence has no reason to re-read a
@@ -2068,7 +2068,7 @@ Three things asked for together. The taskbar floated over the windows it was
 meant to let you pick between. A tab opened behind whatever was already on
 screen, so the keybind that created it left you hunting for it. And hiding a
 panel was a one-way door — the only route back was to remember its id and type
-`palisade hide <id> off`, which nobody is going to do.
+`aeris hide <id> off`, which nobody is going to do.
 
 Changes:
 - `dock = "left"|"right"|"top"|"bottom"` on a fence or group. A docked panel
@@ -2088,7 +2088,7 @@ Changes:
 - `Item.fence` marks a row that stands for a hidden panel, and `Item.is_file_row`
   is now the single gate every filesystem action passes. A taskbar row can
   stand for three different things and only one of them may meet `trash`.
-- `palisade hidden` and `palisade unhide <id>`, both in the `describe` catalog.
+- `aeris hidden` and `aeris unhide <id>`, both in the `describe` catalog.
 
 Verification:
 - 80 tests (was 69). `tests/test_dock.py` is new (11). Confirmed it catches
@@ -2124,7 +2124,7 @@ Role: Frontend Engineer + QA
 Status: Fixed
 
 Reason:
-Reported: "not even a single click works" while a Palisade surface was up. The
+Reported: "not even a single click works" while an AERIS surface was up. The
 taskbar had already been moved off `EXCLUSIVE` for exactly this reason, but the
 *group picker* (`SUPER+ALT+T`) had not — it was written before that was known
 and still asked for an exclusive keyboard grab. While it was open, pointer
@@ -2154,7 +2154,7 @@ Verification:
   taskbar self-closed), and click-away was confirmed selective.
 
 Result:
-No Palisade surface takes the pointer hostage any more.
+No AERIS surface takes the pointer hostage any more.
 
 Known Issues:
 - Nothing new.
@@ -2254,7 +2254,7 @@ Changes:
 - `restore_tabs` rebuilds ad-hoc tabs through that parser, and drops a
   collection whose paths have all since been deleted rather than restoring a
   permanently empty tab.
-- `palisade new <path>` and `palisade collect <paths…> [--title]`, both in the
+- `aeris new <path>` and `aeris collect <paths…> [--title]`, both in the
   `describe` catalog.
 
 Verification:
@@ -2291,9 +2291,9 @@ Follow-up, same day:
   README example no longer uses paths that cannot exist.
 
 Follow-up — file manager integration:
-- `palisade install-menus` writes two KIO service menus to
-  `~/.local/share/kio/servicemenus/`: **Group in Palisade** on any selection
-  (`all/all`), and **Open as a Palisade tab** on a folder (`inode/directory`).
+- `aeris install-menus` writes two KIO service menus to
+  `~/.local/share/kio/servicemenus/`: **Group in AERIS** on any selection
+  (`all/all`), and **Open as an AERIS tab** on a folder (`inode/directory`).
   Two files rather than one because a service menu applies a single `MimeType`
   to every action it declares, and "open as a tab" only means anything for a
   folder. The launcher path is substituted into `Exec` rather than relying on
@@ -2321,7 +2321,7 @@ Verification (file manager):
 
 Known Issues:
 - A collection holds paths, not identities: rename or move a collected file
-  outside Palisade and that row drops out on the next refresh. Tracking
+  outside AERIS and that row drops out on the next refresh. Tracking
   renames would need inode watching, which is out of scope here.
 
 ## 2026-10-03 — Taskbar restored on the tabs model
@@ -2331,7 +2331,7 @@ Status: Fixed | Added
 
 Reason:
 The move to groups-and-tabs left the minimized taskbar dead. `SUPER+ALT+Tab`
-and the bar button both ran `palisade hide minimized`, which answered "no fence
+and the bar button both ran `aeris hide minimized`, which answered "no fence
 with id 'minimized'" — the taskbar had become a *group* (a template) and was no
 longer a live fence. Swapping them to `new` was not enough either: `new` opens
 unconditionally, so each press stacked another identical taskbar.
@@ -2437,7 +2437,7 @@ Fixed:
 
 Removed/Reverted:
 - All six `[[fence]]` blocks from the shipped default config. The user's own
-  `palisade.toml` was replaced (backup: `palisade.toml.bak-20261003-082200`).
+  `aeris.toml` was replaced (backup: `aeris.toml.bak-20261003-082200`).
 
 Verification:
 - `python3 -m unittest discover -s tests` — 36 tests, 0 skips, OK at the time
@@ -2534,22 +2534,22 @@ what is hidden and click the one you want. This is that, built on the tag
 convention in `~/.config/hypr/custom/minimize.lua`.
 
 Changes:
-- `palisade/windows.py` — new. Reads minimized windows out of
+- `aeris/windows.py` — new. Reads minimized windows out of
   `hyprctl clients -j` by tag; drives restore/minimize/close through the Lua
   module so the rules for pinned and fullscreen windows exist in one place.
-- `palisade/config.py` — `source.type = "windows"`; `SOURCE_KINDS` constant;
+- `aeris/config.py` — `source.type = "windows"`; `SOURCE_KINDS` constant;
   per-fence `layer` override (a taskbar needs `overlay` while file fences stay
   on `bottom`); `watch_roots()` returns empty for windows sources.
-- `palisade/sources.py` — `Item.window`; windows resolution. `mtime` carries
+- `aeris/sources.py` — `Item.window`; windows resolution. `mtime` carries
   the minimize sequence so `sort = "mtime"` means newest-first with no new
   sort key.
-- `palisade/hypr.py` — `EventListener` now also reports window events
+- `aeris/hypr.py` — `EventListener` now also reports window events
   (`WINDOW_EVENTS`), so the fence follows the compositor instead of polling.
   Excludes `activewindow` deliberately: rescanning on every focus change is
   pure waste.
-- `palisade/app.py` — opens the event socket when any fence is a windows
+- `aeris/app.py` — opens the event socket when any fence is a windows
   source; routes those events through each fence's existing debounce.
-- `palisade/ui/fence.py` — window rows (app icon from desktop file then icon
+- `aeris/ui/fence.py` — window rows (app icon from desktop file then icon
   theme, title, app id); restore on activate; Restore / Restore all / Close
   context menu; `_schedule_refresh` made public as `schedule_refresh`;
   type-ahead extracted to `_typeahead_key` so both key paths share it.
@@ -2583,7 +2583,7 @@ Verification:
   - collapse chevron toggles the surface 420x280 <-> 420x42;
   - the list updated itself when a window was restored from the keybind,
     confirming the event path.
-- `palisade check` resolves all four fences.
+- `aeris check` resolves all four fences.
 
 Known Issues:
 - Fence geometry is absolute, so the default y was moved 880 -> 752 to fit a
@@ -2606,7 +2606,7 @@ Changes:
   Size is now applied in both directions via a single `_apply_size()`, also
   called on initial build and after every refresh so a fence that is empty or
   holds one item still renders at its configured size.
-- `__main__.py`: `palisade run` while already running now reports it and exits
+- `__main__.py`: `aeris run` while already running now reports it and exits
   1. Gtk.Application's single-instance handling previously activated the
   existing process and exited 0 silently.
 
@@ -2636,15 +2636,15 @@ PecoFence is Windows-only (~105k lines of Rust against Win32/Direct2D/WebView2)
 and cannot run on this machine. No desktop-fences equivalent existed for Wayland.
 
 Changes:
-- `palisade/config.py` — TOML schema, validation, three source kinds.
-- `palisade/sources.py` — bounded depth-limited walks, categories, sorting.
-- `palisade/theme.py` — Material 3 tokens read live from matugen output.
-- `palisade/ui/fence.py` — layer-shell fence window, GridView/ListView,
+- `aeris/config.py` — TOML schema, validation, three source kinds.
+- `aeris/sources.py` — bounded depth-limited walks, categories, sorting.
+- `aeris/theme.py` — Material 3 tokens read live from matugen output.
+- `aeris/ui/fence.py` — layer-shell fence window, GridView/ListView,
   selection, keyboard nav, type-ahead, context menu, debounced file monitors.
-- `palisade/hypr.py` — compositor blur rules, workspace event listener.
-- `palisade/ipc.py` — JSON control socket with a `describe` catalog.
-- `palisade/__main__.py` — daemon + CLI client.
-- `data/palisade.css`, `data/default.toml`, `bin/palisade`.
+- `aeris/hypr.py` — compositor blur rules, workspace event listener.
+- `aeris/ipc.py` — JSON control socket with a `describe` catalog.
+- `aeris/__main__.py` — daemon + CLI client.
+- `data/aeris.css`, `data/default.toml`, `bin/aeris`.
 
 Removed/Reverted:
 - Dropped `wl_data_device` drag-and-drop entirely after measuring it broken on
@@ -2659,7 +2659,7 @@ Removed/Reverted:
   effect; replaced with refusal-detection on the real call.
 
 Verification:
-- `palisade check` against the real config: 3 fences resolve, correct counts.
+- `aeris check` against the real config: 3 fences resolve, correct counts.
 - Config validation rejects: missing source, bad layer, duplicate fence id,
   unknown source type.
 - Daemon run live on Hyprland 0.56.2: 3 layer surfaces at correct geometry.
@@ -2687,18 +2687,18 @@ wanted them draggable, wanted to choose per fence whether it sits on the
 desktop or over the running app, and wanted to get them out of the way.
 
 Changes:
-- `palisade/ui/manipulate.py` (new) — drag-to-move and drag-to-resize. Position
+- `aeris/ui/manipulate.py` (new) — drag-to-move and drag-to-resize. Position
   is driven from the compositor's absolute cursor over socket1, not from GTK's
   surface-relative drag offsets, which oscillate because the surface follows
   the pointer. Clamped so a grabbable strip always stays on screen.
-- `palisade/hypr.py` — `request()`/`cursor_pos()` over socket1. Measured
+- `aeris/hypr.py` — `request()`/`cursor_pos()` over socket1. Measured
   0.041 ms per call versus 4.45 ms to fork hyprctl, which is what makes a
   120 Hz drag poll affordable.
-- `palisade/ui/fence.py` — live geometry, `move_to`/`resize_to`,
+- `aeris/ui/fence.py` — live geometry, `move_to`/`resize_to`,
   runtime layer switching, hide, lock, resize grip, fence context menu.
-- `palisade/app.py` — `peek()`: raise every visible fence to overlay for N
+- `aeris/app.py` — `peek()`: raise every visible fence to overlay for N
   seconds, then restore each one's *previous* layer.
-- `palisade/ipc.py`, `__main__.py` — move, resize, layer, hide, lock, peek.
+- `aeris/ipc.py`, `__main__.py` — move, resize, layer, hide, lock, peek.
 - `tests/test_manipulate.py` (new) — 11 tests for the drag arithmetic.
 - `~/.config/hypr/custom/` — autostart, permanent blur rules, peek keybinds.
   Backed up to `~/.config/hypr/.backups/` first.
@@ -2770,14 +2770,14 @@ Two findings, both surfaced by testing rather than by reading.
    an operator — in this case me) lets another daemon straight through.
 
 Changes:
-- `palisade/ui/fence.py` — monitor selection moved back inside
+- `aeris/ui/fence.py` — monitor selection moved back inside
   `_init_layer_shell`, and switched to indexed `GListModel` access to match
   `monitor_geometry()`.
-- `palisade/singleton.py` (new) — advisory `flock` on a held file descriptor.
+- `aeris/singleton.py` (new) — advisory `flock` on a held file descriptor.
   The kernel releases it only when the holder dies; unlinking the lock file or
   the socket cannot hand it over. Records the holder's pid so a refused start
   can name it.
-- `palisade/__main__.py` — acquire on start, release on shutdown. The socket
+- `aeris/__main__.py` — acquire on start, release on shutdown. The socket
   probe is kept, demoted to producing the friendlier message.
 
 Verification:
@@ -2794,5 +2794,5 @@ Known Issues:
   removes it; the replacement keeps its lock on the now-unlinked inode, but a
   third starter would see no file and acquire a fresh one. Narrow, and only
   reachable mid-handover. Not yet fixed.
-- `--config` must precede the subcommand (`palisade --config X check`), which
+- `--config` must precede the subcommand (`aeris --config X check`), which
   is argparse's convention but reads awkwardly.

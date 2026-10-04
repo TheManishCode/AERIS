@@ -7,7 +7,7 @@
 # is reachable from pytest:
 #
 #   1. `Controller.unhide` picks the `bottom` layer when the active workspace
-#      has no windows. Unit-tested in palisade-core; never once exercised
+#      has no windows. Unit-tested in aeris-core; never once exercised
 #      against a real compositor, because every workspace on the development
 #      machine had a window in it.
 #
@@ -31,20 +31,20 @@ CREATED_TAB=""
 MINIMIZED=""
 
 cleanup() {
-    [ -n "$MINIMIZED" ] && palisade restore "$MINIMIZED" >/dev/null 2>&1 || true
-    [ -n "$CREATED_TAB" ] && palisade close "$CREATED_TAB" >/dev/null 2>&1 || true
+    [ -n "$MINIMIZED" ] && aeris restore "$MINIMIZED" >/dev/null 2>&1 || true
+    [ -n "$CREATED_TAB" ] && aeris close "$CREATED_TAB" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 # ------------------------------------------------------------- preconditions
 
 command -v hyprctl >/dev/null || { skip "hyprctl not found — not Hyprland"; exit 0; }
-command -v palisade >/dev/null || { echo "palisade is not on PATH" >&2; exit 1; }
-palisade ping >/dev/null 2>&1 || { echo "the daemon is not running: palisade run" >&2; exit 1; }
+command -v aeris >/dev/null || { echo "aeris is not on PATH" >&2; exit 1; }
+aeris ping >/dev/null 2>&1 || { echo "the daemon is not running: aeris run" >&2; exit 1; }
 
-# `palisade tabs` answers `{"tabs": [...]}`, so every check below reads that
+# `aeris tabs` answers `{"tabs": [...]}`, so every check below reads that
 # shape rather than guessing at a bare list.
-tabs_json() { palisade tabs; }
+tabs_json() { aeris tabs; }
 
 jqp() { python3 -c "import json,sys; d=json.load(sys.stdin); $1"; }
 
@@ -54,8 +54,8 @@ say "1. unhide on an empty workspace"
 # `hyprctl dispatch workspace empty` is a parse error there. Try both forms
 # and skip honestly if neither lands rather than reporting a pass.
 switched=""
-for form in 'hl.dispatch(hl.dsp.workspace.name{name="palisade-verify"})' \
-            'workspace name:palisade-verify'; do
+for form in 'hl.dispatch(hl.dsp.workspace.name{name="aeris-verify"})' \
+            'workspace name:aeris-verify'; do
     if hyprctl dispatch "$form" 2>/dev/null | grep -qi '^ok'; then
         switched="$form"
         break
@@ -65,21 +65,21 @@ done
 if [ -z "$switched" ]; then
     skip "could not switch to an empty workspace (Lua-wrapped dispatch?)"
 else
-    count="$(hyprctl -j clients | jqp 'print(sum(1 for c in d if c["workspace"]["name"]=="palisade-verify"))')"
+    count="$(hyprctl -j clients | jqp 'print(sum(1 for c in d if c["workspace"]["name"]=="aeris-verify"))')"
     if [ "$count" != "0" ]; then
-        skip "workspace palisade-verify is not empty ($count windows)"
+        skip "workspace aeris-verify is not empty ($count windows)"
     else
-        id="$(palisade new "$HOME" | jqp 'print(d["id"])')"
+        id="$(aeris new "$HOME" | jqp 'print(d["id"])')"
         CREATED_TAB="$id"
-        palisade hide "$id" >/dev/null
-        palisade unhide "$id" >/dev/null 2>&1 || true
+        aeris hide "$id" >/dev/null
+        aeris unhide "$id" >/dev/null 2>&1 || true
         layer="$(tabs_json | jqp "print(next((t['layer'] for t in d['tabs'] if t['id']=='$id'), 'gone'))")"
         if [ "$layer" = "bottom" ]; then
             ok "unhide chose layer: bottom"
         else
             bad "unhide chose layer: $layer (expected bottom on an empty workspace)"
         fi
-        palisade close "$id" >/dev/null 2>&1 || true
+        aeris close "$id" >/dev/null 2>&1 || true
         CREATED_TAB=""
     fi
 fi
@@ -91,17 +91,17 @@ if [ -z "$addr" ]; then
     skip "no active window to minimize"
 else
     before="$(hyprctl -j activewindow | jqp 'print(d["workspace"]["name"])')"
-    if palisade minimize >/dev/null 2>&1; then
+    if aeris minimize >/dev/null 2>&1; then
         MINIMIZED="$addr"
-        listed="$(palisade minimized | jqp "print(any(w.get('address')=='$addr' for w in d.get('windows', [])))")"
-        [ "$listed" = "True" ] && ok "it appears in \`palisade minimized\`" \
-                               || bad "it is not in \`palisade minimized\`"
+        listed="$(aeris minimized | jqp "print(any(w.get('address')=='$addr' for w in d.get('windows', [])))")"
+        [ "$listed" = "True" ] && ok "it appears in \`aeris minimized\`" \
+                               || bad "it is not in \`aeris minimized\`"
 
         gone="$(hyprctl -j clients | jqp "print(next((c['workspace']['name'] for c in d if c['address']=='$addr'), 'gone'))")"
         [ "$gone" != "$before" ] && ok "it left workspace $before (now $gone)" \
                                  || bad "it is still on workspace $before"
 
-        if palisade restore "$addr" >/dev/null 2>&1; then
+        if aeris restore "$addr" >/dev/null 2>&1; then
             MINIMIZED=""
             after="$(hyprctl -j clients | jqp "print(next((c['workspace']['name'] for c in d if c['address']=='$addr'), 'gone'))")"
             [ "$after" = "$before" ] && ok "restored to workspace $before" \
@@ -110,7 +110,7 @@ else
             bad "restore failed"
         fi
     else
-        bad "minimize failed — is palisade-dock installed and minimize.lua loaded?"
+        bad "minimize failed — is aeris-dock installed and minimize.lua loaded?"
     fi
 fi
 

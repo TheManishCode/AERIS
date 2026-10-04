@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Write each module's install.sh from one template.
 
-The three modules become three repositories, so each has to ship a complete,
-standalone installer — a shared script is not an option once they are split
-apart. Generating them from here is how they stay identical where they should
-be and differ only where they must.
+Each module has to ship a complete, standalone installer: the whole point is
+that `curl ... | bash` installs *one* module on a machine that has none of
+this, so none of them can assume a shared helper is already on disk.
+Generating them from here is how they stay identical where they should be and
+differ only where they must.
 
 Run after changing the template or a module's extras:
 
     python3 tools/gen-installers.py
 
-It rewrites `packages/palisade-*/install.sh` in place. Core's installer is
+It rewrites `packages/aeris-*/install.sh` in place. Core's installer is
 hand-written (it bootstraps the system dependencies) and is not touched.
 """
 
@@ -24,15 +25,18 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = r'''#!/usr/bin/env bash
 # {title} — one command.
 #
-#   curl -fsSL https://raw.githubusercontent.com/PALISADE_OWNER/{repo}/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/TheManishCode/AERIS/main/packages/{package}/install.sh | bash
 #
-# Installs this module and, if it is not already there, Palisade core. It does
+# Installs this module and, if it is not already there, AERIS core. It does
 # not install or need the other modules. Running it twice upgrades in place.
 set -euo pipefail
 
-REPO="${{{env}:-https://github.com/PALISADE_OWNER/{repo}}}"
-CORE_REPO="${{PALISADE_CORE_REPO:-https://github.com/PALISADE_OWNER/palisade-core}}"
-PREFIX="${{PALISADE_PREFIX:-$HOME/.local}}"
+# One repository holds all four packages, so a fetch clones it once and
+# installs out of a subdirectory. `{env}` overrides it for a fork or a local
+# mirror; `DIR` is where this package lives inside whatever that points at.
+REPO="${{{env}:-https://github.com/TheManishCode/AERIS}}"
+DIR="packages/{package}"
+PREFIX="${{AERIS_PREFIX:-$HOME/.local}}"
 
 say()  {{ printf '\033[1m==>\033[0m %s\n' "$*"; }}
 warn() {{ printf '\033[33m==>\033[0m %s\n' "$*" >&2; }}
@@ -71,33 +75,40 @@ is_checkout() {{
     [ -f "$1/pyproject.toml" ] && grep -qE '^name = "{package}"' "$1/pyproject.toml"
 }}
 
+# --------------------------------------------------------------------- source
+#
+# Fetched before core is considered, so that one clone serves both: core's
+# installer is a file inside the same tree. Cloning twice would download the
+# whole repository a second time to run a script that is already on disk.
+
+here="$(cd "$(dirname "$(readlink -f "$0")")" 2>/dev/null && pwd)" || here=""
+if [ -n "$here" ] && is_checkout "$here"; then
+    SRC="$here"                                   # running from a clone
+    CORE_INSTALLER="$here/../aeris-core/install.sh"
+else
+    command -v git >/dev/null || die "git is required to fetch $REPO"
+    clone="$(mktemp -d)"; TMPDIRS+=("$clone")
+    say "Fetching $REPO"
+    git clone --depth 1 "$REPO" "$clone" >/dev/null 2>&1
+    [ -d "$clone/$DIR" ] || die "$REPO has no $DIR — wrong repository?"
+    SRC="$clone/$DIR"
+    CORE_INSTALLER="$clone/packages/aeris-core/install.sh"
+fi
+
 # ----------------------------------------------------------------------- core
 #
 # A dependency, not a bundled copy. Installing all three modules installs core
 # once; uninstalling this one leaves the other two working.
 
-if ! python3 -c 'import palisade' >/dev/null 2>&1; then
-    say "Palisade core is not installed — fetching it first"
-    command -v git >/dev/null || die "git is required to fetch $CORE_REPO"
-    core_src="$(mktemp -d)"; TMPDIRS+=("$core_src")
-    git clone --depth 1 "$CORE_REPO" "$core_src" >/dev/null 2>&1
-    bash "$core_src/install.sh"
-fi
-
-# --------------------------------------------------------------------- source
-
-here="$(cd "$(dirname "$(readlink -f "$0")")" 2>/dev/null && pwd)" || here=""
-if [ -n "$here" ] && is_checkout "$here"; then
-    SRC="$here"                                   # running from a clone
-else
-    command -v git >/dev/null || die "git is required to fetch $REPO"
-    SRC="$(mktemp -d)"; TMPDIRS+=("$SRC")
-    say "Fetching $REPO"
-    git clone --depth 1 "$REPO" "$SRC" >/dev/null 2>&1
+if ! python3 -c 'import aeris' >/dev/null 2>&1; then
+    say "AERIS core is not installed — installing it first"
+    [ -f "$CORE_INSTALLER" ] \
+        || die "cannot find core's installer at $CORE_INSTALLER"
+    bash "$CORE_INSTALLER"
 fi
 
 # --no-deps because this script installs core itself, above. Without it pip
-# resolves the `palisade-core` requirement from PyPI — where nothing of that
+# resolves the `aeris-core` requirement from PyPI — where nothing of that
 # name is published, so it either fails or installs a stranger's package.
 say "Installing {package}"
 pip_install --no-deps "$SRC"
@@ -108,35 +119,34 @@ pip_install --no-deps "$SRC"
 # underneath a running daemon is invisible until it restarts. Doing it here is
 # the difference between "installed" and "working".
 
-if "$PREFIX/bin/palisade" ping >/dev/null 2>&1; then
+if "$PREFIX/bin/aeris" ping >/dev/null 2>&1; then
     say "Restarting the running daemon so it picks this up"
-    pkill -f 'palisade run' >/dev/null 2>&1 || true
+    pkill -f 'aeris run' >/dev/null 2>&1 || true
     sleep 0.5
-    (setsid "$PREFIX/bin/palisade" run >/dev/null 2>&1 &) || true
+    (setsid "$PREFIX/bin/aeris" run >/dev/null 2>&1 &) || true
 fi
 
 say "Done."
-"$PREFIX/bin/palisade" doctor || true
+"$PREFIX/bin/aeris" doctor || true
 echo
 {footer}
 '''
 
 MODULES = {
     "files": dict(
-        title="Palisade — folders and files",
-        repo="palisade-files",
-        env="PALISADE_FILES_REPO",
-        package="palisade-files",
+        title="AERIS — folders and files",
+        env="AERIS_REPO",
+        package="aeris-files",
         extras="""
 # ------------------------------------------------------------- desktop menus
 #
-# "Group in Palisade" and "Open as a Palisade tab" in the file manager's
+# "Group in AERIS" and "Open as an AERIS tab" in the file manager's
 # right-click menu. Core writes them; they are only useful with this module
 # installed, which is why they are placed here and not there.
 
-if command -v "$PREFIX/bin/palisade" >/dev/null; then
+if command -v "$PREFIX/bin/aeris" >/dev/null; then
     say "Adding the file-manager menu entries"
-    "$PREFIX/bin/palisade" install-menus >/dev/null 2>&1 || true
+    "$PREFIX/bin/aeris" install-menus >/dev/null 2>&1 || true
 fi
 """,
         footer='''echo "Point a fence at a folder:"
@@ -147,13 +157,12 @@ echo "    [fence.source]"
 echo "    type = \\"directory\\""
 echo "    path = \\"~/Documents/notes\\""
 echo
-echo "...in ~/.config/palisade/palisade.toml, then: palisade reload"''',
+echo "...in ~/.config/aeris/aeris.toml, then: aeris reload"''',
     ),
     "dock": dict(
-        title="Palisade — minimized applications",
-        repo="palisade-dock",
-        env="PALISADE_DOCK_REPO",
-        package="palisade-dock",
+        title="AERIS — minimized applications",
+        env="AERIS_REPO",
+        package="aeris-dock",
         extras=r"""
 # --------------------------------------------------------------- minimize.lua
 #
@@ -164,10 +173,10 @@ echo "...in ~/.config/palisade/palisade.toml, then: palisade reload"''',
 #
 # Delegated to the module rather than reimplemented here in bash: the backup
 # rule, the already-loaded check and the keybind hint are one implementation,
-# and `pip install palisade-dock` users get the same thing.
+# and `pip install aeris-dock` users get the same thing.
 
-python3 -m palisade_dock install-engine || \
-    warn "Could not place minimize.lua. Run: python3 -m palisade_dock install-engine"
+python3 -m aeris_dock install-engine || \
+    warn "Could not place minimize.lua. Run: python3 -m aeris_dock install-engine"
 """,
         footer='''echo "Add a taskbar:"
 echo
@@ -178,13 +187,12 @@ echo "    dock = \\"left\\""
 echo "    [fence.source]"
 echo "    type = \\"windows\\""
 echo
-echo "...in ~/.config/palisade/palisade.toml, then: palisade reload"''',
+echo "...in ~/.config/aeris/aeris.toml, then: aeris reload"''',
     ),
     "apps": dict(
-        title="Palisade — installed applications",
-        repo="palisade-apps",
-        env="PALISADE_APPS_REPO",
-        package="palisade-apps",
+        title="AERIS — installed applications",
+        env="AERIS_REPO",
+        package="aeris-apps",
         extras="",
         footer='''echo "Add an application panel:"
 echo
@@ -194,14 +202,14 @@ echo "    view = \\"icons\\""
 echo "    [fence.source]"
 echo "    type = \\"apps\\""
 echo
-echo "...in ~/.config/palisade/palisade.toml, then: palisade reload"'''
+echo "...in ~/.config/aeris/aeris.toml, then: aeris reload"'''
     ),
 }
 
 
 def main() -> int:
     for name, fields in MODULES.items():
-        path = ROOT / "packages" / f"palisade-{name}" / "install.sh"
+        path = ROOT / "packages" / f"aeris-{name}" / "install.sh"
         path.write_text(TEMPLATE.format(**fields), encoding="utf-8")
         path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         print(f"wrote {path.relative_to(ROOT)}")

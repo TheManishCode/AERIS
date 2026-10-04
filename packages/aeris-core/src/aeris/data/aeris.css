@@ -1,0 +1,941 @@
+/* AERIS component stylesheet.
+ *
+ * Colour comes entirely from @m3_* tokens emitted by aeris/theme.py, so this
+ * sheet never hard-codes a hue and re-themes with the wallpaper.
+ *
+ * Placeholders — RADIUS, RADIUS_CARD, RADIUS_ITEM, PAD_SHELL, PAD_CARD,
+ * FONT_PT and friends — are substituted at load time, because GTK CSS cannot
+ * compute on @define-color values and has no arithmetic of its own.
+ *
+ * Named here without their percent delimiters on purpose: substitution is a
+ * plain string replace and rewrites a token name inside a comment just as
+ * readily as inside a rule. It did exactly that to this paragraph.
+ *
+ * The blur behind a fence is drawn by the compositor (Hyprland `layerrule =
+ * blur`), not here. This sheet only supplies the translucent tint that sits on
+ * top of it — which is why the glass refracts live windows rather than a
+ * wallpaper screenshot.
+ *
+ * ---------------------------------------------------------------------------
+ * The measurements below are not invented. They are read from the desktop's
+ * own design system, `~/.config/quickshell/ii/modules/common/Appearance.qml`,
+ * so a fence is built on the same scale as every other panel on screen instead
+ * of approximating one:
+ *
+ *   rounding   verysmall 8 · small 12 · normal 17 · large 23 · window 18
+ *   spacing    panel padding 10 · card inset 5
+ *              list row 12 vertical · grid cell 6 (separate tokens)
+ *   layers     0 background · 1 surface_container_low · 2 surface_container
+ *              each step up is a raised surface, not a border
+ *   states     hover = mix(layer, on_layer, 0.10)
+ *              active = mix(layer, on_layer, 0.20)
+ *   border     mix(outline_variant, layer0, 0.4) — muted, not accented
+ *   scrollbar  4px visible, fully rounded, on_surface_variant
+ *   type       450 body · 550 title
+ *
+ * ---------------------------------------------------------------------------
+ * The *rounding ladder* is not the rice's. The rice's flat 17/12 pair left a
+ * 12px item inside a 17px card with 5px between them, where the two arcs fight
+ * instead of nesting — which is what made the corners read as approximately
+ * rounded rather than deliberately so.
+ *
+ * It is shapeshift's rule instead (MIT): each step is the one outside it minus
+ * the padding between. %RADIUS% stays the user's `corner_radius` — it exists to
+ * match Hyprland's own `decoration.rounding` and that match should hold — and
+ * the card and item radii are derived from it (see theme.ladder).
+ *
+ * The insets are `[settings] spacing`: "desktop" is the rice's 10/5 above, so a
+ * panel shares the rhythm of the shell panels beside it; "compact" is
+ * shapeshift's 8/4. At 10/5 an 18px shell would descend to a 3px item, which
+ * reads as a missing radius rather than a chosen one — so the ladder floors the
+ * item at 6 and clamps it back to the card, flattening rather than inverting.
+ * desktop: 18 -> 8 -> 6.   compact: 18 -> 10 -> 6.
+ *
+ * ---------------------------------------------------------------------------
+ * The desktop's layers are absolute colours because its panels are opaque.
+ * Ours are not: the shell is alpha(@m3_background, opacity) over the
+ * wallpaper, so its *effective* luminance moves with whatever is behind it.
+ * An opaque #1b1c1a card therefore reads as raised on a dark wallpaper and
+ * as recessed on a light one — measured, with the card at 27 and the shell
+ * at 27-33 on this machine.
+ *
+ * So raised surfaces here are relative, not absolute: alpha(@m3_on_surface,
+ * n) composites to "one step lighter than whatever is behind me", which is
+ * what a layer *means*. The alphas are tuned to land on the rice's own
+ * values over an opaque dark shell — 0.055 ≈ surface_container_low,
+ * 0.085 ≈ surface_container — so a docked panel on a dark wallpaper looks
+ * exactly as it did, and a panel on a bright one now looks right too.
+ *
+ * The layer model is the part that was missing. Content used to sit directly
+ * on the panel with nothing between them, which is what made it read as flat
+ * and unpadded however the paddings were tuned: there was only ever one
+ * surface. The list now sits on a raised card inside the shell, the way every
+ * other panel on this desktop is built.
+ */
+
+/* The toplevel must be fully transparent so the compositor blur and our
+ * rounded corners are both visible; .fence-root paints the actual panel.
+ *
+ * Registered above PRIORITY_USER (see theme.CSS_PRIORITY) because a riced
+ * ~/.config/gtk-4.0/gtk.css carries a blanket opaque `window` rule that would
+ * otherwise win and fill the corners in. */
+window.aeris {
+  background: transparent;
+}
+
+/* Layer 0: the shell. Holds the panel's padding so every child is inset from
+ * the edge by the same 10px, which is the one measurement the old sheet was
+ * missing — each child was padding itself by a different amount. */
+.fence-root {
+  padding: %PAD_SHELL%px;
+  border-radius: %RADIUS%px;
+  /* Muted, mixed toward the surface rather than drawn in the accent. An
+   * accented border reads as a focus state, and every fence would look
+   * permanently focused. */
+  border: 1px solid mix(@m3_outline_variant, @m3_background, 0.4);
+  box-shadow: 0 2px 20px alpha(@m3_shadow, 0.22);
+}
+
+/* A dock is tighter than a floating panel whatever the rhythm. The panel inset
+ * is right for something you read; a taskbar is furniture you scan down a
+ * narrow column, and the same inset there eats width that the window titles
+ * need and leaves the card swimming in its shell. The gaps between its parts
+ * come in to match. */
+.fence-root.dock-left,
+.fence-root.dock-right,
+.fence-root.dock-top,
+.fence-root.dock-bottom {
+  padding: %PAD_DOCK%px;
+}
+
+.dock-left .fence-header,
+.dock-right .fence-header,
+.dock-top .fence-header,
+.dock-bottom .fence-header {
+  padding: 2px 4px 6px 4px;
+}
+
+.dock-left .mode-switch,
+.dock-right .mode-switch,
+.dock-top .mode-switch,
+.dock-bottom .mode-switch {
+  margin: 0 0 6px 0;
+}
+
+/* A dock is flush against the screen edge it is anchored to, so rounding the
+ * corners on that edge cuts a notch out of the panel and shows whatever is
+ * behind it through the gap — the curve appears to stick out past the screen.
+ * Square those two; the corners facing the desktop stay rounded. */
+.fence-root.dock-left {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.fence-root.dock-right {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.fence-root.dock-top {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.fence-root.dock-bottom {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Opacity is per-fence, so the surface tint is applied inline by fence.py.
+ * Everything else about the panel lives here. */
+
+/* --- header ---------------------------------------------------------------
+ * Sits inside the shell's padding, so it carries only the gap down to the
+ * card. 4px of side padding keeps the title optically aligned with the row
+ * labels below, which are inset by the card's own 5px. */
+
+.fence-header {
+  padding: 2px 4px 8px 4px;
+}
+
+.fence-title {
+  font-size: %FONT_PT%pt;
+  /* 550, not bold. The desktop's title weight — 700 shouts next to it. */
+  font-weight: 550;
+  color: @m3_on_surface;
+}
+
+.fence-count {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  padding-left: 8px;
+}
+
+/* The back button that appears once you have walked into a folder. Same
+ * shape as the collapse control so the header keeps one vocabulary, and
+ * mirrored to the leading edge because that is where "back" lives. */
+.fence-up {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  margin-right: 2px;
+  border-radius: 9999px;
+  background: transparent;
+  border: none;
+  color: @m3_on_surface_variant;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1),
+              color 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.fence-up:hover {
+  background: alpha(@m3_on_surface, 0.105);
+  color: @m3_on_surface;
+}
+
+.fence-up:active {
+  background: alpha(@m3_on_surface, 0.165);
+}
+
+.fence-collapse {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 9999px;
+  background: transparent;
+  border: none;
+  color: @m3_on_surface_variant;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1),
+              color 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.fence-collapse:hover {
+  background: alpha(@m3_on_surface, 0.105);
+  color: @m3_on_surface;
+}
+
+.fence-collapse:active {
+  background: alpha(@m3_on_surface, 0.165);
+}
+
+/* --- the field ------------------------------------------------------------
+ * One row between the header and the card, shown only while you are typing.
+ * It wears the card's own surface rather than a brighter one: it sits at the
+ * same depth as the list it is narrowing, and lifting it above would read as
+ * a popup over the panel instead of part of it. */
+
+.omni-bar {
+  padding: 0 4px 6px 4px;
+}
+
+/* What the field has decided it is. Reads as a label on the input, not as a
+ * button — there is nothing to click here. */
+.omni-chip {
+  font-size: %FONT_SM_PT%pt;
+  font-weight: 550;
+  color: @m3_on_surface_variant;
+  padding: 0 2px;
+}
+
+.omni-entry {
+  font-size: %FONT_PT%pt;
+  min-height: 28px;
+  padding: 2px 8px;
+  color: @m3_on_surface;
+  caret-color: @m3_primary;
+  background: alpha(@m3_on_surface, 0.055);
+  border: 1px solid transparent;
+  /* A control sits at the item's rung of the ladder, not the card's. */
+  border-radius: %RADIUS_ITEM%px;
+  /* libadwaita draws an entry's focus ring as an `outline`, in the system
+   * accent — a hard blue rectangle that belongs to no other part of the
+   * panel. Resetting `border` alone left it: it is a separate property, and
+   * the ring was never a border. */
+  outline: none;
+  box-shadow: none;
+}
+
+/* The inner text node carries its own background in most themes, which shows
+ * through the entry's as a lighter rectangle inset by the padding. */
+.omni-entry > text {
+  background: transparent;
+  color: @m3_on_surface;
+}
+
+.omni-entry > text > placeholder {
+  color: @m3_on_surface_variant;
+  opacity: 0.7;
+}
+
+.omni-entry:focus-within {
+  background: alpha(@m3_on_surface, 0.085);
+  border-color: alpha(@m3_primary, 0.55);
+  outline: none;
+}
+
+.omni-entry selection {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+}
+
+/* A dock already carries its own tighter rhythm; match it. */
+.dock-left .omni-bar,
+.dock-right .omni-bar,
+.dock-top .omni-bar,
+.dock-bottom .omni-bar {
+  padding: 0 4px 6px 4px;
+}
+
+/* --- layer 1: the card ----------------------------------------------------
+ * The list lives on a raised surface inside the shell rather than directly on
+ * it. 5px inset matches the desktop's own content cards. `.fence-empty` wears
+ * the same card so a panel with nothing in it keeps its shape instead of
+ * collapsing into a flat rectangle. */
+
+.fence-body,
+.fence-empty {
+  background: alpha(@m3_on_surface, 0.055);
+  border-radius: %RADIUS_CARD%px;
+}
+
+/* A dock insets its card by 6 rather than 10, so its ladder starts higher. */
+.dock-left .fence-body, .dock-left .fence-empty,
+.dock-right .fence-body, .dock-right .fence-empty,
+.dock-top .fence-body, .dock-top .fence-empty,
+.dock-bottom .fence-body, .dock-bottom .fence-empty {
+  border-radius: %RADIUS_DOCK_CARD%px;
+}
+
+.fence-body {
+  padding: %PAD_CARD%px;
+}
+
+/* The scroller and the view each paint their own surface by default, which
+ * would stack two more opaque layers on top of the card. The card is the only
+ * thing in here that should paint. */
+scrolledwindow,
+viewport,
+gridview,
+listview,
+.fence-items {
+  background: transparent;
+}
+
+/* GridView/ListView wrap every cell in a child/row node that also paints and
+ * carries its own padding; the .item box inside it owns both. */
+gridview > child,
+listview > row {
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
+gridview > child:selected,
+listview > row:selected {
+  background: transparent;
+}
+
+/* --- items ---------------------------------------------------------------
+ * Hover, selection and focus are shared so the two views behave identically;
+ * only the padding differs, and it has to.
+ *
+ * A grid cell and a list row do not share a padding on this desktop, and
+ * treating them as one control is what made the icon grid read as
+ * over-spaced. A row is 12 vertical (DialogListItem); a grid cell is 6 with
+ * an 8 margin (wallpaperSelectorItemPadding / ItemMargins) — a cell is mostly
+ * icon and already carries its own whitespace. */
+
+.item {
+  border-radius: %RADIUS_ITEM%px;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.dock-left .item, .dock-right .item,
+.dock-top .item, .dock-bottom .item {
+  border-radius: %RADIUS_DOCK_ITEM%px;
+}
+
+gridview > child .item {
+  padding: 6px;
+  margin: 2px;
+}
+
+listview > row .item {
+  padding: 12px 8px;
+}
+
+.item:hover {
+  background: alpha(@m3_on_surface, 0.105);
+}
+
+/* Selection state lives on the view's own cell node (gridview > child /
+ * listview > row), so it is matched there and descended into .item rather
+ * than tracked with a class we would have to keep in sync by hand.
+ *
+ * secondary_container is Material 3's selected-list-item surface; mixing the
+ * accent into the card instead would tint rather than select. */
+gridview > child:selected .item,
+listview > row:selected .item {
+  background: @m3_secondary_container;
+}
+
+gridview > child:selected .item:hover,
+listview > row:selected .item:hover {
+  background: mix(@m3_secondary_container, @m3_on_secondary_container, 0.10);
+}
+
+/* Keyboard focus must stay visible against both hover and selection.
+ *
+ * Drawn as an inset shadow rather than an `outline`. GTK's outline is a
+ * rectangle and ignores the radius ladder entirely, so a focused row showed
+ * square corners inside a 6px item inside an 8px card — the one place in the
+ * whole sheet where the rounding broke, and it appeared exactly when the user
+ * was looking at that row.
+ *
+ * `inset` so it never grows the row: an outside ring on a row whose card is
+ * 5px away would collide with its neighbour. */
+listview > row:focus,
+gridview > child:focus {
+  outline: none;
+}
+
+gridview > child:focus-visible .item,
+listview > row:focus-visible .item {
+  box-shadow: inset 0 0 0 2px alpha(@m3_primary, 0.55);
+}
+
+.item-label {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface;
+}
+
+gridview > child:selected .item-label,
+listview > row:selected .item-label {
+  color: @m3_on_secondary_container;
+}
+
+.item-sub {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+}
+
+/* Leading shortcut badge on taskbar rows: the key that restores this window.
+   Quiet by default — it is a reminder, not the content of the row. */
+.item-key {
+  font-size: %FONT_SM_PT%pt;
+  font-weight: 550;
+  color: @m3_on_surface_variant;
+  opacity: 0.55;
+  min-width: 16px;
+}
+
+row:selected .item-key,
+.item:hover .item-key {
+  color: @m3_primary;
+  opacity: 1;
+}
+
+.fence-empty {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  padding: 20px 16px;
+}
+
+/* --- scrolling -----------------------------------------------------------
+ * 4px of visible slider, the desktop's width. The node stays 10px wide so
+ * there is something to grab: the extra is a transparent border, not paint. */
+
+scrollbar {
+  background: transparent;
+  border: none;
+  min-width: 10px;
+}
+
+scrollbar slider {
+  background: alpha(@m3_on_surface_variant, 0.45);
+  border-radius: 2px;
+  min-width: 10px;
+  min-height: 32px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+scrollbar slider:hover {
+  background: @m3_on_surface_variant;
+  background-clip: padding-box;
+}
+
+/* --- rename entry -------------------------------------------------------- */
+
+.item-rename {
+  font-size: %FONT_SM_PT%pt;
+  min-height: 0;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: @m3_surface_container_highest;
+  color: @m3_on_surface;
+  border: 1px solid @m3_primary;
+}
+
+/* --- drop feedback -------------------------------------------------------
+ * Used by the internal move picker, not by wl_data_device (see DECISIONS.md). */
+
+.fence-root.drop-active {
+  border: 1px solid @m3_primary;
+}
+
+/* --- manipulation ---------------------------------------------------------
+ * The resize grip stays nearly invisible until the pointer is near it: a
+ * fence is furniture, and a permanent handle on every panel is visual noise. */
+
+.fence-grip {
+  margin: 0 4px 4px 0;
+  color: alpha(@m3_on_surface_variant, 0.35);
+  min-width: 16px;
+  min-height: 16px;
+  /* The icon is pan-end-symbolic rotated into a corner wedge. */
+  -gtk-icon-transform: rotate(45deg);
+  transition: color 120ms ease-out;
+}
+
+/* The grip is a sibling of .fence-root inside the overlay, not a descendant,
+ * so it has to be reached from the window node. */
+window.aeris:hover .fence-grip {
+  color: alpha(@m3_on_surface_variant, 0.75);
+}
+
+.fence-grip:hover {
+  color: @m3_primary;
+}
+
+/* A docked panel's grip. Always visible, unlike the floating one: a dock has
+ * no title bar to grab and no corner to find, so a handle that appears only
+ * on hover is a handle you have to already know about.
+ *
+ * Sized here rather than with `set_size_request`, which this sheet silently
+ * overrode — the node came out 0px wide and painted nothing at all. The
+ * padding is the drag target: it widens the node to 12px without widening
+ * the pill, because 4px is a painful thing to have to hit. */
+.dock-grip {
+  background: alpha(@m3_on_surface_variant, 0.32);
+  border-radius: 999px;
+  transition: background 120ms ease-out;
+}
+
+.dock-grip-upright {
+  min-width: %GRIP_THICKNESS%px;
+  min-height: %GRIP_LENGTH%px;
+  margin: 0 %GRIP_INSET%px;
+}
+
+.dock-grip-flat {
+  min-width: %GRIP_LENGTH%px;
+  min-height: %GRIP_THICKNESS%px;
+  margin: %GRIP_INSET%px 0;
+}
+
+window.aeris:hover .dock-grip {
+  background: alpha(@m3_on_surface_variant, 0.60);
+}
+
+.dock-grip:hover {
+  background: @m3_primary;
+}
+
+/* A locked fence says so quietly on its header rather than in a dialog. */
+.fence-locked-hint {
+  font-size: %FONT_SM_PT%pt;
+  color: alpha(@m3_on_surface_variant, 0.7);
+  padding-right: 6px;
+}
+
+/* While being dragged, lift the panel so it reads as picked up. */
+.fence-root.dragging {
+  box-shadow: 0 8px 32px alpha(@m3_shadow, 0.45);
+}
+
+/* --- group picker ---------------------------------------------------------
+ * Summoned, not furniture: it is denser and more contrasty than a tab,
+ * because it is read once and dismissed. */
+
+.picker-root {
+  padding-bottom: 10px;
+}
+
+.picker-header {
+  padding: 6px 4px 10px 4px;
+}
+
+.picker-search {
+  margin: 0 0 8px 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: alpha(@m3_on_surface, 0.085);
+  color: @m3_on_surface;
+  border: 1px solid transparent;
+  transition: background 110ms ease-out, border-color 110ms ease-out;
+}
+
+.picker-search:focus-within {
+  border-color: @m3_primary;
+  background: alpha(@m3_on_surface, 0.105);
+}
+
+/* The picker is read, not lived in, so it carries a solid surface rather than
+   the translucent tint a tab uses — the list has to stay legible over an
+   arbitrary desktop. */
+window.aeris-picker .fence-root {
+  background: alpha(@m3_surface_container, 0.94);
+}
+
+/* --- taskbar mode switch --------------------------------------------------
+ * Two segments: minimized windows, or panels you have hidden. A labelled pair
+ * rather than an icon in the header corner — the first attempt was a 24px
+ * glyph between two other 24px glyphs, which you had to already know about to
+ * find, and the whole point of this control is that hiding a panel stops
+ * being a one-way door.
+ *
+ * Fully rounded: the desktop draws every segmented control and pill as
+ * `radius: height / 2`, and a 10px-cornered rectangle beside them is the kind
+ * of near-miss that reads as a different application. */
+
+.mode-switch {
+  margin: 0 0 8px 0;
+  padding: 3px;
+  border-radius: 999px;
+  background: alpha(@m3_on_surface, 0.055);
+}
+
+.mode-tab {
+  min-height: 28px;
+  padding: 2px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1),
+              color 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.mode-tab:hover {
+  background: alpha(@m3_on_surface, 0.105);
+  color: @m3_on_surface;
+}
+
+/* The selected segment carries the accent container, so it reads as chosen
+ * rather than merely lighter — a raised grey segment on a grey track is a
+ * distinction you have to look for. */
+.mode-tab.active {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+  font-weight: 550;
+}
+
+.mode-tab.active:hover {
+  background: mix(@m3_secondary_container, @m3_on_secondary_container, 0.10);
+}
+
+/* --- the in-panel viewer --------------------------------------------------
+ * Opening a file from a fence used to hand it to the desktop and lose it
+ * behind whatever claimed it. The viewer shows it where it already is, so the
+ * surfaces below are the panel's own card vocabulary, not a second theme. */
+
+.viewer-header {
+  padding: 0 0 8px 0;
+}
+
+.viewer-title {
+  font-size: %FONT_PT%pt;
+  font-weight: 550;
+  color: @m3_on_surface;
+  padding-left: 4px;
+}
+
+.viewer-back {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 13px;
+  background: transparent;
+  border: none;
+  color: @m3_on_surface_variant;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1),
+              color 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.viewer-back:hover {
+  background: alpha(@m3_on_surface, 0.105);
+  color: @m3_on_surface;
+}
+
+/* Actions are the panel's pill vocabulary at a smaller size, so the viewer
+ * reads as part of the fence rather than as an embedded application. */
+.viewer-action {
+  min-height: 26px;
+  padding: 2px 12px;
+  border: none;
+  border-radius: 999px;
+  background: alpha(@m3_on_surface, 0.055);
+  box-shadow: none;
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  transition: background 150ms cubic-bezier(0.23, 1, 0.32, 1),
+              color 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.viewer-action:hover {
+  background: alpha(@m3_on_surface, 0.105);
+  color: @m3_on_surface;
+}
+
+/* Save is the only control here that writes to disk, so it is the only one
+ * that takes the accent. Greyed once saved rather than hidden: a control that
+ * disappears when you are done with it makes you wonder whether it worked. */
+.viewer-save {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+  font-weight: 550;
+}
+
+.viewer-save:hover {
+  background: mix(@m3_secondary_container, @m3_on_secondary_container, 0.10);
+}
+
+.viewer-save:disabled {
+  background: alpha(@m3_on_surface, 0.055);
+  color: @m3_on_surface_variant;
+  font-weight: 450;
+}
+
+/* An editable buffer must not look like a read-only one. The caret and the
+ * surface are the whole signal; a border would fight the card it sits on. */
+.code-view.editing {
+  background: alpha(@m3_on_surface, 0.085);
+  caret-color: @m3_primary;
+}
+
+.code-view.editing text {
+  background: alpha(@m3_on_surface, 0.085);
+}
+
+.code-view.editing text selection {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+}
+
+.viewer-icon-action {
+  min-width: 26px;
+  padding: 0;
+}
+
+/* Running something is the one action here with a side effect, so it is the
+ * one that carries the accent. */
+.viewer-run {
+  background: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+}
+
+.viewer-run:hover {
+  background: mix(@m3_secondary_container, @m3_on_secondary_container, 0.10);
+}
+
+/* Not a button: it states why Run is absent, and must not look clickable. */
+.viewer-hint {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+  opacity: 0.7;
+  padding: 0 8px;
+}
+
+/* The viewer wears the same card as the list it replaces — same rung of the
+ * ladder, same inset — so opening a file does not change the panel's shape. */
+.viewer-body {
+  background: alpha(@m3_on_surface, 0.055);
+  border-radius: %RADIUS_CARD%px;
+  padding: %PAD_CARD%px;
+}
+
+/* Run output, below the file rather than over it. Darker than the body so the
+ * split reads without a separator, and deliberately carrying no min-height:
+ * the height is a third of the panel, computed in `do_size_allocate`, and a
+ * min-height here would silently win over that size request — which is
+ * exactly how the dock grip came out 0px and painted nothing. */
+.viewer-output {
+  background: alpha(@m3_on_surface, 0.10);
+  border-radius: %RADIUS_CARD%px;
+  padding: %PAD_CARD%px;
+  margin-top: %PAD_SHELL%px;
+}
+
+/* The pane's own small header: what this is, how it went, and what you can do
+ * about it. Muted, because the output is the content and this is the frame. */
+.viewer-output-head {
+  padding: 0 0 4px 0;
+}
+
+.viewer-output-label {
+  font-size: %FONT_SM_PT%pt;
+  font-weight: 600;
+  color: @m3_on_surface_variant;
+}
+
+.viewer-output-status {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+}
+
+/* A non-zero exit is the answer to the question Run was pressed to ask, and
+ * "exit 1" is two characters wide in a pane four lines tall. Colour carries
+ * it where size cannot. */
+.viewer-output-status.failed {
+  color: @m3_error;
+  font-weight: 600;
+}
+
+.viewer-output-action {
+  font-size: %FONT_SM_PT%pt;
+  padding: 1px 8px;
+  min-height: 20px;
+}
+
+.viewer-output-action:disabled {
+  opacity: 0.4;
+}
+
+.viewer-image,
+.viewer-video {
+  border-radius: 12px;
+}
+
+.viewer-describe {
+  padding: 32px 24px;
+  color: @m3_on_surface_variant;
+}
+
+.viewer-describe-why {
+  font-size: %FONT_PT%pt;
+  color: @m3_on_surface;
+}
+
+.viewer-describe-detail {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+}
+
+/* --- code ----------------------------------------------------------------
+ * No syntax highlighting: GtkSourceView is not a hard dependency, because a
+ * missing library should cost colour, not the preview. */
+
+.code-view {
+  font-family: monospace;
+  font-size: %FONT_SM_PT%pt;
+  background: transparent;
+  color: @m3_on_surface;
+  padding: 8px;
+}
+
+.code-view text {
+  background: transparent;
+  color: @m3_on_surface;
+}
+
+/* --- rendered markdown ----------------------------------------------------
+ * Built one widget per block rather than one Pango string, which is what lets
+ * a code block have its own surface and a heading have real space above it. */
+
+.markdown {
+  padding: 10px 12px 16px 12px;
+}
+
+.md-para,
+.md-list-item {
+  font-size: %FONT_PT%pt;
+  color: @m3_on_surface;
+  padding: 4px 0;
+}
+
+.md-h1 { font-size: 1.6em; font-weight: 550; color: @m3_on_surface; padding: 14px 0 6px 0; }
+.md-h2 { font-size: 1.35em; font-weight: 550; color: @m3_on_surface; padding: 12px 0 5px 0; }
+.md-h3 { font-size: 1.15em; font-weight: 550; color: @m3_on_surface; padding: 10px 0 4px 0; }
+.md-h4,
+.md-h5,
+.md-h6 { font-weight: 550; color: @m3_on_surface_variant; padding: 8px 0 4px 0; }
+
+.md-marker {
+  color: @m3_primary;
+  min-width: 20px;
+}
+
+/* Quoted text gets an accent rule rather than italics: a long quote set in
+ * italic is harder to read than the thing it is quoting. */
+.md-quote {
+  font-size: %FONT_PT%pt;
+  color: @m3_on_surface_variant;
+  border-left: 3px solid @m3_primary;
+  padding: 4px 0 4px 12px;
+  margin: 6px 0;
+}
+
+.md-code {
+  background: alpha(@m3_on_surface, 0.085);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+/* GtkSourceView, when it is installed. Its style scheme paints an opaque
+ * background of its own, which would put a solid rectangle on top of the
+ * translucent panel and undo the compositor blur behind it — so the scheme
+ * supplies the syntax colours and this supplies the surface, as everywhere
+ * else in this sheet. */
+.source-view,
+.source-view text {
+  background: transparent;
+}
+
+/* Line numbers are navigation furniture, not content. At full contrast a
+ * narrow panel reads as two columns of equal weight. */
+.source-view gutter {
+  color: alpha(@m3_on_surface_variant, 0.55);
+  background: transparent;
+}
+
+/* The label inside the block above. The scroller carries the surface, so this
+ * carries only the face — a background here would paint a second box inside
+ * the first, offset by the scroller's padding. */
+.md-code-text {
+  font-family: monospace;
+  font-size: %FONT_SM_PT%pt;
+  background: transparent;
+}
+
+.md-rule {
+  background: @m3_outline_variant;
+  margin: 14px 0;
+}
+
+.md-table {
+  margin: 8px 0;
+}
+
+.md-cell {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface;
+  padding: 6px 12px 6px 0;
+}
+
+.md-cell-head {
+  color: @m3_on_surface_variant;
+}
+
+.pdf-pages {
+  padding: 8px;
+}
+
+.pdf-page {
+  background: #ffffff;
+  border-radius: 6px;
+}

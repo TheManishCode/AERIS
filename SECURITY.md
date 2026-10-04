@@ -1,16 +1,16 @@
 # Security
 
-Palisade is a desktop application with no network surface. What it does have
+AERIS is a desktop application with no network surface. What it does have
 is a control socket that drives the compositor, which is the part worth
 writing down.
 
 ## Trust model
 
-Palisade trusts the local user's session and nothing else.
+AERIS trusts the local user's session and nothing else.
 
 * **No network listener.** The daemon binds one `AF_UNIX` socket and never a
   TCP port. There is no remote protocol, no auth, and nothing to expose.
-* **The control socket** lives at `$XDG_RUNTIME_DIR/palisade.sock`, in a
+* **The control socket** lives at `$XDG_RUNTIME_DIR/aeris.sock`, in a
   directory the login session creates as `0700`. It is `chmod 0600` after
   bind. Anything that can open it is already running as this user and could
   equally read the config, the state file, and the X/Wayland socket — so the
@@ -24,7 +24,7 @@ Palisade trusts the local user's session and nothing else.
 
 ## The Lua boundary
 
-`palisade-dock` writes to the compositor by interpolating a window address
+`aeris-dock` writes to the compositor by interpolating a window address
 into a Lua expression that `hyprctl eval` executes inside Hyprland. That makes
 input become code, and it is the one place in the tree where that is true.
 
@@ -32,7 +32,7 @@ Addresses are validated against `re.fullmatch(r"0x[0-9a-fA-F]{1,16}")` and
 anything else is refused before the expression is built. The full account —
 the payload it blocks, where it is enforced and how it is tested — lives with
 the code, in
-[`packages/palisade-dock/SECURITY.md`](packages/palisade-dock/SECURITY.md), so
+[`packages/aeris-dock/SECURITY.md`](packages/aeris-dock/SECURITY.md), so
 that it survives the package being split to its own repository.
 
 ## Audit, 2026-10-04
@@ -68,7 +68,7 @@ Checked and found sound, so recorded rather than changed:
 
 Known and accepted:
 
-* `~/.config/palisade/palisade.toml` is 0644, so another local account can
+* `~/.config/aeris/aeris.toml` is 0644, so another local account can
   read which folders you have panels on. It is the user's own config file and
   0644 is the convention for one; noted rather than changed.
 * `Server.start` checks whether a stale socket is live and then unlinks it.

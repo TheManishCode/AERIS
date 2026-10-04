@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aeris-dock"
+version = "0.4.0"
+description = "Minimized applications for AERIS: a real minimize for Hyprland, and a taskbar to get windows back."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["aeris-core>=0.3"]
+
+[project.entry-points."aeris.modules"]
+dock = "aeris_dock:MODULE"
+
+[project.urls]
+Homepage = "https://github.com/TheManishCode/AERIS"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aeris_dock"]
+
+# The compositor-side half of the engine. Shipped inside the wheel so a plain
+# `pip install aeris-dock` can place it with
+# `python3 -m aeris_dock install-engine`; without it the taskbar installs
+# fine and is permanently empty.
+artifacts = ["src/aeris_dock/hypr/minimize.lua"]
