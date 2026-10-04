@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-10-04 — The single-instance lock could be held by two daemons
+
+Role: Backend Engineer + QA Engineer
+
+Status: Fixed
+
+Reason:
+Found during the security sweep, reading `release()`.
+
+The lock is `flock` on an open descriptor, which is the right mechanism — it
+survives the lock file being deleted and the kernel releases it when the
+holder dies. But `release()` unlocked and then **unlinked the file**, and that
+is a race:
+
+    1. the departing daemon unlocks; the file is still there
+    2. a starting daemon opens that same file and takes the lock, legitimately
+    3. the departing daemon unlinks the file the new owner is holding
+    4. a third daemon opens the path, creates a fresh inode, locks that
+
+Two holders, two sets of panels, every fence drawn twice — which is the exact
+thing the lock exists to prevent. The window is a shutdown overlapping a
+start, which is what restarting the daemon does. Reproduced with real
+descriptors before fixing.
+
+Changes:
+- `release()` no longer unlinks. Closing the descriptor releases the lock on
+  its own, and the file is a few bytes in `XDG_RUNTIME_DIR`, which the session
+  clears at logout.
+
+Removed/Reverted:
+- The `self.path.unlink()` in `release()`.
+
+Verification:
+- `tests/test_singleton.py` is new (9) — this module had no tests at all. Two
+  of them model the race directly, including a successor taking the lock
+  mid-release and a third process still being refused afterwards. Restoring
+  the unlink fails exactly those two.
+- Also covered: the first holder wins, a second is refused, the refusal names
+  the holding pid, releasing lets the next in, double release and release
+  without acquire are both harmless, and the lock file is 0600.
+- 745 tests pass across the four packages.
+
+Result:
+Only one daemon can hold the lock, including across a restart.
+
+Known Issues:
+- None.
+
 ## 2026-10-04 — Geometry from an IPC caller was unbounded
 
 Role: Backend Engineer + QA Engineer

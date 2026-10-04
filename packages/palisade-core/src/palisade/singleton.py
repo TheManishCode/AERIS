@@ -64,6 +64,23 @@ class Lock:
         self._fd = fd
 
     def release(self) -> None:
+        """Drop the lock. The file is deliberately left behind.
+
+        Unlinking it here used to look like tidiness and was a race that let
+        two daemons run at once:
+
+            1. this process unlocks, but the file is still there;
+            2. a starting daemon opens that same file and takes the lock —
+               legitimately, we no longer hold it;
+            3. this process unlinks the file the *new* owner is holding;
+            4. a third daemon opens the path, creates a fresh inode, and takes
+               a lock on that. Two holders, two sets of panels.
+
+        The window is a shutdown overlapping a start, which is precisely what
+        restarting the daemon does. Closing the fd releases the lock on its
+        own — `LOCK_UN` is not even required — and the file is a few bytes in
+        `XDG_RUNTIME_DIR`, which the session removes at logout.
+        """
         if self._fd is None:
             return
         try:
@@ -72,7 +89,3 @@ class Lock:
         except OSError:
             pass
         self._fd = None
-        try:
-            self.path.unlink()
-        except OSError:
-            pass
