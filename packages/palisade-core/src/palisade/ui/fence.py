@@ -616,8 +616,15 @@ class FenceWindow(Gtk.ApplicationWindow):
                 "Ctrl+C copy path · Ctrl+A select all · F5 rescan"
             )
             if list_item._sub.get_visible():
+                # Only rows that really are a file on disk have a size worth
+                # printing. An application and a minimized window both carry
+                # `size = 0`, which rendered as a confident "0 B" under every
+                # one of them — a measurement of something that was never
+                # measured.
                 list_item._sub.set_text(
-                    "" if item.is_dir else _human_size(item.size)
+                    _human_size(item.size)
+                    if item.is_file_row and not item.is_dir
+                    else ""
                 )
         self._apply_icon(list_item._image, item)
 
