@@ -28,10 +28,29 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk
 PY
 
+# Debian and Ubuntu put libraries in /usr/lib/<gnu-triplet>, not /usr/lib, so
+# a correct apt install of gtk4-layer-shell was reported as missing here and
+# then not found at all by bin/palisade — the daemon would not start on the
+# distributions where the package actually exists.
+#
+# ldconfig first because it is the system's own answer and covers every layout
+# including ones not listed below; the explicit dirs cover a user-prefix build
+# that was never ldconfig'd.
+triplet=""
+command -v gcc >/dev/null && triplet="$(gcc -print-multiarch 2>/dev/null || true)"
+[ -n "$triplet" ] || triplet="$(uname -m)-linux-gnu"
+
 layer_shell_found=""
-for libdir in /usr/lib /usr/lib64 "$PREFIX/lib" "$PREFIX/lib64"; do
-    [ -e "$libdir/libgtk4-layer-shell.so.0" ] && layer_shell_found="$libdir" && break
-done
+if command -v ldconfig >/dev/null; then
+    cached="$(ldconfig -p 2>/dev/null | awk '/libgtk4-layer-shell\.so\.0/ {print $NF; exit}')"
+    [ -n "$cached" ] && [ -e "$cached" ] && layer_shell_found="$(dirname "$cached")"
+fi
+if [ -z "$layer_shell_found" ]; then
+    for libdir in /usr/lib "/usr/lib/$triplet" /usr/lib64 \
+                  "$PREFIX/lib" "$PREFIX/lib/$triplet" "$PREFIX/lib64"; do
+        [ -e "$libdir/libgtk4-layer-shell.so.0" ] && layer_shell_found="$libdir" && break
+    done
+fi
 [ -n "$layer_shell_found" ] || missing+=("gtk4-layer-shell")
 
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
@@ -62,12 +81,25 @@ fi
 
 # --------------------------------------------------------------------- source
 
-if [ -f "$(dirname "$(readlink -f "$0")")/pyproject.toml" ]; then
-    SRC="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"   # running from a clone
+# `$0` is "bash" under `curl ... | bash`, so this resolves to the current
+# directory — and the old check was only "does it contain a pyproject.toml".
+# Piping this installer from inside any other Python project therefore
+# pip-installed *that project*. Verified against a directory holding
+# `name = "someone-elses-project"`: the old test called it a checkout.
+is_checkout() {
+    [ -f "$1/pyproject.toml" ] && grep -qE '^name = "palisade-core"' "$1/pyproject.toml"
+}
+
+TMPDIRS=()
+cleanup() { [ ${#TMPDIRS[@]} -gt 0 ] && rm -rf "${TMPDIRS[@]}"; }
+trap cleanup EXIT
+
+here="$(cd "$(dirname "$(readlink -f "$0")")" 2>/dev/null && pwd)" || here=""
+if [ -n "$here" ] && is_checkout "$here"; then
+    SRC="$here"                                   # running from a clone
 else
     command -v git >/dev/null || die "git is required to fetch $REPO"
-    SRC="$(mktemp -d)"
-    trap 'rm -rf "$SRC"' EXIT
+    SRC="$(mktemp -d)"; TMPDIRS+=("$SRC")
     say "Fetching $REPO"
     git clone --depth 1 "$REPO" "$SRC" >/dev/null 2>&1
 fi

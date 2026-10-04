@@ -8,9 +8,16 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
+# Debian and Ubuntu put libraries in /usr/lib/<gnu-triplet>. Without that in
+# the list, a correct apt install of gtk4-layer-shell is invisible here and
+# the daemon refuses to start on the distributions where the package exists.
+triplet=""
+command -v gcc >/dev/null 2>&1 && triplet="$(gcc -print-multiarch 2>/dev/null || true)"
+[ -n "$triplet" ] || triplet="$(uname -m)-linux-gnu"
+
 # Prefer a system install; fall back to the user prefix we build into.
 for prefix in /usr "$HOME/.local"; do
-    for libdir in "$prefix/lib" "$prefix/lib64"; do
+    for libdir in "$prefix/lib" "$prefix/lib/$triplet" "$prefix/lib64"; do
         if [ -e "$libdir/libgtk4-layer-shell.so.0" ]; then
             LAYER_SHELL_LIB="$libdir/libgtk4-layer-shell.so.0"
             LAYER_SHELL_PREFIX="$prefix"

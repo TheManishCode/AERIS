@@ -7,6 +7,74 @@ release is actually cut; until then the entries below are the record, newest
 first, and this heading exists so `palisade --version` and this file cannot
 disagree about which tree you are reading.
 
+## 2026-10-04 — Four bugs in the installers, which had no tests
+
+Role: DevOps Engineer + Release Engineer + QA Engineer
+
+Status: Fixed, Added
+
+Reason:
+The installers are the only code here that runs on a machine that is not this
+one, and the only code with no tests. Four real bugs, found by reading them
+against the way they are actually invoked.
+
+Changes:
+- **It could install the wrong project.** `$0` is "bash" under
+  `curl ... | bash`, so `dirname "$(readlink -f "$0")"` resolves to the
+  *current directory*, and the test for "am I in a clone" was only "does that
+  directory have a pyproject.toml". Piping the installer from inside any other
+  Python project pip-installed that project. Reproduced against a directory
+  holding `name = "someone-elses-project"` — the old form called it a
+  checkout. `is_checkout` now greps for this package's own name, anchored.
+- **It leaked a temp directory on every install.** Each generated installer
+  had two `trap ... EXIT` lines; bash keeps one handler per signal, so the
+  second silently replaced the first and the core clone was never removed.
+  Reproduced: of two directories, one survived. Replaced with one `TMPDIRS`
+  array and one trap, guarded for the empty case because `rm -rf "${a[@]}"`
+  on an empty array under `set -u` fails a run that had succeeded.
+- **`pip_install` dropped every argument after the first.** It took `"$1"`.
+  That is exactly how the `--no-deps` below would have been accepted and
+  ignored.
+- **Module installs needed `--no-deps`.** The script installs core itself;
+  without the flag pip resolves `palisade-core` from PyPI, where nothing of
+  that name is published.
+- **Debian and Ubuntu were unsupported in practice.** Both the installer and
+  `bin/palisade` searched only `/usr/lib` and `/usr/lib64`, never
+  `/usr/lib/<gnu-triplet>` — so a correct `apt install` of gtk4-layer-shell
+  was reported missing and then not found at all, and the daemon would not
+  start on the distributions where the package exists. The installer asks
+  `ldconfig -p` first, then falls back to an explicit list including the
+  triplet; both fall back to `$(uname -m)-linux-gnu` when `gcc
+  -print-multiarch` prints nothing, which is what it does on Arch.
+
+Removed/Reverted:
+- A `tmpdir()` helper written during this fix and removed during it. It
+  printed the path, so it had to be called in a command substitution — a
+  subshell — and the array it appended to was discarded in the parent, which
+  leaked *both* directories instead of one. Caught by running it.
+- A version of the sync test that shelled out to `gen-installers.py`. It
+  rewrote the working tree as a side effect, repairing deliberately broken
+  installers mid-run and masking the failures the other tests existed to
+  produce. It renders the template in memory now.
+
+Verification:
+- `packages/palisade-core/tests/test_installers.py`, 20 tests and 51 subtests.
+  All four installers `bash -n` clean, and the three generated ones are
+  checked against the template in memory.
+- Each fix proved by reintroducing its bug and watching the matching test
+  fail: the checkout test, the temp-dir registration, `--no-deps`, `"$@"`,
+  the subshell append, and the launcher's triplet path.
+
+Result:
+Piping an installer from inside an unrelated project no longer installs it,
+and nothing is left in /tmp.
+
+Known Issues:
+No installer is executed by any test. These assert on the text, which is the
+honest ceiling for a script whose job is to pip-install into $HOME and restart
+a daemon. The end-to-end check in the spec — piping each into a clean $HOME
+from inside an unrelated project — has not been run.
+
 ## 2026-10-04 — Syntax highlighting, where the machine has it
 
 Role: Frontend Engineer
