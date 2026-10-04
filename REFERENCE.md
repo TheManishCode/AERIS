@@ -367,6 +367,30 @@ you want to keep.
 | ! | `palisade unhide <id>` | Bring a hidden panel back |
 | ! | `palisade peek <seconds>` | Raise every panel above your windows, briefly |
 
+### From modules
+
+These exist only when the package providing them is installed. `palisade
+describe` lists what the running daemon actually answers, each tagged with the
+module it came from; a verb core does not recognise is forwarded to the daemon
+rather than rejected, which is how they reach the CLI at all.
+
+| | Command | Package | Returns |
+| --- | --- | --- | --- |
+| | `palisade minimized` | palisade-dock | Every minimized window, with its address |
+| ! | `palisade minimize <address>` | palisade-dock | Park a window on the minimized workspace |
+| ! | `palisade restore <address>` | palisade-dock | Put one back where it came from |
+| ! | `palisade restore-all` | palisade-dock | Put every minimized window back |
+| ! | `palisade close-window <address>` | palisade-dock | Close a window. Discards unsaved work |
+
+An address is `0x` followed by up to 16 hex digits, exactly as `palisade
+minimized` and `hyprctl clients -j` report it. Anything else is refused:
+addresses are interpolated into Lua that the compositor executes, so this is a
+security boundary rather than a tidiness check.
+
+```bash
+palisade minimized
+```
+
 ---
 
 ## Menus

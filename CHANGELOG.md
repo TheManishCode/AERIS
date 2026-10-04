@@ -1,5 +1,102 @@
 # Changelog
 
+## 2026-10-04 — Module verbs reach the CLI, and the Lua boundary is closed
+
+Role: Backend Engineer + Application Security Engineer + QA Engineer
+
+Status: Added, Fixed, Security
+
+Reason:
+`Registry.commands` had been wired through `ipc.Server.handle` since the
+registry was written and nothing had ever used it — the hook existed and was
+unproven. The dock's minimize/restore were reachable only by clicking a
+taskbar row.
+
+Making them IPC verbs turned a theoretical injection into a live one, which is
+the substance of this entry.
+
+Security — the Lua boundary:
+`engine.py` writes to the compositor by interpolating a window address into a
+Lua expression that `hyprctl eval` executes. The quoting is a single-quoted
+Lua string, and Lua's statement separator is optional, so an address carrying
+a quote closes the string and the remainder runs with the compositor's
+privileges. Demonstrated, not theorised — with the guard removed:
+
+    palisade minimize "0x1') os.execute('touch /tmp/pwned"
+      -> Minimize.minimize_address('0x1') os.execute('touch /tmp/pwned')
+
+and the table-constructor variant against `close_address`. Both are valid Lua.
+Both run. While addresses only came from `hyprctl clients -j` this was
+theoretical; it stopped being theoretical the moment anything able to reach
+the control socket could choose the string.
+
+Addresses are now validated with `re.fullmatch(r"0x[0-9a-fA-F]{1,16}")` in
+`minimize`, `restore_address` and `close_address`, refused before the
+expression is built. `fullmatch`, not `match`: `0x1' .. evil` begins with a
+valid address and the tail is exactly what would execute. `restore` and
+`close` take a `Window` and delegate, so an address arriving through
+compositor JSON goes through the same gate.
+
+Changes:
+- `palisade-dock` gains five commands: `minimized` (read), `minimize`,
+  `restore`, `restore-all`, `close-window`. Each write refreshes the panels,
+  because what a taskbar should show has changed.
+- Core forwards any verb it does not recognise to the daemon. Core's argparse
+  table lists only core's own subcommands and cannot list a module's — core
+  does not import modules, and what is installed is known only to the running
+  daemon. `palisade minimize 0x55a1` previously died at argparse with "invalid
+  choice" on a verb the daemon could serve.
+- The passthrough scan handles global options itself, since argparse never
+  runs on that path — notably `--config <path>`, whose value must not be
+  mistaken for a verb even when it is spelled exactly like one.
+- `describe` now includes module verbs, tagged with the owning module. They
+  were answerable but undiscoverable, in the one place the surface is meant to
+  be stated without guessing. `Registry.command_owner` / `owner_of()` is new.
+- An unknown verb now prints the known-command list, which is the only place a
+  typo can learn about module verbs.
+- A module raising `ValueError` is reported as its message rather than
+  `ValueError: …`. Validation failures are messages for whoever typed them;
+  the type prefix told them about Python instead of about their mistake.
+  Genuine module bugs keep the prefix.
+- `SECURITY.md` at the root (trust model, socket) and in `palisade-dock` (the
+  Lua boundary in full). Split so each survives `git subtree split` — the
+  dock's README links its own, not a path two levels up that would 404.
+
+Removed/Reverted:
+- TODO.md's "No module exercises the IPC hook" entry; it is exercised now.
+
+Verification:
+- 687 tests pass across the four packages, up from 621.
+- `test_address_safety.py` (17) asserts that for two dozen hostile and
+  malformed inputs `_eval` is **never called** — not that it returned false,
+  which a refusal that still ran the expression would also satisfy. Paired
+  with a test that a valid address *does* reach `_eval`, so it cannot pass by
+  failing to wire the spy up, and one asserting the emitted Lua holds exactly
+  two quotes. Removing the three validation lines fails four of them.
+- `test_commands.py` (14) covers the verbs and asserts none collides with a
+  core built-in. `test_cli_passthrough.py` (18) covers the argv scan.
+  `test_ipc_modules.py` (17) covers dispatch, failure and `describe` with fake
+  modules — core must not import a real one.
+- A test asserts the regex in the dock's SECURITY.md is the one in force, so
+  the doc cannot drift into describing a defence that is not there.
+- Live against a restarted daemon: injection refused on `minimize` and
+  `close-window` with no file created; a real kitty window minimized to
+  `special:minimized` with tags `minstate:6:1:0:0`, restored to workspace 1,
+  then closed — all three through the CLI. An existing minimized window of the
+  user's was untouched throughout.
+
+Result:
+`palisade minimize <address>` works from the CLI, is discoverable through
+`describe`, and refuses anything that is not a window address.
+
+Known Issues:
+- A module verb is looked up *before* core's table, so one named `reload`
+  would silently shadow core's. Not detected. The dock is tested not to
+  collide, which protects this tree and not the next module. Fixing it
+  properly means either moving the verb catalog out of `ipc` (which imports
+  `gi`, and `registry` must not) or changing a documented precedence — a
+  decision, not a quiet fix. Logged in TODO.md.
+
 ## 2026-10-04 — Stop the docs promising a pinning feature that does not exist
 
 Role: Technical Writer + owning engineer

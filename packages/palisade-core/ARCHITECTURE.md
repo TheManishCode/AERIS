@@ -64,7 +64,7 @@ the subset it needs and core asks for the rest and gets nothing.
 | `activate` | `(fence, item) -> bool` — claim a row | `dock` claims a window row and restores it |
 | `status` | `() -> str \| None` — explain an empty panel | `dock` says the minimize engine is not loaded |
 | `omnibox` | modes the field can turn into | `files` adds `~/…` navigation; `apps` adds the `>` launcher |
-| `commands` | IPC verbs, and therefore CLI verbs | none yet; the hook is wired |
+| `commands` | IPC verbs, and therefore CLI verbs | `dock` adds `minimize`, `restore`, `minimized` |
 | `actions` | menu entries and their handlers | `files` adds New file/New folder; `dock` adds Restore |
 
 `open_file` is one callable rather than a content-kind table because deciding
@@ -76,6 +76,18 @@ return a widget wins; when none does, core hands the file to the desktop.
 `activate` works the same way, and is why core does not know what "restore a
 window" or "launch an application" means. A module that declines returns
 `False` and the next gets its turn; core's own file handling is the fallback.
+
+`commands` reaches the CLI without core knowing the verb exists. Core's
+argparse table lists only its own subcommands, so anything else — `palisade
+minimize 0x55a1` — is forwarded to the daemon, which has the registry and
+either answers it or reports it unknown, listing everything it does answer.
+Positional arguments arrive as `req["args"]`, a list of strings, because core
+cannot know what a module's arguments mean and must not have to. A verb
+receives the *controller*, not a fence: there is no fence involved in
+minimizing a window that may not be on any panel.
+
+A module verb is looked up **before** core's table, so one named `reload`
+would silently replace core's. Nothing prevents that yet; see TODO.md.
 
 Collisions in the keyed tables are resolved first-wins and reported, not
 silently shadowed — two packages claiming one source kind is a packaging bug

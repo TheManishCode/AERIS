@@ -74,12 +74,22 @@ behaviour, and three places pointed at a `DECISIONS.md` pinning section that
 has never existed. All four now say it is unbuilt. The decision to build it or
 drop it is still open — what is closed is the docs implying it is done.
 
-## No module exercises the IPC hook
+## A module verb can shadow a core built-in
 
-`Registry.commands` is wired through `ipc.Server.handle` and covered only by
-registry unit tests. The first module verb that wants a CLI entry point —
-`palisade minimize <address>` is the obvious one — will be the first real test
-of it.
+`ipc.Server.handle` looks up `registry.commands` *before* its own `COMMANDS`
+table, so a module providing `reload`, `close` or `list` would silently
+replace core's. Collisions *between* modules are reported first-wins; a
+collision with core is not detected at all.
+
+The registry cannot check it where the other collisions are checked, because
+`COMMANDS` lives in `ipc`, which imports `gi` — and `registry` must not.
+Options: move the verb catalog out of `ipc` into a module with no GTK import,
+or have `handle` prefer its own table and report the shadowing. The second is
+a behaviour change to a deliberate comment that explains the current order, so
+it wants a decision rather than a quiet fix.
+
+`palisade-dock` is tested not to collide (`test_commands.py`), which protects
+today's tree but not the next module.
 
 ## Unverified by a human
 

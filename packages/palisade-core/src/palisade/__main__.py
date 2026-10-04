@@ -283,9 +283,62 @@ def _client(payload: dict, raw: bool) -> int:
         return 0 if reply.get("ok") else 1
     if not reply.get("ok"):
         print(f"palisade: {reply.get('error', 'unknown error')}", file=sys.stderr)
+        # The daemon is the only thing that knows which module verbs exist, so
+        # this list is the only place a typo can be told what it should have
+        # been. argparse's "invalid choice" never saw them.
+        known = reply.get("known")
+        if known:
+            print("  known commands: " + ", ".join(known), file=sys.stderr)
         return 1
     print(json.dumps(reply.get("result"), indent=2))
     return 0
+
+
+#: Global options that consume the token after them, so the scan below does
+#: not mistake an option's value for a verb (`--config minimize` is a path).
+_FLAGS_WITH_VALUE = ("--config",)
+
+
+def forwarded(argv: list[str], known) -> tuple[str, list[str], bool] | None:
+    """`(verb, args, json)` when argv names a verb core does not know.
+
+    Core cannot list a module's verbs in argparse: it does not import modules,
+    and which are installed is only known to the running daemon. So anything
+    not in core's own table is forwarded, and the daemon — which does have the
+    registry — either answers it or reports it as unknown, listing everything
+    it does answer. Without this `palisade minimize` died at argparse with
+    "invalid choice" on a verb the daemon was perfectly able to serve.
+
+    A typo now reaches the daemon too, and comes back as "unknown command
+    'lst'" with the full list. That is a better answer than argparse's, which
+    could never mention module verbs — at the cost of needing the daemon up to
+    say it.
+
+    Returns None for a known verb, for no verb at all, and for an argv that is
+    only options, leaving every one of those to argparse unchanged.
+    """
+    as_json = False
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--":
+            i += 1
+            continue
+        if token.startswith("-"):
+            if token == "--json":
+                as_json = True
+            elif token in _FLAGS_WITH_VALUE:
+                i += 1
+            i += 1
+            continue
+        if token in known:
+            return None
+        rest = argv[i + 1:]
+        if "--json" in rest:
+            as_json = True
+            rest = [a for a in rest if a != "--json"]
+        return token, rest, as_json
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -367,6 +420,14 @@ def main(argv: list[str] | None = None) -> int:
     pk = sub.add_parser("peek", help="raise every fence above windows, briefly")
     pk.add_argument("seconds", nargs="?", type=float, default=4.0)
     pk.add_argument("--off", action="store_true", help="end a peek early")
+
+    # Before argparse, which would reject a module's verb as an invalid choice.
+    pass_through = forwarded(
+        list(sys.argv[1:] if argv is None else argv), set(sub.choices)
+    )
+    if pass_through is not None:
+        verb, verb_args, as_json = pass_through
+        return _client({"cmd": verb, "args": verb_args}, as_json)
 
     args = parser.parse_args(argv)
     cmd = args.cmd or "run"
