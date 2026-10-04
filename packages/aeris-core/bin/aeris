@@ -53,4 +53,10 @@ done
 export PYTHONPATH="$dev_path${PYTHONPATH:+:$PYTHONPATH}"
 [ -n "$dev_modules" ] && export AERIS_MODULES="${AERIS_MODULES:-$dev_modules}"
 
+# Sourcing hook, for `tools/screenshots.sh` and nothing else. Setting up this
+# environment correctly is fiddly enough that a second copy of it in a dev
+# tool would be wrong within a release; sourcing means there is one.
+# Deliberately not documented as a feature: it is not one.
+[ "${AERIS_LAUNCHER_SOURCE_ONLY:-}" = "1" ] && return 0
+
 exec python3 -m aeris "$@"

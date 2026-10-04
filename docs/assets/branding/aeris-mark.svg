@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="AERIS">
+  <title>AERIS</title>
+  <!--
+    The mark is the product: panels on a surface. A tall fence on the left,
+    two stacked ones on the right, and the docked strip along the bottom
+    edge that the taskbar reserves. One hue, three tints — it stays legible
+    at 16px as a window icon and does not need a second file for dark mode.
+
+    The tints are explicit colours rather than `opacity`, which is the whole
+    reason one file serves both themes: a 55%-opacity shape composites
+    towards whatever is behind it, so on a dark README it sank into the
+    background while looking correct on a light one.
+  -->
+  <rect x="6"  y="6"  width="24" height="32" rx="4" fill="#3E7FB0"/>
+  <rect x="34" y="6"  width="24" height="14" rx="4" fill="#8DB9D8"/>
+  <rect x="34" y="24" width="24" height="14" rx="4" fill="#8DB9D8"/>
+  <rect x="6"  y="42" width="52" height="16" rx="4" fill="#5E9AC6"/>
+</svg>

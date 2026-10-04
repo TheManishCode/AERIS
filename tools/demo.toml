@@ -1,0 +1,98 @@
+# The config the documentation screenshots are taken against.
+#
+# Fences rather than groups: a [[group]] is a menu entry and puts nothing on
+# screen, and a screenshot of an empty desktop is not a screenshot of
+# anything. Positions are fixed so the captures are reproducible — the
+# cascade that places a tab you opened by hand would move them run to run.
+
+[settings]
+layer = "top"
+blur = true
+corner_radius = 18
+spacing = "desktop"
+show_item_count = true
+# Off for the captures: the palette is derived from the wallpaper, so leaving
+# it on would make the screenshots a picture of whatever this machine's
+# background happens to be that day.
+follow_material_you = false
+
+[[fence]]
+id = "projects"
+title = "Projects"
+x = 48
+y = 72
+width = 400
+height = 440
+view = "list"
+source = { type = "directory", path = "~/Projects" }
+
+[[fence]]
+id = "notes"
+title = "Notes"
+x = 480
+y = 72
+width = 400
+height = 440
+view = "list"
+sort = "name"
+source = { type = "directory", path = "~/Notes" }
+
+[[fence]]
+id = "gallery"
+title = "Gallery"
+x = 912
+y = 72
+width = 400
+height = 440
+view = "icons"
+icon_size = 80
+source = { type = "directory", path = "~/Pictures" }
+
+[[fence]]
+id = "downloads"
+title = "Downloads"
+x = 48
+y = 548
+width = 400
+height = 260
+view = "list"
+sort = "mtime"
+source = { type = "directory", path = "~/Downloads" }
+
+[[fence]]
+id = "applications"
+title = "Applications"
+x = 480
+y = 548
+width = 400
+height = 260
+view = "list"
+source = { type = "apps" }
+
+# A saved search rather than a folder: the same three directories, filtered
+# and sorted, as a live view. Nothing is moved to make this panel exist.
+[[fence]]
+id = "recent"
+title = "Recent"
+x = 912
+y = 548
+width = 400
+height = 260
+view = "list"
+sort = "mtime"
+source = { type = "query", roots = ["~/Notes", "~/Downloads", "~/Projects"], categories = ["document", "code"], depth = 3, limit = 40 }
+
+# The taskbar: the windows currently parked in Hyprland's minimize drawer.
+# Not docked here — a dock reserves a column, which is right on a real
+# desktop and wrong in a screenshot, where it would move every other panel.
+[[fence]]
+id = "minimized"
+title = "Minimized"
+x = 1360
+y = 72
+width = 420
+height = 736
+view = "list"
+sort = "mtime"
+icon_size = 24
+source = { type = "windows" }
