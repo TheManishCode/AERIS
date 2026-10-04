@@ -20,6 +20,18 @@ from gi.repository import Gio, GLib
 
 PROTOCOL_VERSION = 1
 
+#: Seconds a client may take to finish sending its request, or to read the
+#: reply, before the connection is dropped. The daemon never blocks on either
+#: — this only stops a stalled peer holding a connection open indefinitely.
+REQUEST_TIMEOUT = 10
+
+#: A request longer than this is not something anyone meant to send, and is
+#: refused rather than parsed. This is a sanity bound, not a memory guard:
+#: `read_line_async` has already buffered the line by the time it is checked.
+#: What bounds the buffer is REQUEST_TIMEOUT — a peer only has that long to
+#: keep sending before the socket drops it.
+MAX_REQUEST_BYTES = 1 << 20
+
 
 class NotFound(Exception):
     """A referenced fence does not exist — distinct from a malformed request."""
@@ -67,6 +79,9 @@ class Server:
         self.controller = controller
         self.path = socket_path()
         self._service: Gio.SocketService | None = None
+        #: Connections with an async read or write in flight. Held so Python
+        #: does not collect the stream out from under Gio mid-operation.
+        self._open: set = set()
 
     def start(self) -> bool:
         # A socket left behind by a crashed daemon would block bind(); only
@@ -103,17 +118,68 @@ class Server:
             return False
 
     def _on_incoming(self, _service, connection, _source) -> bool:
+        """Accept a connection and read it *asynchronously*.
+
+        The read used to be synchronous, on the GTK main loop. One client that
+        connected and sent nothing therefore froze the whole daemon — every
+        panel on the desktop stopped redrawing until it disconnected. That did
+        not need an attacker: an interrupted script, a crashed tool, or an
+        abandoned `nc` holding the socket open does it.
+
+        So nothing here blocks. The socket also carries a timeout, which
+        applies to async operations too, so a client that connects and then
+        dribbles forever is dropped rather than accumulating.
+        """
         try:
-            istream = Gio.DataInputStream.new(connection.get_input_stream())
-            line, _ = istream.read_line_utf8(None)
-            reply = self.handle(line or "")
-            ostream = connection.get_output_stream()
-            ostream.write_all((json.dumps(reply) + "\n").encode("utf-8"), None)
-            ostream.flush()
+            connection.get_socket().set_timeout(REQUEST_TIMEOUT)
+        except GLib.Error:
+            pass
+        stream = Gio.DataInputStream.new(connection.get_input_stream())
+        # The protocol is one JSON object per line; say so rather than letting
+        # a stray CR decide where the request ended.
+        stream.set_newline_type(Gio.DataStreamNewlineType.LF)
+        # Held so neither is collected while the async read is in flight;
+        # discarded in `_finish`.
+        self._open.add((connection, stream))
+        stream.read_line_async(GLib.PRIORITY_DEFAULT, None,
+                               self._on_line, connection)
+        return True
+
+    def _on_line(self, stream, result, connection) -> None:
+        try:
+            line, length = stream.read_line_finish_utf8(result)
+        except GLib.Error:
+            # Timed out, or the peer vanished mid-request. Nothing to answer.
+            self._finish(connection, stream)
+            return
+        if line is None:
+            self._finish(connection, stream)
+            return
+        if length > MAX_REQUEST_BYTES:
+            reply = {"ok": False, "error": "request too large"}
+        else:
+            reply = self.handle(line)
+        payload = (json.dumps(reply) + "\n").encode("utf-8")
+        # Writing can block too, if the peer never reads what it asked for.
+        connection.get_output_stream().write_all_async(
+            payload, GLib.PRIORITY_DEFAULT, None, self._on_written,
+            (connection, stream),
+        )
+
+    def _on_written(self, ostream, result, pair) -> None:
+        connection, stream = pair
+        try:
+            ostream.write_all_finish(result)
+        except GLib.Error:
+            pass
+        self._finish(connection, stream)
+
+    def _finish(self, connection, stream) -> None:
+        self._open.discard((connection, stream))
+        try:
             connection.close()
         except GLib.Error:
             pass
-        return True
 
     def handle(self, line: str) -> dict:
         try:

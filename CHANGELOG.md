@@ -1,5 +1,68 @@
 # Changelog
 
+## 2026-10-04 — One silent client froze the whole daemon
+
+Role: Backend Engineer + Application Security Engineer + QA Engineer
+
+Status: Fixed, Security
+
+Reason:
+Found during the security sweep, by asking what happens if a client connects
+and then does nothing.
+
+`_on_incoming` read the request **synchronously, on the GTK main loop**. A
+client that connected and sent no newline blocked that read, and with it every
+panel on the desktop — nothing redrew, no verb answered, until the client
+disconnected. Measured against the live daemon before the fix: with one silent
+socket open, `palisade ping` timed out.
+
+No attacker is required. An interrupted script, a crashed tool, or an
+abandoned `nc` holding the socket open does it. As a denial of service it is
+trivially cheap — one connection, no data — and it takes down the entire UI,
+not just the control socket.
+
+The write had the same shape: a peer that asked for a large reply and then
+stopped reading would block the loop in `write_all`.
+
+Changes:
+- The read is `read_line_async` and the write is `write_all_async`, so nothing
+  on the connection path blocks the main loop.
+- The connection's socket carries `REQUEST_TIMEOUT` (10s), which applies to
+  async operations too, so a peer that connects and dribbles is dropped rather
+  than held open forever. Verified: a silent client is disconnected after the
+  timeout and the daemon stays healthy.
+- `MAX_REQUEST_BYTES` (1 MiB) refuses an absurd request instead of parsing it.
+  Documented honestly as a sanity bound rather than a memory guard — the line
+  is already buffered by the time it can be checked, and what actually bounds
+  the buffer is the timeout.
+- Connections with an operation in flight are held in `Server._open` so Python
+  cannot collect a stream out from under Gio mid-call.
+
+Removed/Reverted:
+- The synchronous read/write path.
+- A comment claiming `set_newline_type` capped the request size. It does not;
+  it decides what counts as a line ending.
+
+Verification:
+- `tests/test_ipc_server.py` is new (11). It binds a real socket in a temp
+  directory and spins a real `GLib.MainLoop`, because an async bug is
+  invisible to a test that never runs one. Restoring the synchronous read
+  fails 5 of them.
+- Covered: a silent client, five silent clients, a half-sent request, a client
+  that disconnects mid-request, a client that never reads its reply, an
+  oversize request, and that the server still answers after each.
+- Live, against the real daemon: five silent clients plus one half-sent
+  request, and `palisade ping` and `palisade list` both answered in 0.24s.
+  Before the fix the same test timed out.
+- 716 tests pass across the four packages.
+
+Result:
+A misbehaving client affects only its own connection.
+
+Known Issues:
+- `REQUEST_TIMEOUT` is a constant, not a setting. There is no evidence anyone
+  needs to tune it.
+
 ## 2026-10-04 — The editor's temp file was world-readable and symlink-steerable
 
 Role: Application Security Engineer + Backend Engineer
