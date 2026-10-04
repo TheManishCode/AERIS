@@ -82,6 +82,14 @@ it wants a decision rather than a quiet fix.
 `palisade-dock` is tested not to collide (`test_commands.py`), which protects
 today's tree but not the next module.
 
+## One IPC test takes five seconds
+
+`packages/palisade-core/tests/test_ipc_server.py::BasicTests::test_the_socket_is_private`
+accounts for 5s of a ~6s suite — almost certainly a timeout being waited out
+rather than an event being waited for. Not new, and not investigated: it
+surfaced on 2026-10-04 only because the headless run had been segfaulting
+before it got that far. Worth a look next time that file is open.
+
 ## Unverified by a human
 
 - Whether drag-to-**resize** feels right. Unit-tested only.

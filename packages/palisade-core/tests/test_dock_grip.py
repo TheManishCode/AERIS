@@ -22,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from _display import needs_display  # noqa: E402
 from _realgi import use_real_gi  # noqa: E402
 
 use_real_gi()
@@ -60,6 +61,7 @@ class FloatingTests(unittest.TestCase):
     def test_both_axes_follow_the_cursor(self):
         self.assertEqual(resized(None, 50, 30), (450, 330))
 
+    @needs_display
     def test_it_still_has_the_corner_wedge(self):
         grip = manipulate.make_resize_grip()
         self.assertIn("fence-grip", grip.get_css_classes())
@@ -126,6 +128,7 @@ class FloorTests(unittest.TestCase):
         self.assertEqual(resized("left", -10000, 0)[1], 300)
 
 
+@needs_display
 class GripWidgetTests(unittest.TestCase):
     def grip(self, edge):
         return manipulate.make_dock_grip(edge)

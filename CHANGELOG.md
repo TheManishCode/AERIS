@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-10-04 — The no-display run crashed at 15% and nobody noticed
+
+Role: QA Engineer
+
+Status: Fixed, Added
+
+Reason:
+`test_dock_grip.py` was committed two entries ago without a display gate. It
+builds real widgets, and constructing a GTK widget with no display does not
+raise — it segfaults. The no-display run died 15% in and reported nothing
+about the 85% behind it. It went unseen because every run during development
+inherited the session's `WAYLAND_DISPLAY`, so the suite was green each time it
+was looked at. The regression was mine.
+
+Changes:
+- `packages/palisade-core/tests/_display.py`, matching the one `palisade-files`
+  already had. `GripWidgetTests` and `test_it_still_has_the_corner_wedge` are
+  behind `@needs_display`.
+- `tests/test_headless.py` in both GTK-carrying packages: spawns the suite in
+  a subprocess with `WAYLAND_DISPLAY` and `DISPLAY` removed and asserts it
+  neither segfaults nor fails, and that the skips are reported rather than
+  silent. Guarded by an env var so the child does not spawn its own child.
+- One shared child run for the three assertions; three spawns cost ~8s to ask
+  three questions about one result.
+
+Removed/Reverted:
+- None.
+
+Verification:
+- Proved by removing the two `@needs_display` markers again: all three
+  assertions failed, including the segfault one. Restored, all three pass.
+- Core: 458 with a display, 451 passed / 7 skipped without. Files: 219 and
+  218 / 1. Dock 79, apps 67, unchanged either way.
+- A static scan would not have caught this and was not written: the file
+  builds its widgets through `manipulate.make_dock_grip(...)`, so there is no
+  `Gtk.Something(` to grep for.
+
+Result:
+A display-dependent test added without a gate now fails a test instead of
+silently deleting the rest of the run.
+
+Known Issues:
+`test_ipc_server.py::test_the_socket_is_private` takes 5s. It is not new — the
+headless run had simply never reached it before, because the segfault came
+first. Not investigated; recorded in TODO.md.
+
 ## 2026-10-04 — Run output goes below the file, not over it
 
 Role: Senior Product Designer + Frontend Engineer + QA Engineer
