@@ -757,6 +757,41 @@ window.palisade-picker .fence-root {
   margin-top: %PAD_SHELL%px;
 }
 
+/* The pane's own small header: what this is, how it went, and what you can do
+ * about it. Muted, because the output is the content and this is the frame. */
+.viewer-output-head {
+  padding: 0 0 4px 0;
+}
+
+.viewer-output-label {
+  font-size: %FONT_SM_PT%pt;
+  font-weight: 600;
+  color: @m3_on_surface_variant;
+}
+
+.viewer-output-status {
+  font-size: %FONT_SM_PT%pt;
+  color: @m3_on_surface_variant;
+}
+
+/* A non-zero exit is the answer to the question Run was pressed to ask, and
+ * "exit 1" is two characters wide in a pane four lines tall. Colour carries
+ * it where size cannot. */
+.viewer-output-status.failed {
+  color: @m3_error;
+  font-weight: 600;
+}
+
+.viewer-output-action {
+  font-size: %FONT_SM_PT%pt;
+  padding: 1px 8px;
+  min-height: 20px;
+}
+
+.viewer-output-action:disabled {
+  opacity: 0.4;
+}
+
 .viewer-image,
 .viewer-video {
   border-radius: 12px;

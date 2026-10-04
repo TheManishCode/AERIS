@@ -188,11 +188,42 @@ class Viewer(Gtk.Box):
         #: to run from inside the panel. Hidden until something runs — an
         #: empty pane on every image and PDF would be a third of the panel
         #: spent on nothing.
-        self._output = Gtk.ScrolledWindow()
-        self._output.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self._output = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._output.set_vexpand(False)
         self._output.add_css_class("viewer-output")
         self._output.set_visible(False)
+
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        head.add_css_class("viewer-output-head")
+        label = Gtk.Label(label="Output", xalign=0.0)
+        label.add_css_class("viewer-output-label")
+        head.append(label)
+
+        #: "running", "exit 0", "exit 2", "stopped". The exit code is the
+        #: answer to the question people press Run to ask, and a pane that
+        #: just stops printing does not give it — a script that failed and one
+        #: that finished quietly look identical.
+        self._out_status = Gtk.Label(xalign=0.0)
+        self._out_status.add_css_class("viewer-output-status")
+        head.append(self._out_status)
+
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        head.append(spacer)
+
+        self._stop_btn = self._out_button("Stop", self.stop_run)
+        self._again_btn = self._out_button("Run again", self.run_file)
+        head.append(self._stop_btn)
+        head.append(self._again_btn)
+        head.append(self._out_button("Close", lambda: self.hide_output()))
+        self._output.append(head)
+
+        self._out_scroll = Gtk.ScrolledWindow()
+        self._out_scroll.set_policy(
+            Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC
+        )
+        self._out_scroll.set_vexpand(True)
+        self._output.append(self._out_scroll)
         self.append(self._output)
 
         # A panel is resizable, so a third set once stops being a third the
@@ -722,6 +753,25 @@ class Viewer(Gtk.Box):
 
     # ------------------------------------------------------------------- run
 
+    def _out_button(self, label: str, action) -> Gtk.Button:
+        btn = Gtk.Button(label=label)
+        btn.add_css_class("viewer-action")
+        btn.add_css_class("viewer-output-action")
+        btn.connect("clicked", lambda *_: action())
+        return btn
+
+    def command_line(self, runner: toolchains.Runner) -> str:
+        """The command as a person would type it.
+
+        `runner.argv` holds a resolved absolute interpreter and an absolute
+        file — `/usr/bin/python3 /home/you/work/thing.py` — which is correct
+        to execute and useless to read. The run already happens in the file's
+        own folder, so the folder is not news either.
+        """
+        head = Path(runner.argv[0]).name
+        middle = [a for a in runner.argv[1:-1]]
+        return " ".join([head, *middle, Path(runner.argv[-1]).name])
+
     def run_file(self) -> None:
         """Run the open file and show its output below, not in a terminal.
 
@@ -739,12 +789,19 @@ class Viewer(Gtk.Box):
         runner = toolchains.runner_for(self.path)
         if runner is None:
             return
+        # Unsaved edits first. Running the on-disk file while the editor shows
+        # something else is the worst kind of wrong answer: it is a real
+        # result, for a program you are not looking at. If the save fails the
+        # run is abandoned rather than run against the stale file.
+        if self.dirty and not self.save_file():
+            return
         self._stop_process()
 
         view = self._code_view("")
         buf = view.get_buffer()
-        buf.set_text(f"$ {' '.join(runner.argv)}\n\n")
-        self._output.set_child(view)
+        buf.set_text(f"$ {self.command_line(runner)}\n\n")
+        self._out_scroll.set_child(view)
+        self._set_run_state("running")
         self._show_output()
 
         # Launched through a launcher rather than Gio.Subprocess.new so the
@@ -755,12 +812,63 @@ class Viewer(Gtk.Box):
             Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE
         )
         launcher.set_cwd(str(self.path.parent))
+        # Python block-buffers stdout when it is a pipe, so a script that
+        # prints as it works would deliver everything at once on exit — the
+        # pane would sit empty for the whole run and then fill. This is the
+        # one interpreter where that is both common and fixable from outside.
+        launcher.setenv("PYTHONUNBUFFERED", "1", True)
         try:
             self._proc = launcher.spawnv(list(runner.argv))
         except GLib.Error as exc:
             buf.insert(buf.get_end_iter(), f"could not start: {exc.message}\n")
+            self._set_run_state("failed to start", failed=True)
             return
+        self._proc.wait_async(None, self._on_exit)
         self._pump(self._proc.get_stdout_pipe(), buf)
+
+    def _on_exit(self, proc, result) -> None:
+        """Report how it ended.
+
+        `_proc` is cleared *before* `force_exit` in `stop_run`, so a process
+        this viewer killed arrives here with `self._proc is not proc` and is
+        reported as "stopped". Without that, a user pressing Stop is told the
+        script failed with a signal, which blames the script for the user.
+        """
+        stopped = self._proc is not proc
+        try:
+            proc.wait_finish(result)
+        except GLib.Error:
+            pass
+        if stopped:
+            self._set_run_state("stopped", running=False)
+            return
+        self._proc = None
+        code = proc.get_exit_status() if proc.get_if_exited() else -1
+        self._set_run_state(
+            f"exit {code}" if code >= 0 else "killed",
+            failed=code != 0,
+            running=False,
+        )
+
+    def _set_run_state(
+        self, text: str, *, failed: bool = False, running: bool = True
+    ) -> None:
+        self._out_status.set_text(text)
+        if failed:
+            self._out_status.add_css_class("failed")
+        else:
+            self._out_status.remove_css_class("failed")
+        # Stop is meaningless once it has exited, and Run again is a trap
+        # while it is still going — two copies of a script writing the same
+        # file is not what the second click meant.
+        self._stop_btn.set_sensitive(running)
+        self._again_btn.set_sensitive(not running)
+
+    def stop_run(self) -> None:
+        """Kill it on purpose, and have it reported as such."""
+        proc, self._proc = self._proc, None
+        if proc is not None:
+            proc.force_exit()
 
     def _pump(self, stream: Gio.InputStream, buf: Gtk.TextBuffer) -> None:
         def on_chunk(src, result):
@@ -769,7 +877,6 @@ class Viewer(Gtk.Box):
             except GLib.Error:
                 return
             if not data:
-                buf.insert(buf.get_end_iter(), "\n[finished]\n")
                 self._tail_output()
                 return
             text = data.decode("utf-8", errors="replace")
@@ -794,7 +901,7 @@ class Viewer(Gtk.Box):
         """
 
         def scroll():
-            adj = self._output.get_vadjustment()
+            adj = self._out_scroll.get_vadjustment()
             if adj is not None:
                 adj.set_value(adj.get_upper() - adj.get_page_size())
             return False
@@ -812,14 +919,12 @@ class Viewer(Gtk.Box):
             return False
         self._stop_process()
         self._output.set_visible(False)
-        self._output.set_child(None)
+        self._out_scroll.set_child(None)
         self.queue_resize()
         return True
 
     def _stop_process(self) -> None:
-        if self._proc is not None:
-            self._proc.force_exit()
-            self._proc = None
+        self.stop_run()
 
     # -------------------------------------------------------------- keyboard
 

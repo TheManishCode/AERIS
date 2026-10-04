@@ -89,7 +89,7 @@ class WiringTests(unittest.TestCase):
         return head + rest.partition('"""')[2]
 
     def test_run_writes_into_the_output_pane(self):
-        self.assertIn("self._output.set_child(view)", self.run_file_body())
+        self.assertIn("self._out_scroll.set_child(view)", self.run_file_body())
 
     def test_run_never_touches_the_file_body_again(self):
         """The bug, exactly: this line is what replaced the file."""
@@ -98,7 +98,8 @@ class WiringTests(unittest.TestCase):
     def test_the_output_pane_is_its_own_scroller(self):
         """Shared scrolling would move the file every time a line arrived."""
         src = self.source()
-        self.assertIn("self._output = Gtk.ScrolledWindow()", src)
+        self.assertIn("self._out_scroll = Gtk.ScrolledWindow()", src)
+        self.assertIn("self._out_scroll.set_vexpand(True)", src)
 
     def test_the_output_does_not_expand(self):
         """`vexpand` on both panes would split the slack evenly and the third

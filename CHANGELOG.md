@@ -1,5 +1,58 @@
 # Changelog
 
+## 2026-10-04 — Run says how it went, and runs what you are looking at
+
+Role: Senior Product Designer + Frontend Engineer + QA Engineer
+
+Status: Fixed, Added
+
+Reason:
+Three things were wrong with Run once the output had a pane of its own.
+It ran the file on disk, so running with unsaved edits gave a real result for
+a program you were not looking at. It never reported an exit status, so a
+script that failed and one that finished quietly were indistinguishable. And
+Python block-buffers stdout into a pipe, so a script that prints as it works
+delivered everything at once on exit — the pane sat empty for the whole run.
+
+Changes:
+- Run saves first when the buffer is dirty, and abandons the run if the save
+  fails rather than falling back to the stale file. It stays in edit mode:
+  Run is not Done, and leaving the editor would cost the cursor position on
+  every iteration of the obvious loop.
+- The pane gets a header: "Output", a status label, Stop, Run again, Close.
+  Stop is insensitive once it has exited; Run again is insensitive while it is
+  still going, because two copies of a script writing the same file is not
+  what the second click meant.
+- `wait_async` reports "exit N", with the `failed` class when N is non-zero.
+  `_proc` is cleared *before* `force_exit`, so a process this viewer killed is
+  reported as "stopped" rather than as a signal death — otherwise pressing
+  Stop blames the script for the user.
+- `PYTHONUNBUFFERED=1` on the launcher.
+- The banner shows the command as typed, `$ python3 demo.py`, not the resolved
+  `/usr/bin/python3 /home/you/work/demo.py`.
+
+Removed/Reverted:
+- The `[finished]` line the pump used to append. The status label says it now,
+  and says more.
+
+Verification:
+- `tests/test_viewer_live.py` grew to 33 tests, driving a real Viewer: exit 0,
+  exit 3, the failed class going on *and coming off* on a later clean run,
+  Stop reading as "stopped", button states, save-before-run, a failed save
+  abandoning the run, the banner, and output arriving within the first second
+  of a 1.5s script.
+- One of those tests was wrong before the code was: it back-dated the file
+  before rewriting it, and `edit.save` deliberately allows a 1s tolerance for
+  whole-second filesystems. The test was fixed, not the tolerance.
+- Rendered against the real stylesheet and screenshotted: "exit 2" in the
+  error colour, Stop dimmed, file still on screen above, pane at 193px of 640.
+
+Result:
+Run tells you what happened, to the file you can see.
+
+Known Issues:
+None.
+
 ## 2026-10-04 — A file that says how to run itself can be run
 
 Role: Senior Backend Engineer

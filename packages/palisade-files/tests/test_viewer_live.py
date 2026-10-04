@@ -10,6 +10,7 @@ Those are exactly where the bugs were, so they are tested here instead, behind
 `@needs_display` — see `_display.py` for why that gate is not optional.
 """
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -23,7 +24,7 @@ if True:  # keep the import below the gate's import for readability
     import gi
 
     gi.require_version("Gtk", "4.0")
-    from gi.repository import GLib, Gtk  # noqa: E402
+    from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from palisade_files.viewer import Viewer  # noqa: E402
 
@@ -256,6 +257,227 @@ class ReloadTests(ViewerCase):
         self.viewer._render()
         pump()
         self.assertEqual(self.body(), "first\nmine\n")
+
+
+class RunCase(ViewerCase):
+    def script(self, body, name="thing.py"):
+        path = self.write(name, body)
+        self.viewer.show_file(path)
+        pump()
+        return path
+
+    def settle(self, ms=2500):
+        """Wait for the process to actually exit, rather than guessing.
+
+        A fixed sleep either flakes or wastes the difference; the status label
+        is the thing being waited for, so wait for it."""
+        deadline = GLib.get_monotonic_time() + ms * 1000
+        while GLib.get_monotonic_time() < deadline:
+            pump(20)
+            if self.viewer._out_status.get_text() not in ("running", ""):
+                return
+        self.fail(f"never settled: {self.viewer._out_status.get_text()!r}")
+
+    def output(self):
+        view = self.viewer._out_scroll.get_child()
+        buf = view.get_buffer()
+        return buf.get_text(*buf.get_bounds(), False)
+
+
+class RunStatusTests(RunCase):
+    """A pane that just stops printing does not say how it went. A script that
+    failed and one that finished quietly look identical without this."""
+
+    def test_a_clean_run_reports_exit_0(self):
+        self.script("print('hello')\n")
+        self.viewer.run_file()
+        self.settle()
+        self.assertEqual(self.viewer._out_status.get_text(), "exit 0")
+        self.assertIn("hello", self.output())
+
+    def test_a_failing_run_reports_its_code(self):
+        self.script("import sys; sys.exit(3)\n")
+        self.viewer.run_file()
+        self.settle()
+        self.assertEqual(self.viewer._out_status.get_text(), "exit 3")
+
+    def test_a_failing_run_is_marked_as_failed(self):
+        """The number is small and the pane is small. Colour carries it."""
+        self.script("import sys; sys.exit(1)\n")
+        self.viewer.run_file()
+        self.settle()
+        self.assertIn("failed", self.viewer._out_status.get_css_classes())
+
+    def test_a_clean_run_is_not_marked_as_failed(self):
+        """And the mark must come off again — a pane reused by Run again
+        would otherwise stay red after the fix that made it pass."""
+        self.script("import sys; sys.exit(1)\n")
+        self.viewer.run_file()
+        self.settle()
+        self.write("thing.py", "print('fixed')\n")
+        self.viewer.run_file()
+        self.settle()
+        self.assertEqual(self.viewer._out_status.get_text(), "exit 0")
+        self.assertNotIn("failed", self.viewer._out_status.get_css_classes())
+
+    def test_stopping_it_reads_as_stopped_not_as_a_failure(self):
+        """`_proc` is cleared before `force_exit`, so the exit callback can
+        tell a kill from a crash. Without that, pressing Stop tells you the
+        script died of a signal — blaming the script for the user."""
+        self.script("import time; time.sleep(30)\n")
+        self.viewer.run_file()
+        pump(200)
+        self.viewer.stop_run()
+        self.settle()
+        self.assertEqual(self.viewer._out_status.get_text(), "stopped")
+
+    def test_the_buttons_follow_the_state(self):
+        """Stop is meaningless once it has exited; Run again is a trap while
+        it is still going — two copies writing the same file."""
+        self.script("import time; time.sleep(30)\n")
+        self.viewer.run_file()
+        pump(200)
+        self.assertTrue(self.viewer._stop_btn.get_sensitive())
+        self.assertFalse(self.viewer._again_btn.get_sensitive())
+        self.viewer.stop_run()
+        self.settle()
+        self.assertFalse(self.viewer._stop_btn.get_sensitive())
+        self.assertTrue(self.viewer._again_btn.get_sensitive())
+
+
+class RunSavesFirstTests(RunCase):
+    def test_running_a_dirty_file_saves_it_first(self):
+        """Running the on-disk file while the editor shows something else is
+        the worst kind of wrong answer: a real result, for a program you are
+        not looking at."""
+        path = self.script("print('old')\n")
+        self.viewer.start_editing()
+        pump()
+        doc = self.viewer._doc
+        doc.set_text("print('new')\n")
+        self.viewer.run_file()
+        self.settle()
+        self.assertEqual(path.read_text(), "print('new')\n")
+        self.assertIn("new", self.output())
+
+    def test_it_stays_in_edit_mode(self):
+        """Run is not Done. Kicking the user out of the editor to run would
+        cost the cursor position on every iteration of the obvious loop."""
+        self.script("print('x')\n")
+        self.viewer.start_editing()
+        pump()
+        self.viewer._doc.set_text("print('y')\n")
+        self.viewer.run_file()
+        self.settle()
+        self.assertTrue(self.viewer._editing)
+
+    def test_a_save_that_fails_abandons_the_run(self):
+        """Otherwise the fallback is running the stale file, which is the
+        exact thing saving first was meant to prevent."""
+        path = self.script("print('old')\n")
+        self.viewer.start_editing()
+        pump()
+        self.viewer._doc.set_text("print('new')\n")
+        # Change it underneath: `edit.save` refuses when the file moved since
+        # it was read, which is the realistic way a save fails here. The
+        # back-date is after the write, not before — the check allows a 1s
+        # tolerance for whole-second filesystems, so a rewrite in the same
+        # second is deliberately *not* a conflict.
+        path.write_text("someone else\n")
+        os.utime(path, (0, 0))
+        self.viewer.run_file()
+        pump(200)
+        self.assertFalse(self.viewer._output.get_visible())
+        self.assertEqual(path.read_text(), "someone else\n")
+
+    def test_a_clean_file_is_not_rewritten(self):
+        path = self.script("print('x')\n")
+        before = path.stat().st_mtime_ns
+        self.viewer.run_file()
+        self.settle()
+        self.assertEqual(path.stat().st_mtime_ns, before)
+
+
+class RunPresentationTests(RunCase):
+    def test_the_command_is_shown_as_a_person_would_type_it(self):
+        """`runner.argv` is `/usr/bin/python3 /home/you/work/thing.py` —
+        correct to execute, useless to read. The run already happens in the
+        file's folder, so the folder is not news either."""
+        self.script("print('x')\n")
+        self.viewer.run_file()
+        self.settle()
+        first = self.output().splitlines()[0]
+        self.assertEqual(first, "$ python3 thing.py")
+
+    def test_the_absolute_path_is_not_in_the_banner(self):
+        path = self.script("print('x')\n")
+        self.viewer.run_file()
+        self.settle()
+        self.assertNotIn(str(path), self.output())
+
+    def test_output_arrives_while_the_script_is_still_running(self):
+        """Python block-buffers stdout into a pipe, so without
+        PYTHONUNBUFFERED a script that prints as it works delivers everything
+        at once on exit — the pane sits empty for the whole run, then fills."""
+        self.script(
+            "import time\n"
+            "print('first', flush=False)\n"
+            "time.sleep(1.5)\n"
+            "print('second')\n"
+        )
+        self.viewer.run_file()
+        deadline = GLib.get_monotonic_time() + 1_000_000
+        while GLib.get_monotonic_time() < deadline:
+            pump(20)
+            if "first" in self.output():
+                break
+        self.assertIn("first", self.output(),
+                      "nothing arrived in the first second of a 1.5s script")
+        self.assertNotIn("second", self.output())
+        self.settle()
+
+    def test_the_file_is_still_on_screen_underneath(self):
+        self.script("print('x')\n")
+        self.viewer.run_file()
+        self.settle()
+        self.assertIsNotNone(self.viewer._body.get_child())
+        self.assertGreater(self.viewer._body.get_height(), 0)
+
+
+class RunDismissTests(RunCase):
+    def test_escape_closes_the_output_before_the_file(self):
+        self.script("print('x')\n")
+        self.viewer.run_file()
+        self.settle()
+        handled = self.viewer.handle_key(Gdk.KEY_Escape, Gdk.ModifierType(0))
+        self.assertTrue(handled)
+        self.assertFalse(self.viewer._output.get_visible())
+        self.assertFalse(self.closed)
+
+    def test_escape_again_closes_the_file(self):
+        self.script("print('x')\n")
+        self.viewer.run_file()
+        self.settle()
+        self.viewer.handle_key(Gdk.KEY_Escape, Gdk.ModifierType(0))
+        self.viewer.handle_key(Gdk.KEY_Escape, Gdk.ModifierType(0))
+        self.assertTrue(self.closed)
+
+    def test_closing_the_pane_kills_a_process_still_running(self):
+        """Otherwise it keeps writing into a buffer nobody can see."""
+        self.script("import time; time.sleep(30)\n")
+        self.viewer.run_file()
+        pump(200)
+        self.assertIsNotNone(self.viewer._proc)
+        self.viewer.hide_output()
+        self.assertIsNone(self.viewer._proc)
+
+    def test_opening_another_file_closes_the_pane(self):
+        self.script("print('x')\n")
+        self.viewer.run_file()
+        self.settle()
+        self.viewer.show_file(self.write("other.txt", "unrelated\n"))
+        pump()
+        self.assertFalse(self.viewer._output.get_visible())
 
 
 if __name__ == "__main__":
