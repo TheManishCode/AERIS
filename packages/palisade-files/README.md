@@ -102,7 +102,10 @@ coherent to write back from them, so Markdown editing opens the source.
 
 **Running a file.** When a Markdown or code file is open and a toolchain for
 its language is on your `PATH`, the viewer offers **Run** and streams the
-output into the panel. It detects what you have — it does not install
+output into a pane below the file — a third of the panel, scrolling by itself
+and following its own newest line while you keep your place in the source.
+<kbd>Esc</kbd> dismisses the pane and gives the file its full height back. It
+detects what you have — it does not install
 compilers. Installing a toolchain is a package-manager decision with root
 behind it, and a desktop panel is the wrong thing to be making it.
 

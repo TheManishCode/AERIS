@@ -745,6 +745,18 @@ window.palisade-picker .fence-root {
   padding: %PAD_CARD%px;
 }
 
+/* Run output, below the file rather than over it. Darker than the body so the
+ * split reads without a separator, and deliberately carrying no min-height:
+ * the height is a third of the panel, computed in `do_size_allocate`, and a
+ * min-height here would silently win over that size request — which is
+ * exactly how the dock grip came out 0px and painted nothing. */
+.viewer-output {
+  background: alpha(@m3_on_surface, 0.10);
+  border-radius: %RADIUS_CARD%px;
+  padding: %PAD_CARD%px;
+  margin-top: %PAD_SHELL%px;
+}
+
 .viewer-image,
 .viewer-video {
   border-radius: 12px;

@@ -57,16 +57,18 @@ a separator or a capital.
 
 | Key | Does |
 | --- | --- |
-| <kbd>Esc</kbd> | Stop editing; pressed again, back to the list where you left it |
+| <kbd>Esc</kbd> | Unwinds one layer: stop editing, then dismiss run output, then back to the list where you left it |
 | <kbd>Ctrl</kbd>+<kbd>E</kbd> | Edit what can be edited, otherwise toggle Markdown preview |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save — only while editing |
-| <kbd>Ctrl</kbd>+<kbd>R</kbd> | Run the file |
+| <kbd>Ctrl</kbd>+<kbd>R</kbd> | Run the file, output in a pane below it |
 | <kbd>Ctrl</kbd>+<kbd>O</kbd> | Open in the desktop's default application |
 
 <kbd>Ctrl</kbd>+<kbd>E</kbd> is one key read in context: the two never both
 apply, because editing a Markdown file *is* its source view. <kbd>Esc</kbd>
 unwinds editing before it leaves the file, so a reflex press does not discard
-a dirty buffer.
+a dirty buffer — and dismisses the run output before it leaves the file, since
+closing the file to be rid of a pane that is a third of it is a bigger step
+than was asked for.
 
 ### In the taskbar *(palisade-dock)*
 

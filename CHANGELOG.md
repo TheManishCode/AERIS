@@ -1,5 +1,76 @@
 # Changelog
 
+## 2026-10-04 — Run output goes below the file, not over it
+
+Role: Senior Product Designer + Frontend Engineer + QA Engineer
+
+Status: Fixed, Added
+
+Reason:
+`run_file` called `self._body.set_child(view)` — the same slot the file is
+rendered into. Running a script replaced the script with its own output, so
+pressing Ctrl+R to see what a line did cost you the line, and the only way
+back was to close the file and reopen it, losing the scroll position too.
+
+Changes:
+- The output has its own `Gtk.ScrolledWindow` below the body, a third of the
+  viewer's height, hidden until something runs. A third rather than a half
+  because you ran it to see its effect on the thing you are looking at, so the
+  file keeps the majority.
+- Its own scroller, so it follows its newest line while the source stays where
+  you left it.
+- Escape unwinds one more layer: editing, then the output pane, then the file.
+- Opening another file clears any previous output, and dismissing the pane
+  kills a process still writing into it.
+- `.viewer-output` carries no `min-height`, deliberately — see Removed below.
+
+Removed/Reverted:
+- `self._body.set_child(view)` in `run_file`. That was the bug.
+- A `do_size_allocate` override on the `Viewer` (a `Gtk.Box`) to compute the
+  third. **It never ran.** A `Gtk.Box` installs a `GtkBoxLayout` and GTK
+  allocates through the layout manager rather than the widget's own vfunc, so
+  the override was dead code that read as correct — the pane rendered at 58px,
+  its natural height, with the size request never set. A direct probe settled
+  it: the same override fired 0 times on a `Gtk.Box` subclass and 2 times on a
+  `Gtk.Widget` subclass. Replaced by `_ThirdsLayout(Gtk.BoxLayout)`, which is
+  the object GTK actually calls.
+- An inline `adj.set_value(...)` tail-follow. The adjustment's `upper` only
+  grows after the text view lays the new text out, so it scrolled to where the
+  end *was* — measured at `value + page_size` of 688 against an `upper` of
+  720, a tail permanently one chunk behind. Deferred to an idle.
+
+Verification:
+- `packages/palisade-files/tests/test_output_pane.py` (26 tests). Each was
+  proved by reintroducing the bug it guards and confirming it failed:
+  output back over the body, the floor removed, the tail removed, Escape
+  closing the file instead of the pane, a CSS `min-height`, the dead vfunc,
+  the inline tail, and an unguarded `set_size_request` inside allocation.
+- Measured live against a real `Viewer` over a script printing 40 lines, at
+  five panel heights:
+
+  | panel | body | output | share |
+  | ---: | ---: | ---: | ---: |
+  | 900 | 552 | 280 | 31.1% |
+  | 600 | 352 | 180 | 30.0% |
+  | 450 | 252 | 130 | 28.9% |
+  | 300 | 152 | 80 | 26.7% |
+  | 240 | 96 | 76 | 31.7% |
+
+  The file stayed in the body throughout, its own scroll position unmoved at
+  0, and the output adjustment sat at its end after the run.
+- Full suite green: core 455, files 216, dock 79, apps 67.
+
+Result:
+Running a file shows its output without taking the file away.
+
+Known Issues:
+`MIN_OUTPUT_HEIGHT` is an *outer* height — a size request includes the card's
+padding and margin, measured at 20px — so the readable floor is ~76px, about
+four monospaced lines. It was 72 (yielding 52) until that measurement; the
+constant is 96 now and says so. The share drifts below a third on short panels
+for the same reason: the header and the pane's margin are fixed costs out of a
+shrinking budget.
+
 ## 2026-10-04 — The header says how you got there, not just where you are
 
 Role: Senior Product Designer + Frontend Engineer

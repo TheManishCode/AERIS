@@ -42,6 +42,57 @@ HEAD_BYTES = 256 * 1024
 #: Cap on run output kept in memory, for the same reason.
 MAX_OUTPUT_CHARS = 200_000
 
+#: The output pane takes this fraction of the viewer's height. A third leaves
+#: the file the majority — you ran it to see what it does to the thing you are
+#: looking at, so hiding that thing to show the output defeats the point.
+OUTPUT_FRACTION = 3
+
+#: ...but not below this, or a short panel gives output a strip too thin to
+#: read a line in and the pane is worse than no pane.
+#:
+#: This is the pane's *outer* height — a size request includes the card's own
+#: padding and margin, which measured 20px, so what you can actually read is
+#: this minus that. 96 leaves ~76px, about four monospaced lines; the 72 this
+#: started at left 52 and a 240px panel showed three.
+MIN_OUTPUT_HEIGHT = 96
+
+
+def output_height(height: int) -> int:
+    """How tall the output pane should be inside a viewer `height` tall.
+
+    A module function rather than a method so the arithmetic is testable
+    without building a widget tree, which needs a display.
+    """
+    return max(MIN_OUTPUT_HEIGHT, height // OUTPUT_FRACTION)
+
+
+class _ThirdsLayout(Gtk.BoxLayout):
+    """A vertical box layout that keeps one child at a fraction of the height.
+
+    The obvious place for this is `do_size_allocate` on the `Gtk.Box` itself.
+    That hook never fires: a `Gtk.Box` installs a `GtkBoxLayout`, and GTK
+    allocates through the layout manager instead of the widget's own vfunc, so
+    the override is dead code that looks correct. Measured — the pane came out
+    58px, its natural height, with the size request never set at all.
+
+    Done here it fires, because this is the object GTK actually calls.
+    """
+
+    __gtype_name__ = "PalisadeThirdsLayout"
+
+    def __init__(self, pane: Gtk.Widget):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self._pane = pane
+
+    def do_allocate(self, widget, width: int, height: int, baseline: int) -> None:
+        # The guard is not optional: `set_size_request` queues another
+        # allocation, so setting it unconditionally here is an infinite
+        # layout loop rather than a slow one.
+        want = output_height(height) if self._pane.get_visible() else -1
+        if want != self._pane.get_size_request()[1]:
+            self._pane.set_size_request(-1, want)
+        Gtk.BoxLayout.do_allocate(self, widget, width, height, baseline)
+
 
 def _human(n: float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
@@ -123,10 +174,31 @@ class Viewer(Gtk.Box):
         self._body.add_css_class("viewer-body")
         self.append(self._body)
 
+        #: Run output lives here, below the file rather than over it. Its own
+        #: ScrolledWindow so it scrolls independently: the output tails itself
+        #: while you keep your place in the source, which is the whole reason
+        #: to run from inside the panel. Hidden until something runs — an
+        #: empty pane on every image and PDF would be a third of the panel
+        #: spent on nothing.
+        self._output = Gtk.ScrolledWindow()
+        self._output.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self._output.set_vexpand(False)
+        self._output.add_css_class("viewer-output")
+        self._output.set_visible(False)
+        self.append(self._output)
+
+        # A panel is resizable, so a third set once stops being a third the
+        # moment it is dragged. Recomputed on every allocation instead.
+        self.set_layout_manager(_ThirdsLayout(self._output))
+
     # ------------------------------------------------------------------ open
 
     def show_file(self, path: Path) -> bool:
         """Load `path`. False if there is nothing this viewer can do with it."""
+        # A previous file's output over a new file's contents would read as
+        # this file's output, which is the most misleading thing the pane
+        # could do.
+        self.hide_output()
         self.path = path
         self.kind = preview.classify(path)
         self._mode = "preview"
@@ -587,6 +659,11 @@ class Viewer(Gtk.Box):
         Output is streamed into the viewer because the point of running from
         here is to stay in the panel. Anything interactive wants a real
         terminal, and that is what Open externally is for.
+
+        *Below* the file, not instead of it. This used to call
+        `self._body.set_child(view)`, which replaced the source with its own
+        output — so running a script to see what it printed cost you the line
+        you were looking at, and the only way back was to reopen the file.
         """
         if self.path is None:
             return
@@ -598,7 +675,8 @@ class Viewer(Gtk.Box):
         view = self._code_view("")
         buf = view.get_buffer()
         buf.set_text(f"$ {' '.join(runner.argv)}\n\n")
-        self._body.set_child(view)
+        self._output.set_child(view)
+        self._show_output()
 
         # Launched through a launcher rather than Gio.Subprocess.new so the
         # working directory can be set to the file's own: a script that opens
@@ -623,13 +701,51 @@ class Viewer(Gtk.Box):
                 return
             if not data:
                 buf.insert(buf.get_end_iter(), "\n[finished]\n")
+                self._tail_output()
                 return
             text = data.decode("utf-8", errors="replace")
             if buf.get_char_count() < MAX_OUTPUT_CHARS:
                 buf.insert(buf.get_end_iter(), text)
+                self._tail_output()
             src.read_bytes_async(8192, GLib.PRIORITY_DEFAULT, None, on_chunk)
 
         stream.read_bytes_async(8192, GLib.PRIORITY_DEFAULT, None, on_chunk)
+
+    def _tail_output(self) -> None:
+        """Follow the newest line. A pane a third of a panel tall holds a few
+        lines, so without this a run of any length shows its opening banner
+        and nothing that happened after.
+
+        Deferred to an idle, not done inline: the adjustment's `upper` only
+        grows once the text view has laid the new text out, so scrolling
+        immediately after the insert scrolls to where the end *was*. Measured
+        at `value + page_size == 688` against an `upper` of `720` — a tail
+        that is permanently one chunk behind, which looks like it is working
+        until output stops arriving.
+        """
+
+        def scroll():
+            adj = self._output.get_vadjustment()
+            if adj is not None:
+                adj.set_value(adj.get_upper() - adj.get_page_size())
+            return False
+
+        GLib.idle_add(scroll, priority=GLib.PRIORITY_LOW)
+
+    def _show_output(self) -> None:
+        self._output.set_visible(True)
+        self.queue_resize()
+
+    def hide_output(self) -> bool:
+        """Put the file back to full height. False if there was none to hide,
+        so a caller can fall through to whatever it would have done."""
+        if not self._output.get_visible():
+            return False
+        self._stop_process()
+        self._output.set_visible(False)
+        self._output.set_child(None)
+        self.queue_resize()
+        return True
 
     def _stop_process(self) -> None:
         if self._proc is not None:
@@ -647,11 +763,15 @@ class Viewer(Gtk.Box):
                 return True
             return False
         if keyval == Gdk.KEY_Escape:
-            # Escape unwinds: out of editing first, then out of the file.
-            # Going straight to the list from a dirty buffer would discard
-            # work on a key people press reflexively.
+            # Escape unwinds, innermost first: out of editing, then out of the
+            # run output, then out of the file. Going straight to the list
+            # from a dirty buffer would discard work on a key people press
+            # reflexively, and closing the whole file to dismiss a pane that
+            # is only a third of it is a bigger step than was asked for.
             if self._editing:
                 self.stop_editing()
+                return True
+            if self.hide_output():
                 return True
             self.close()
             return True
