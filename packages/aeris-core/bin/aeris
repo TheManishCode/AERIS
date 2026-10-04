@@ -20,7 +20,6 @@ for prefix in /usr "$HOME/.local"; do
     for libdir in "$prefix/lib" "$prefix/lib/$triplet" "$prefix/lib64"; do
         if [ -e "$libdir/libgtk4-layer-shell.so.0" ]; then
             LAYER_SHELL_LIB="$libdir/libgtk4-layer-shell.so.0"
-            LAYER_SHELL_PREFIX="$prefix"
             LAYER_SHELL_LIBDIR="$libdir"
             break 2
         fi

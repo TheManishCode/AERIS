@@ -50,6 +50,9 @@ jobs:
       # A module is tested against core *from this checkout*, not against
       # whatever pip would resolve — a change that breaks a module should
       # fail here, in the pull request that made it.
+      - name: Install test dependencies
+        run: python3 -m pip install pytest
+
       - name: Tests
         run: xvfb-run -a python3 -m pytest tests -q
         working-directory: packages/${{ matrix.package }}
