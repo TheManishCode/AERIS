@@ -24,19 +24,26 @@ on this machine rather than a pass. On a stock Hyprland it should run: clear a
 workspace, then `tools/verify-hyprland.sh`. The minimize/restore half of that
 script does pass here.
 
-## The split has not been taken the last step
+## Nothing has been pushed, and one command is why
 
-`tools/split-repos.sh` has been run and produced `split/palisade-{core,files,
-dock,apps}`, but nothing has been pushed. Before pushing, replace the
-`PALISADE_OWNER` placeholder in the four READMEs and the four installers with
-a real GitHub owner — they are currently URLs that 404.
+Every GitHub URL in the tree — four READMEs, four installers, four pyprojects,
+the registry's install hint — is built from the `PALISADE_OWNER` placeholder
+and 404s. `tools/set-owner.sh <owner>` rewrites all of them across git-tracked
+files, and `tools/split-repos.sh --push <owner>` refuses to run until it has
+been.
 
-Each branch carries one commit rather than the pre-split history, because
-subtree split does not follow renames and every package directory was created
-in the restructuring commit. If that matters, redo the split with
-`git filter-repo --path-rename` (not installed) instead.
+`split-repos.sh` was rewritten to use `git filter-repo`, so the four
+repositories keep the history that `git subtree split` was discarding —
+subtree does not follow renames and every package directory was created in one
+restructuring commit, which is why each branch used to carry exactly one.
 
-Found 2026-10-03 when the four packages were created.
+**git-filter-repo is not installed here**, so the rewritten script has never
+produced a repository. It refuses with the install command rather than falling
+back to subtree. To finish: `sudo pacman -S git-filter-repo`, then
+`tools/set-owner.sh <owner>`, then `tools/split-repos.sh` and read
+`dist/repos/palisade-core/` before pushing anything.
+
+Found 2026-10-03; rewritten 2026-10-04.
 
 ## The breadcrumb cannot be clicked
 
@@ -110,15 +117,6 @@ Found 2026-10-04 when the optional integration was written.
 - Whether the glass reads well against a bright wallpaper at `opacity = 0.55`.
 - Multi-monitor placement. `_screen_size` reads monitor 0 only.
 
-
-## The core README's config example is stale
-
-`packages/palisade-core/README.md:117` shows `opacity = 0.55` under
-`[settings]`, where it is not a key — it is per-group and per-tab
-(`config.py:175`, `config.py:293`). Line 119's `[[fence]]` block predates the
-group/tab split and is commented "a fence is always on screen", which docking
-superseded. Replace the block with the groups-and-tabs model REFERENCE.md
-already documents.
 
 ## `list` and `tabs` enumerate the same windows
 

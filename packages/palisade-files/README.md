@@ -129,9 +129,25 @@ Code Node extension host and its API surface; nothing short of shipping that
 runtime would do it, and shipping an Electron runtime inside a desktop panel
 is not a trade worth making.
 
-There is also no syntax highlighting. GtkSourceView would bring it, but making
-it a hard dependency would mean no preview at all on a machine without it, so
-code is shown monospaced with the language named.
+Two things are optional rather than required, and the module works without
+either:
+
+| Library | Brings | Without it |
+| --- | --- | --- |
+| GtkSourceView 5 | Syntax highlighting, line numbers, auto-indent | Monospaced text with the language named |
+| poppler (`gir1.2-poppler-0.18`) | PDF pages rendered in the panel | A description of the file and Open externally |
+
+Neither is a hard dependency, because requiring one would mean no preview *at
+all* on a machine that lacks it — a far worse failure than monochrome code or
+an unrendered PDF. This is the same rule the Run button follows: use what is
+already installed, never install anything.
+
+**Thumbnails come from the desktop's own cache.** Palisade reads what GIO has
+already generated under `~/.cache/thumbnails` and never generates one itself:
+a panel that spawned thumbnailers for a folder of RAW files would stall the
+compositor it is drawn on. A file whose thumbnail has not been made yet gets
+its content-type icon, and gets the picture once your file manager has been
+through that folder.
 
 What is here is a panel you can read, edit, save and run in without leaving
 it. For a refactor across twenty files, the real editor is one keystroke

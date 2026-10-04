@@ -117,20 +117,32 @@ alone it filters; each package adds its own modes.
 [settings]
 layer = "bottom"        # background | bottom | top | overlay
 blur = true
-opacity = 0.55
-corner_radius = 18
+corner_radius = 18      # 0-48; drives the whole radius ladder
+spacing = "desktop"     # desktop (10/5) or compact (8/4)
 
-[[fence]]               # a fence is always on screen; a group is opened on demand
+[[group]]               # a group is a panel you can open, by id
 id = "notes"
 title = "Notes"
-x = 40
-y = 60
+opacity = 0.55          # per group, not a [settings] key
 width = 420
 height = 520
-[fence.source]
+[group.source]
 type = "directory"
 path = "~/Documents/notes"
+
+[[fence]]               # a fence is a group that is always on screen
+id = "notes"
+x = 40
+y = 60
 ```
+
+`opacity` is deliberately *not* under `[settings]`: it is per group and per
+tab, because one translucent shelf over a photo and one opaque panel over a
+terminal is the normal arrangement. This example used to put it there, where
+it was silently ignored.
+
+`palisade new notes` opens the group as a tab; the `[[fence]]` block is what
+makes one of them permanent. REFERENCE.md has every key.
 
 `palisade check` validates it and previews what every fence would show.
 

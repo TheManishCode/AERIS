@@ -2,10 +2,56 @@
 
 ## 0.4.0 — unreleased
 
-The version the four packages now declare. Dated and summarised when the
-release is actually cut; until then the entries below are the record, newest
-first, and this heading exists so `palisade --version` and this file cannot
-disagree about which tree you are reading.
+The version the four packages declare. Still *unreleased*: nothing has been
+pushed, because every GitHub URL in the tree is built from the
+`PALISADE_OWNER` placeholder and 404s until someone runs
+`tools/set-owner.sh`. Dated when the release is actually cut.
+
+**Features**
+
+- Undo survives leaving and re-entering edit mode: one document buffer per
+  file instead of one per render.
+- Run output in a pane below the file rather than over it, a third of the
+  panel, with exit status, Stop and Run again. Run saves first.
+- Syntax highlighting where GtkSourceView 5 is installed, optional.
+- A file that names its own interpreter on its first line can be run, so a
+  suffixless `deploy` script gets a Run button.
+- The omnibox remembers what you typed, per mode, across restarts. Up recalls,
+  Tab falls back to history.
+- A docked panel gets a grip that matches what it can actually do.
+- The header names the last two levels you navigated into, not just the leaf.
+- `palisade minimize` with no argument takes the focused window; `palisade
+  restore` with none means the last one.
+
+**Fixes**
+
+- A Markdown code block whose longest line overflowed rendered at **0px** and
+  stretched the whole document to its width.
+- Installed applications and minimized windows were labelled "0 B".
+- The focus ring was a square outline inside a rounded item.
+- `pipx install palisade-x` was suggested for packages that are not on PyPI.
+- `--version` said 0.1.0 while the packages said 0.3.0.
+- Four installer bugs, including one that pip-installed whatever project you
+  happened to be standing in.
+- Debian and Ubuntu were unsupported in practice: nothing searched
+  `/usr/lib/<gnu-triplet>` for gtk4-layer-shell.
+- The no-display test run had been segfaulting at 15% and reporting nothing.
+
+**Infrastructure**
+
+- A GitHub Actions workflow and CONTRIBUTING.md per package.
+- `tools/set-owner.sh`, `tools/verify-hyprland.sh`, and a `split-repos.sh`
+  that keeps history and refuses to push while the URLs 404.
+
+**Not in this release**
+
+- The breadcrumb's segments are a label, not buttons; you cannot click one to
+  jump back.
+- Pinning a window over a panel, in palisade-apps. Designed, not built.
+- The GtkSourceView path has never executed on the development machine.
+- The screenshots and the README redesign.
+
+Everything below is the per-change record, newest first.
 
 ## 2026-10-04 — The omnibox remembers what you typed
 
