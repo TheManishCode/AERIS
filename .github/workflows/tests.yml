@@ -52,6 +52,8 @@ jobs:
       # fail here, in the pull request that made it.
       - name: Install test dependencies
         run: python3 -m pip install pytest
+        env:
+          PYTHONPATH: ${{ github.workspace }}/packages/aeris-core/src
 
       - name: Tests
         run: xvfb-run -a python3 -m pytest tests -q

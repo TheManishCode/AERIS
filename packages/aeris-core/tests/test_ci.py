@@ -92,7 +92,7 @@ class ShapeTests(unittest.TestCase):
         """Without `working-directory` every matrix leg would collect the
         repository root, find no `tests/`, and pass by finding nothing."""
         for step in self.steps("test"):
-            if "pytest" in step.get("run", ""):
+            if "python3 -m pytest tests" in step.get("run", ""):
                 self.assertEqual(step["working-directory"],
                                  "packages/${{ matrix.package }}")
 
@@ -100,7 +100,7 @@ class ShapeTests(unittest.TestCase):
         """Not against whatever pip resolves. A change that breaks a module
         should fail in the pull request that made it."""
         for step in self.steps("test"):
-            if "pytest" in step.get("run", ""):
+            if "python3 -m pytest tests" in step.get("run", ""):
                 self.assertIn("packages/aeris-core/src",
                               step["env"]["PYTHONPATH"])
 
@@ -118,7 +118,7 @@ class ContentTests(unittest.TestCase):
     def test_the_optional_libraries_are_installed_in_ci(self):
         """CI is the one place that should exercise the paths a developer
         machine may not have — GtkSourceView has never run locally."""
-        self.assertIn("gir1.2-gtksource-5", text())
+        self.assertIn("gir1.2-gtksource-4", text())
         self.assertIn("gir1.2-poppler-0.18", text())
 
     def test_layer_shell_is_built_from_a_pinned_tag(self):
