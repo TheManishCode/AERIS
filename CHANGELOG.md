@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-10-04 — The header says how you got there, not just where you are
+
+Role: Senior Product Designer + Frontend Engineer
+
+Reason:
+Navigating into a folder set the header to `self._nav[-1].name`. Three levels
+down that names where you are and nothing about how you got there, and
+"invoices" on its own is ambiguous between a dozen projects — the parent is
+what disambiguates it. The whole path is not the answer either: a 420px header
+ellipsizes from the end, so a full path spends its width on a prefix you
+already know.
+
+Changes:
+- `breadcrumb.py` formats the navigation stack: the last two segments joined
+  by `" / "`, with a leading `…` when there are more. At the root it returns
+  the panel's own title, which is the name the user gave it.
+- `FenceWindow._render` uses it. The tooltip still carries the whole path for
+  when two segments are not enough.
+- No GTK in `breadcrumb.py`, so the formatting is tested without a display —
+  same reason `theme.py` is GTK-free.
+
+Removed/Reverted:
+- None. The one-name header is replaced, not kept behind a setting.
+
+Verification:
+- `tests/test_breadcrumb.py` (17 tests), including the root fallback, the
+  filesystem root whose `.name` is empty, a trailing slash, and the ellipsis
+  not growing with depth.
+- Driven live against a real `FenceWindow` over
+  `.palisade-crumb/clients/invoices/2026`: root `'Crumbs'`, then `'clients'`,
+  `'clients / invoices'`, `'… / invoices / 2026'`, with the tooltip holding
+  the full path at each step and the up button appearing off the root.
+  Navigating back up and home restored each earlier label.
+- Full suite green across the four packages.
+
+Result:
+The header reads `… / invoices / 2026` three levels down.
+
+Known Issues:
+The segments are a single label, so you cannot click one to jump back to it —
+still Escape, one level at a time. Recorded in TODO.md.
+
 ## 2026-10-04 — A docked panel gets a grip that matches what it can do
 
 Role: Senior Product Designer + Frontend Engineer + QA Engineer

@@ -34,14 +34,17 @@ in the restructuring commit. If that matters, redo the split with
 
 Found 2026-10-03 when the four packages were created.
 
-## The breadcrumb is one level deep
+## The breadcrumb cannot be clicked
 
-`FenceWindow._nav` holds the whole path stack, but the header shows only
-`self._nav[-1].name`. Three folders down you can see where you are and not how
-you got there, and the only way back to an intermediate level is Escape at a
-time. The data is already there; this is a header widget, not new plumbing.
+The header now names the last two levels (`… / invoices / 2026`,
+`breadcrumb.py`), so the *where am I* half of this entry is done. The *get me
+back there* half is not: the trail is one `Gtk.Label`, so the only way to an
+intermediate level is Escape, one level at a time. Making the segments
+clickable means splitting the label into per-segment buttons and keeping them
+ellipsizing at 420px — a real header rebuild, not a format change.
 
-Found 2026-10-03 while building navigation.
+Found 2026-10-03 while building navigation; narrowed 2026-10-04 when the
+trail landed.
 
 ## Editing has no undo across modes
 

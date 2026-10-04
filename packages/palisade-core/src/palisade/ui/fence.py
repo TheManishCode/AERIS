@@ -20,6 +20,7 @@ gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
+from .. import breadcrumb
 from ..config import Fence, Settings, Source
 from ..sources import Item, UnknownSource, resolve, sort_items
 from ..theme import CSS_PRIORITY
@@ -793,13 +794,13 @@ class FenceWindow(Gtk.ApplicationWindow):
             )
         else:
             self._empty.set_label(missing_hint or self._empty_base)
-            # Below the root the header names the folder you are in, because
+            # Below the root the header names where you are, because
             # "Documents" over the contents of Documents/invoices is a lie
-            # about where a new file would land.
-            self._title.set_label(
-                self._nav[-1].name or str(self._nav[-1]) if self._nav
-                else self.fence.title
-            )
+            # about where a new file would land. The last two segments, not
+            # one: "invoices" alone is ambiguous between a dozen projects, and
+            # the parent is what disambiguates it. The tooltip keeps the whole
+            # path for when two segments are not enough.
+            self._title.set_label(breadcrumb.trail(self._nav, self.fence.title))
             self._title.set_tooltip_text(
                 str(self._nav[-1]) if self._nav else ""
             )
